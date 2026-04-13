@@ -189,7 +189,7 @@ tbody tr:hover{background:var(--primary-light);}
   <button class="tab-btn" data-tab="vendor">거래처 비교</button>
 </div>
 
-<!-- 탬1: 제품→단가 -->
+<!-- 탭1: 제품→단가 -->
 <div class="tab-page active" id="page-product">
   <div class="deadline-bar">
     <label>납기일정:</label>
@@ -204,7 +204,7 @@ tbody tr:hover{background:var(--primary-light);}
   </div>
   <div class="stats-row" id="product-stats" style="display:none;">
     <div class="stat-card"><div class="num" id="s-count">0</div><div class="label">데이터 건수</div></div>
-    <div class="stat-card"><div class="num" id="s-avg">-</div><div class="label">평꺷 단가</div></div>
+    <div class="stat-card"><div class="num" id="s-avg">-</div><div class="label">평균 단가</div></div>
     <div class="stat-card"><div class="num" id="s-min">-</div><div class="label">최저 단가</div></div>
     <div class="stat-card"><div class="num" id="s-max">-</div><div class="label">최고 단가</div></div>
     <div class="stat-card"><div class="num" id="s-trust">-</div><div class="label trust-tooltip" data-tip="5건↑ 매우높음&#10;3건↑ 높음&#10;2건 보통&#10;1건 낮음">데이터 신뢰도 ⓘ</div></div>
@@ -227,9 +227,9 @@ tbody tr:hover{background:var(--primary-light);}
     <input type="date" class="deadline-date-input dl-sync" id="b-deadline">
     <span id="b-deadline-msg" class="deadline-result"></span>
   </div>
-  <div class="guide-box">💡 예산과 조걸을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
+  <div class="guide-box">💡 예산과 조건을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
   <div class="filter-bar">
-    <div class="filter-group"><label>총 예산 (거래처로봀터 받은 금액)</label>
+    <div class="filter-group"><label>총 예산 (거래처로부터 받은 금액)</label>
       <div class="budget-input-row">
         <input type="text" id="budget-input" placeholder="예산을 입력하세요" oninput="formatBudget(this)" style="font-size:18px;font-weight:700;width:200px;text-align:right;border:2px solid var(--primary);border-radius:8px;background:var(--input-bg);color:var(--text);">
         <span class="budget-won">원</span>
@@ -318,7 +318,7 @@ function initFilters(){
   allCats=[...allCatsSet];allProds=[...allProdsSet];allCountries=[...allCountriesSet];
   if(!allCountries.includes('국내'))allCountries.unshift('국내');
   if(!allCountries.includes('중국')&&!allCountries.includes('기타해외')){allCountries.push('중국','기타해외');}
-  // 드롭다울 체크박스 초기화
+  // 드롭다운 체크박스 초기화
   initCheckDD('p-cat','p-cat-menu','p-cat-label',allCats);
   initCheckDD('p-prod','p-prod-menu','p-prod-label',allProds);
   initCheckDD('p-country','p-country-menu','p-country-label',allCountries);
@@ -341,7 +341,7 @@ function toggleTheme(){
 function showToast(msg,ms=2500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms);}
 
 // ━━━ 초성검색 ━━━
-const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅏ'];
+const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 function getCho(s){return[...s].map(c=>{const k=c.charCodeAt(0)-0xAC00;return k<0||k>11171?c:CHO[Math.floor(k/588)]}).join('');}
 function matchQ(t,q){if(!q)return true;const ql=q.toLowerCase();return t.toLowerCase().includes(ql)||getCho(t).includes(q)||getCho(t).startsWith(q);}
 let allCats=[], allProds=[];
@@ -450,7 +450,7 @@ function searchProducts(){
 function renderScatter(items){
   const ctx=document.getElementById('scatterChart').getContext('2d');if(scatterChart)scatterChart.destroy();
   const vs=[...new Set(items.map(i=>i.거래처||'미지정'))],cl=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6'];
-  const ds=vs.map((v,vi)=>({label:v,data:items.filter(i=>(i.거래처||'미지정')===v).filter(i=>i.유효수량&&i.개당단가_부대비용포함).map(i=>({x:i.유효수량,y:i.개당단가_부대비용폨함;raw:i})),backgroundColor:cl[vi%cl.length]+'80',borderColor:cl[vi%cl.length],pointRadius:7,pointHoverRadius:10}));
+  const ds=vs.map((v,vi)=>({label:v,data:items.filter(i=>(i.거래처||'미지정')===v).filter(i=>i.유효수량&&i.개당단가_부대비용포함).map(i=>({x:i.유효수량,y:i.개당단가_부대비용포함,raw:i})),backgroundColor:cl[vi%cl.length]+'80',borderColor:cl[vi%cl.length],pointRadius:7,pointHoverRadius:10}));
   const pts=items.filter(i=>i.유효수량&&i.개당단가_부대비용포함);
   if(pts.length>=2){const xs=pts.map(p=>p.유효수량),ys=pts.map(p=>p.개당단가_부대비용포함),n=xs.length,sX=xs.reduce((a,b)=>a+b,0),sY=ys.reduce((a,b)=>a+b,0),sXY=xs.reduce((a,x,i)=>a+x*ys[i],0),sX2=xs.reduce((a,x)=>a+x*x,0),sl=(n*sXY-sX*sY)/(n*sX2-sX*sX),it=(sY-sl*sX)/n;ds.push({label:'추세선',data:[{x:Math.min(...xs),y:Math.round(sl*Math.min(...xs)+it)},{x:Math.max(...xs),y:Math.round(sl*Math.max(...xs)+it)}],type:'line',borderColor:'#94a3b8',borderDash:[6,3],borderWidth:2,pointRadius:0,fill:false});}
   const isDark=document.documentElement.getAttribute('data-theme')==='dark';const tc=isDark?'#94a3b8':'#64748b';const gc=isDark?'#334155':'#e2e8f0';
@@ -649,7 +649,7 @@ function searchVendorCompare(){
   if(!comp.length){['vendor-table-wrap','vendor-chart-wrap','vendor-recommend'].forEach(id=>document.getElementById(id).style.display='none');document.getElementById('vendor-empty').style.display='block';return;}
   document.getElementById('vendor-empty').style.display='none';document.getElementById('vendor-title').textContent=`거래처 비교 — ${prod}`;
   const scored=comp.map(v=>{let score=0;const reasons=[];const allP=comp.map(c=>c.평균단가_부대비용포함).filter(Boolean),minP=Math.min(...allP);
-    if(v.평균단가_부대비용폨함===minP){score+=40;reasons.push('최저 평균단가');}else if(v.평균단가_부대비용포함){score+=Math.max(0,40-((v.평균단가_부대비용포함-minP)/minP*100));}
+    if(v.평균단가_부대비용포함===minP){score+=40;reasons.push('최저 평균단가');}else if(v.평균단가_부대비용포함){score+=Math.max(0,40-((v.평균단가_부대비용포함-minP)/minP*100));}
     const maxDel=Math.max(...comp.map(c=>c.납품실적));if(maxDel>0&&v.납품실적>0){score+=(v.납품실적/maxDel)*25;if(v.납품실적===maxDel)reasons.push(`납품실적 ${v.납품실적}건 최다`);}
     const isOS=v.국가==='중국'||v.국가==='기타해외';
     if(dl!=null&&v.평균제작일수){const nd=v.평균제작일수+(isOS?10:0);if(dl>=nd+7){score+=25;reasons.push('납기 여유');}else if(dl>=nd){score+=10;reasons.push('납기 빠듯');}else{score-=isOS?40:20;reasons.push(isOS?'해외생산 불가 (납기초과+운송)':'납기초과 위험');}}else{score+=12;}
@@ -678,4 +678,3 @@ renderCombo();
 </script>
 </body>
 </html>
-
