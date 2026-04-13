@@ -1,4 +1,4 @@
-server.js/**
+/**
  * 제품원가 계산기 — server.js v1.0
  * Notion 통합 DB 연동 + JSON 캐시 + REST API
  *
@@ -392,7 +392,7 @@ app.post('/api/items', async (req, res) => {
 });
 
 // 부대비용 설정 조회
-app.get('/api/surcharge', (req,server.js res) => {
+app.get('/api/surcharge', (req, res) => {
   res.json(SURCHARGE);
 });
 
