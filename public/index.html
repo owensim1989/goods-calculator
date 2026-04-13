@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ì íìê° ê³ì°ê¸°</title>
+<title>제품원가 계산기</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
 :root{--primary:#2563eb;--primary-light:#dbeafe;--bg:#f8fafc;--card:#fff;--border:#e2e8f0;--text:#1e293b;--text-muted:#64748b;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--radius:12px;--header-bg:var(--primary);--input-bg:#fff;}
@@ -95,7 +95,7 @@ tbody tr:hover{background:var(--primary-light);}
 
 .guide-box{background:var(--primary-light);border:1px solid var(--primary);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 
-/* íëª© ëë¡­ë¤ì´ ì²´í¬ë°ì¤ */
+/* 품목 드롭다운 체크박스 */
 .cat-dd-wrap{position:relative;min-width:140px;}
 .cat-dd-btn{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;min-width:140px;}
 .cat-dd-btn .arrow{font-size:10px;color:var(--text-muted);}
@@ -106,7 +106,7 @@ tbody tr:hover{background:var(--primary-light);}
 .cat-dd-item input[type="checkbox"]{accent-color:var(--primary);width:16px;height:16px;cursor:pointer;}
 .cat-dd-item label{cursor:pointer;flex:1;}
 
-/* ì¡°í©ë¹ë */
+/* 조합빌더 */
 .combo-builder{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;}
 .combo-builder h4{font-size:14px;font-weight:600;margin-bottom:8px;}
 .combo-items{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-height:36px;}
@@ -143,7 +143,7 @@ tbody tr:hover{background:var(--primary-light);}
 .sug-combo-items strong{color:var(--primary);}
 .sug-combo-price{font-size:14px;font-weight:600;color:var(--primary);white-space:nowrap;margin-left:16px;}
 
-/* íëª© ê·¸ë£¹ í¤ë */
+/* 품목 그룹 헤더 */
 .cat-group-header{font-size:13px;font-weight:600;color:var(--text-muted);padding:8px 0 4px;margin-top:12px;border-bottom:1px solid var(--border);}
 .cat-group-header:first-child{margin-top:0;}
 
@@ -160,14 +160,14 @@ tbody tr:hover{background:var(--primary-light);}
 .empty-state{text-align:center;padding:60px 20px;color:var(--text-muted);}
 .empty-state .icon{font-size:48px;margin-bottom:12px;}
 
-/* í ì¤í¸ ë©ìì§ */
+/* 토스트 메시지 */
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,0.2);opacity:0;transition:opacity .3s;pointer-events:none;}
 .toast.show{opacity:1;}
 
 /* placeholder */
 #budget-input::placeholder{font-size:14px;font-weight:400;color:var(--text-muted);}
 
-/* ìì° ìë ¥ í */
+/* 예산 입력 행 */
 .budget-input-row{display:flex;align-items:center;gap:8px;}
 .budget-won{font-size:14px;font-weight:500;color:var(--text-muted);}
 
@@ -176,149 +176,149 @@ tbody tr:hover{background:var(--primary-light);}
 </head>
 <body>
 <div class="header">
-  <h1>ì íìê° ê³ì°ê¸°</h1>
+  <h1>제품원가 계산기</h1>
   <div class="header-right">
-    <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">âï¸</button>
-    <button class="sync-btn" onclick="doSync()" id="syncBtn">ëê¸°í</button>
+    <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
+    <button class="sync-btn" onclick="doSync()" id="syncBtn">동기화</button>
   </div>
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" data-tab="product">ì í â ë¨ê°</button>
-  <button class="tab-btn" data-tab="budget">ìì° â ì í</button>
-  <button class="tab-btn" data-tab="vendor">ê±°ëì² ë¹êµ</button>
+  <button class="tab-btn active" data-tab="product">제품 → 단가</button>
+  <button class="tab-btn" data-tab="budget">예산 → 제품</button>
+  <button class="tab-btn" data-tab="vendor">거래처 비교</button>
 </div>
 
-<!-- í¬1: ì íâë¨ê° -->
+<!-- 탬1: 제품→단가 -->
 <div class="tab-page active" id="page-product">
   <div class="deadline-bar">
-    <label>ë©ê¸°ì¼ì :</label>
+    <label>납기일정:</label>
     <input type="date" class="deadline-date-input dl-sync" id="p-deadline">
     <span id="p-deadline-msg" class="deadline-result"></span>
   </div>
   <div class="filter-bar">
-    <div class="filter-group"><label>íëª©</label><div class="cat-dd-wrap" id="p-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-cat')"><span id="p-cat-label">ì ì²´</span><span class="arrow">â¼</span></div><div class="cat-dd-menu" id="p-cat-menu"></div></div></div>
-    <div class="filter-group"><label>íëª</label><div class="cat-dd-wrap" id="p-prod-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-prod')"><span id="p-prod-label">ì ì²´</span><span class="arrow">â¼</span></div><div class="cat-dd-menu" id="p-prod-menu"></div></div></div>
-    <div class="filter-group"><label>êµ­ê°</label><div class="cat-dd-wrap" id="p-country-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-country')"><span id="p-country-label">ì ì²´</span><span class="arrow">â¼</span></div><div class="cat-dd-menu" id="p-country-menu"></div></div></div>
-    <button class="btn-search" onclick="searchProducts()">ì¡°í</button>
+    <div class="filter-group"><label>품목</label><div class="cat-dd-wrap" id="p-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-cat')"><span id="p-cat-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="p-cat-menu"></div></div></div>
+    <div class="filter-group"><label>품명</label><div class="cat-dd-wrap" id="p-prod-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-prod')"><span id="p-prod-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="p-prod-menu"></div></div></div>
+    <div class="filter-group"><label>국가</label><div class="cat-dd-wrap" id="p-country-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-country')"><span id="p-country-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="p-country-menu"></div></div></div>
+    <button class="btn-search" onclick="searchProducts()">조회</button>
   </div>
   <div class="stats-row" id="product-stats" style="display:none;">
-    <div class="stat-card"><div class="num" id="s-count">0</div><div class="label">ë°ì´í° ê±´ì</div></div>
-    <div class="stat-card"><div class="num" id="s-avg">-</div><div class="label">íêº· ë¨ê°</div></div>
-    <div class="stat-card"><div class="num" id="s-min">-</div><div class="label">ìµì  ë¨ê°</div></div>
-    <div class="stat-card"><div class="num" id="s-max">-</div><div class="label">ìµê³  ë¨ê°</div></div>
-    <div class="stat-card"><div class="num" id="s-trust">-</div><div class="label trust-tooltip" data-tip="5ê±´â ë§¤ì°ëì&#10;3ê±´â ëì&#10;2ê±´ ë³´íµ&#10;1ê±´ ë®ì">ë°ì´í° ì ë¢°ë â</div></div>
+    <div class="stat-card"><div class="num" id="s-count">0</div><div class="label">데이터 건수</div></div>
+    <div class="stat-card"><div class="num" id="s-avg">-</div><div class="label">평꺷 단가</div></div>
+    <div class="stat-card"><div class="num" id="s-min">-</div><div class="label">최저 단가</div></div>
+    <div class="stat-card"><div class="num" id="s-max">-</div><div class="label">최고 단가</div></div>
+    <div class="stat-card"><div class="num" id="s-trust">-</div><div class="label trust-tooltip" data-tip="5건↑ 매우높음&#10;3건↑ 높음&#10;2건 보통&#10;1건 낮음">데이터 신뢰도 ⓘ</div></div>
   </div>
-  <div class="chart-wrap" id="scatter-wrap" style="display:none;"><h3 style="margin-bottom:12px">ìë-ë¨ê° ë¶í¬</h3><canvas id="scatterChart"></canvas></div>
+  <div class="chart-wrap" id="scatter-wrap" style="display:none;"><h3 style="margin-bottom:12px">수량-단가 분포</h3><canvas id="scatterChart"></canvas></div>
   <div class="card" id="product-table-wrap" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <h3 style="margin:0">ìì¸ ë°ì´í°</h3>
-      <button class="btn-goto-vendor" onclick="goToVendorTab()">ð­ ì´ íëªì¼ë¡ ê±°ëì² ë¹êµ â</button>
+      <h3 style="margin:0">상세 데이터</h3>
+      <button class="btn-goto-vendor" onclick="goToVendorTab()">🏭 이 품명으로 거래처 비교 →</button>
     </div>
-    <div class="table-wrap"><table><thead><tr><th>íë¡ì í¸</th><th>ê±°ëì²</th><th>êµ­ê°</th><th>ìë</th><th>ê°ë¹ë¨ê°</th><th>ë¨ê°(ë¶ëë¹ì©)</th><th>ì ìë¹</th><th>ì¤í</th><th>ë°ì£¼ì¼</th><th>ë©ê¸°íë¨</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>프로젝트</th><th>거래처</th><th>국가</th><th>수량</th><th>개당단가</th><th>단가(부대비용)</th><th>제작비</th><th>스펙</th><th>발주일</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
   </div>
-  <div class="empty-state" id="product-empty"><div class="icon">ð¦</div><p>íëªì ì ííê³  ì¡°í ë²í¼ì ëë¬ì£¼ì¸ì</p></div>
+  <div class="empty-state" id="product-empty"><div class="icon">📦</div><p>품명을 선택하고 조회 버튼을 눌러주세요</p></div>
 </div>
 
-<!-- í­2: ìì°âì í -->
+<!-- 탭2: 예산→제품 -->
 <div class="tab-page" id="page-budget">
   <div class="deadline-bar">
-    <label>ë©ê¸°ì¼ì :</label>
+    <label>납기일정:</label>
     <input type="date" class="deadline-date-input dl-sync" id="b-deadline">
     <span id="b-deadline-msg" class="deadline-result"></span>
   </div>
-  <div class="guide-box">ð¡ ìì°ê³¼ ì¡°ê±¸ì ìë ¥íê³  ì¶ì²ë°ê¸°ë¥¼ ëë¥´ì¸ì. ì¹´ëë¥¼ í´ë¦­íë©´ ì¡°í©ì ì¶ê°ë©ëë¤.</div>
+  <div class="guide-box">💡 예산과 조걸을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
   <div class="filter-bar">
-    <div class="filter-group"><label>ì´ ìì° (ê±°ëì²ë¡ë´í° ë°ì ê¸ì¡)</label>
+    <div class="filter-group"><label>총 예산 (거래처로봀터 받은 금액)</label>
       <div class="budget-input-row">
-        <input type="text" id="budget-input" placeholder="ìì°ì ìë ¥íì¸ì" oninput="formatBudget(this)" style="font-size:18px;font-weight:700;width:200px;text-align:right;border:2px solid var(--primary);border-radius:8px;background:var(--input-bg);color:var(--text);">
-        <span class="budget-won">ì</span>
+        <input type="text" id="budget-input" placeholder="예산을 입력하세요" oninput="formatBudget(this)" style="font-size:18px;font-weight:700;width:200px;text-align:right;border:2px solid var(--primary);border-radius:8px;background:var(--input-bg);color:var(--text);">
+        <span class="budget-won">원</span>
       </div>
     </div>
-    <div class="filter-group"><label>íëª©</label><div class="cat-dd-wrap" id="b-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('b-cat')"><span id="b-cat-label">ì ì²´</span><span class="arrow">â¼</span></div><div class="cat-dd-menu" id="b-cat-menu"></div></div></div>
-    <div class="filter-group"><label>íëª</label><div class="cat-dd-wrap" id="b-prod-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('b-prod')"><span id="b-prod-label">ì ì²´</span><span class="arrow">â¼</span></div><div class="cat-dd-menu" id="b-prod-menu"></div></div></div>
-    <div class="filter-group"><label>êµ­ê°</label><div class="cat-dd-wrap" id="b-country-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('b-country')"><span id="b-country-label">ì ì²´</span><span class="arrow">â¼</span></div><div class="cat-dd-menu" id="b-country-menu"></div></div></div>
-    <button class="btn-search" onclick="searchBudget()">ì¶ì²ë°ê¸°</button>
+    <div class="filter-group"><label>품목</label><div class="cat-dd-wrap" id="b-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('b-cat')"><span id="b-cat-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="b-cat-menu"></div></div></div>
+    <div class="filter-group"><label>품명</label><div class="cat-dd-wrap" id="b-prod-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('b-prod')"><span id="b-prod-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="b-prod-menu"></div></div></div>
+    <div class="filter-group"><label>국가</label><div class="cat-dd-wrap" id="b-country-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('b-country')"><span id="b-country-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="b-country-menu"></div></div></div>
+    <button class="btn-search" onclick="searchBudget()">추천받기</button>
   </div>
   <div class="combo-builder" id="combo-builder">
-    <h4>ì í ì¡°í© ë¹ë</h4>
+    <h4>제품 조합 빌더</h4>
     <div class="combo-items" id="combo-items"></div>
     <div class="combo-total">
-      <div><span class="total-label">ìê° í©ê³</span> <span class="total-price" id="combo-total-price">â©0</span></div>
+      <div><span class="total-label">원가 합계</span> <span class="total-price" id="combo-total-price">₩0</span></div>
       <div class="combo-remaining" id="combo-remaining" style="font-size:13px;"></div>
     </div>
     <div class="margin-summary" id="margin-summary" style="display:none;">
       <div id="margin-rows"></div>
-      <div class="grand"><span>ê²¬ì ê° í©ê³</span><span id="grand-total">â©0</span></div>
-      <div class="sub"><span>ì¢í© ë§ì§ì¨</span><span id="grand-margin-rate">0%</span></div>
+      <div class="grand"><span>견적가 합계</span><span id="grand-total">₩0</span></div>
+      <div class="sub"><span>종합 마진율</span><span id="grand-margin-rate">0%</span></div>
     </div>
-    <button class="btn-export" id="btn-export" style="display:none;" onclick="exportToQuote()">ð¤ ê²¬ì ê³ì°ê¸°ë¡ ë´ë³´ë´ê¸°</button>
+    <button class="btn-export" id="btn-export" style="display:none;" onclick="exportToQuote()">📤 견적계산기로 내보내기</button>
   </div>
-  <div class="suggested-combos" id="suggested-combos" style="display:none;"><h4>ì¶ì² ì¡°í©</h4><div id="sug-combo-list"></div></div>
+  <div class="suggested-combos" id="suggested-combos" style="display:none;"><h4>추천 조합</h4><div id="sug-combo-list"></div></div>
   <div id="budget-results" style="margin-top:16px;"></div>
-  <div class="empty-state" id="budget-empty"><div class="icon">ð°</div><p>ìì°ì ìë ¥íë©´ ì ì ê°ë¥í ì íê³¼ ìëì ì¶ì²í©ëë¤</p></div>
+  <div class="empty-state" id="budget-empty"><div class="icon">💰</div><p>예산을 입력하면 제작 가능한 제품과 수량을 추천합니다</p></div>
 </div>
 
-<!-- í­3: ê±°ëì² ë¹êµ -->
+<!-- 탭3: 거래처 비교 -->
 <div class="tab-page" id="page-vendor">
   <div class="deadline-bar">
-    <label>ë©ê¸°ì¼ì :</label>
+    <label>납기일정:</label>
     <input type="date" class="deadline-date-input dl-sync" id="v-deadline">
     <span id="v-deadline-msg" class="deadline-result"></span>
   </div>
   <div class="filter-bar">
-    <div class="filter-group"><label>íëª</label><div class="search-input-wrap"><input type="text" class="search-input" id="v-product" placeholder="ê²ì (ì´ì± ê°ë¥)" autocomplete="off"><div class="search-dropdown" id="dd-v-product"></div></div></div>
-    <button class="btn-search" onclick="searchVendorCompare()">ë¹êµ</button>
+    <div class="filter-group"><label>품명</label><div class="search-input-wrap"><input type="text" class="search-input" id="v-product" placeholder="검색 (초성 가능)" autocomplete="off"><div class="search-dropdown" id="dd-v-product"></div></div></div>
+    <button class="btn-search" onclick="searchVendorCompare()">비교</button>
   </div>
   <div class="recommend-banner" id="vendor-recommend" style="display:none;"><div class="rec-title" id="vendor-rec-title"></div><div class="rec-reason" id="vendor-rec-reason"></div></div>
   <div class="card" id="vendor-table-wrap" style="display:none;">
-    <h3 id="vendor-title">ê±°ëì² ë¹êµ</h3>
-    <div class="table-wrap"><table><thead><tr><th></th><th>ê±°ëì²</th><th>êµ­ê°</th><th>ê±´ì</th><th>ìµì ë¨ê°</th><th>íê· ë¨ê°</th><th>íê· (ë¶ëë¹ì©)</th><th>ë©íìë£</th><th>íê· ì ìê¸°ê°</th><th>ìµê·¼ë°ì£¼</th><th>ë©ê¸°íë¨</th></tr></thead><tbody id="vendor-tbody"></tbody></table></div>
+    <h3 id="vendor-title">거래처 비교</h3>
+    <div class="table-wrap"><table><thead><tr><th></th><th>거래처</th><th>국가</th><th>건수</th><th>최저단가</th><th>평균단가</th><th>평균(부대비용)</th><th>납품완료</th><th>평균제작기간</th><th>최근발주</th><th>납기판단</th></tr></thead><tbody id="vendor-tbody"></tbody></table></div>
   </div>
-  <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">ê±°ëì²ë³ íê· ë¨ê° ë¹êµ</h3><canvas id="vendorBarChart"></canvas></div>
-  <div class="empty-state" id="vendor-empty"><div class="icon">ð­</div><p>íëªì ì ííë©´ ê±°ëì²ë³ ë¨ê°Â·ë©íì¤ì ì ë¹êµí©ëë¤</p></div>
+  <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">거래처별 평균단가 비교</h3><canvas id="vendorBarChart"></canvas></div>
+  <div class="empty-state" id="vendor-empty"><div class="icon">🏭</div><p>품명을 선택하면 거래처별 단가·납품실적을 비교합니다</p></div>
 </div>
 
-<!-- í ì¤í¸ -->
+<!-- 토스트 -->
 <div class="toast" id="toast"></div>
 
 <script>
-// âââ ë°ì´í°: ìë²ìì ë¡ë âââ
-let DATA=[]; // ìë²ìì fetchí ì ì²´ ë°ì´í°
-const SURCHARGE={'êµ­ë´':0,'ì¤êµ­':0.15,'ê¸°íí´ì¸':0.20};
+// ━━━ 데이터: 서버에서 로드 ━━━
+let DATA=[]; // 서버에서 fetch한 전체 데이터
+const SURCHARGE={'국내':0,'중국':0.15,'기타해외':0.20};
 const fmt=n=>n!=null?n.toLocaleString('ko-KR'):'-';
-const fmtP=n=>n!=null?'â©'+n.toLocaleString('ko-KR'):'-';
-function cB(c){return c==='êµ­ë´'?'<span class="badge badge-domestic">êµ­ë´</span>':c==='ì¤êµ­'?'<span class="badge badge-china">ì¤êµ­</span>':c==='ê¸°íí´ì¸'?'<span class="badge badge-overseas">í´ì¸</span>':(c||'-');}
+const fmtP=n=>n!=null?'₩'+n.toLocaleString('ko-KR'):'-';
+function cB(c){return c==='국내'?'<span class="badge badge-domestic">국내</span>':c==='중국'?'<span class="badge badge-china">중국</span>':c==='기타해외'?'<span class="badge badge-overseas">해외</span>':(c||'-');}
 let scatterChart=null,vendorBarChart=null;
 
-// âââ ìë² ë°ì´í° ë¡ë + ëê¸°í âââ
+// ━━━ 서버 데이터 로드 + 동기화 ━━━
 async function loadData(){
   try{
     const res=await fetch('/api/products');
     const json=await res.json();
     DATA=json.items||json||[];
-    // íëªì´ ë¬¸ìì´ì¸ ê²½ì° ë°°ì´ë¡ ë³í
-    DATA.forEach(d=>{if(typeof d.íëª==='string')d.íëª=[d.íëª];if(!d.íëª)d.íëª=[];});
+    // 품명이 문자열인 경우 배열로 변환
+    DATA.forEach(d=>{if(typeof d.품명==='string')d.품명=[d.품명];if(!d.품명)d.품명=[];});
     initFilters();
-    showToast(`ë°ì´í° ${DATA.length}ê±´ ë¡ë ìë£`);
-  }catch(e){console.error('ë°ì´í° ë¡ë ì¤í¨:',e);showToast('ë°ì´í° ë¡ë ì¤í¨ â ìë²ë¥¼ íì¸íì¸ì');}
+    showToast(`데이터 ${DATA.length}건 로드 완료`);
+  }catch(e){console.error('데이터 로드 실패:',e);showToast('데이터 로드 실패 — 서버를 확인하세요');}
 }
 async function doSync(){
   const btn=document.getElementById('syncBtn');
-  btn.textContent='ëê¸°í ì¤...';btn.disabled=true;
+  btn.textContent='동기화 중...';btn.disabled=true;
   try{
     await fetch('/api/sync',{method:'POST'});
     await loadData();
-    btn.textContent='â ìë£';setTimeout(()=>{btn.textContent='ëê¸°í';btn.disabled=false;},2000);
-  }catch(e){btn.textContent='â ì¤í¨';setTimeout(()=>{btn.textContent='ëê¸°í';btn.disabled=false;},2000);}
+    btn.textContent='✅ 완료';setTimeout(()=>{btn.textContent='동기화';btn.disabled=false;},2000);
+  }catch(e){btn.textContent='❌ 실패';setTimeout(()=>{btn.textContent='동기화';btn.disabled=false;},2000);}
 }
 function initFilters(){
   const allCatsSet=new Set(), allProdsSet=new Set(), allCountriesSet=new Set();
-  DATA.forEach(d=>{if(d.íëª©)allCatsSet.add(d.íëª©);(d.íëª||[]).forEach(n=>allProdsSet.add(n));if(d.êµ­ê°)allCountriesSet.add(d.êµ­ê°);});
+  DATA.forEach(d=>{if(d.품목)allCatsSet.add(d.품목);(d.품명||[]).forEach(n=>allProdsSet.add(n));if(d.국가)allCountriesSet.add(d.국가);});
   allCats=[...allCatsSet];allProds=[...allProdsSet];allCountries=[...allCountriesSet];
-  if(!allCountries.includes('êµ­ë´'))allCountries.unshift('êµ­ë´');
-  if(!allCountries.includes('ì¤êµ­')&&!allCountries.includes('ê¸°íí´ì¸')){allCountries.push('ì¤êµ­','ê¸°íí´ì¸');}
-  // ëë¡­ë¤ì¸ ì²´í¬ë°ì¤ ì´ê¸°í
+  if(!allCountries.includes('국내'))allCountries.unshift('국내');
+  if(!allCountries.includes('중국')&&!allCountries.includes('기타해외')){allCountries.push('중국','기타해외');}
+  // 드롭다울 체크박스 초기화
   initCheckDD('p-cat','p-cat-menu','p-cat-label',allCats);
   initCheckDD('p-prod','p-prod-menu','p-prod-label',allProds);
   initCheckDD('p-country','p-country-menu','p-country-label',allCountries);
@@ -329,36 +329,36 @@ function initFilters(){
   renderCombo();
 }
 
-// âââ ë¤í¬ëª¨ë âââ
+// ━━━ 다크모드 ━━━
 function toggleTheme(){
   const h=document.documentElement,cur=h.getAttribute('data-theme');
   const next=cur==='dark'?'light':'dark';
   h.setAttribute('data-theme',next);
-  document.getElementById('themeBtn').textContent=next==='dark'?'âï¸':'ð';
+  document.getElementById('themeBtn').textContent=next==='dark'?'☀️':'🌙';
 }
 
-// âââ í ì¤í¸ âââ
+// ━━━ 토스트 ━━━
 function showToast(msg,ms=2500){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms);}
 
-// âââ ì´ì±ê²ì âââ
-const CHO=['ã±','ã²','ã´','ã·','ã¸','ã¹','ã','ã','ã','ã','ã','ã','ã','ã','ã','ã','ã','ã','ã'];
+// ━━━ 초성검색 ━━━
+const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅏ'];
 function getCho(s){return[...s].map(c=>{const k=c.charCodeAt(0)-0xAC00;return k<0||k>11171?c:CHO[Math.floor(k/588)]}).join('');}
 function matchQ(t,q){if(!q)return true;const ql=q.toLowerCase();return t.toLowerCase().includes(ql)||getCho(t).includes(q)||getCho(t).startsWith(q);}
 let allCats=[], allProds=[];
-function pCnt(n){return DATA.filter(i=>(i.íëª||[]).includes(n)).length;}
-function cCnt(n){return DATA.filter(i=>i.íëª©===n).length;}
+function pCnt(n){return DATA.filter(i=>(i.품명||[]).includes(n)).length;}
+function cCnt(n){return DATA.filter(i=>i.품목===n).length;}
 
-// âââ íµí© ëë¡­ë¤ì´ ì²´í¬ë°ì¤ (íëª©/íëª/êµ­ê° ê³µíµ) âââ
-const checkDDState={}; // key â Set of selected items
+// ━━━ 통합 드롭다운 체크박스 (품목/품명/국가 공통) ━━━
+const checkDDState={}; // key → Set of selected items
 function initCheckDD(key,menuId,labelId,items){
-  checkDDState[key]=new Set(items); // ê¸°ë³¸: ì ì²´ ì í
+  checkDDState[key]=new Set(items); // 기본: 전체 선택
   const menu=document.getElementById(menuId);
   menu.innerHTML=items.map(v=>`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="chk-${key}-${v}" checked onchange="onCheckDD('${key}','${v}',this.checked,'${labelId}')"><label for="chk-${key}-${v}">${v}</label></div>`).join('');
   updateCheckLabel(key,labelId,items);
 }
 function toggleCheckDD(key){
   const menu=document.getElementById(key+'-menu');
-  // ë¤ë¥¸ ëë¡­ë¤ì´ ë«ê¸°
+  // 다른 드롭다운 닫기
   document.querySelectorAll('.cat-dd-menu.show').forEach(m=>{if(m!==menu)m.classList.remove('show');});
   menu.classList.toggle('show');
 }
@@ -370,35 +370,35 @@ function onCheckDD(key,val,checked,labelId){
 }
 function updateCheckLabel(key,labelId,allItems){
   const s=checkDDState[key],el=document.getElementById(labelId);
-  if(s.size===allItems.length||s.size===0)el.textContent='ì ì²´';
+  if(s.size===allItems.length||s.size===0)el.textContent='전체';
   else if(s.size<=2)el.textContent=[...s].join(', ');
   else el.textContent=[...s].slice(0,2).join(', ')+` +${s.size-2}`;
 }
 function getChecked(key){
   const s=checkDDState[key];
   if(!s)return null;
-  // ì ì²´ ë©ë´ì í­ëª© ì íì¸
+  // 전체 메뉴의 항목 수 확인
   const menu=document.getElementById(key+'-menu');
   const total=menu?menu.querySelectorAll('input[type="checkbox"]').length:0;
-  if(s.size===total||s.size===0)return null; // ì ì²´ = íí° ìì
+  if(s.size===total||s.size===0)return null; // 전체 = 필터 없음
   return[...s];
 }
-// ì¸ë¶ í´ë¦­ì¼ë¡ ë«ê¸°
+// 외부 클릭으로 닫기
 document.addEventListener('click',e=>{
   if(!e.target.closest('.cat-dd-wrap'))document.querySelectorAll('.cat-dd-menu.show').forEach(m=>m.classList.remove('show'));
 });
 
-// ê±°ëì²ë¹êµ í­ì© ë¨ì¼ì í ëë¡­ë¤ì´ (ê¸°ì¡´ ì´ì±ê²ì)
+// 거래처비교 탭용 단일선택 드롭다운 (기존 초성검색)
 function setupDD(iid,did,items,cntFn,opts={}){
   const inp=document.getElementById(iid),dd=document.getElementById(did);let hl=-1;
   inp.addEventListener('focus',()=>show(inp.value));
   inp.addEventListener('input',()=>{hl=-1;show(inp.value);});
   inp.addEventListener('keydown',e=>{const vs=dd.querySelectorAll('.dd-item');if(e.key==='ArrowDown'){e.preventDefault();hl=Math.min(hl+1,vs.length-1);vs.forEach((n,i)=>n.classList.toggle('highlighted',i===hl));}else if(e.key==='ArrowUp'){e.preventDefault();hl=Math.max(hl-1,-1);vs.forEach((n,i)=>n.classList.toggle('highlighted',i===hl));}else if(e.key==='Enter'){e.preventDefault();if(hl>=0&&vs[hl])vs[hl].click();}else if(e.key==='Escape')dd.classList.remove('show');});
-  function show(q){let h='';const f=items.filter(n=>matchQ(n,q));if(!f.length)h='<div class="dd-empty">ê²°ê³¼ ìì</div>';else h+=f.map(n=>`<div class="dd-item" data-value="${n}"><span>${n}</span><span class="dd-count">${cntFn(n)}ê±´</span></div>`).join('');dd.innerHTML=h;dd.classList.add('show');dd.querySelectorAll('.dd-item').forEach(el=>el.addEventListener('click',()=>{inp.value=el.dataset.value;dd.classList.remove('show');}));}
+  function show(q){let h='';const f=items.filter(n=>matchQ(n,q));if(!f.length)h='<div class="dd-empty">결과 없음</div>';else h+=f.map(n=>`<div class="dd-item" data-value="${n}"><span>${n}</span><span class="dd-count">${cntFn(n)}건</span></div>`).join('');dd.innerHTML=h;dd.classList.add('show');dd.querySelectorAll('.dd-item').forEach(el=>el.addEventListener('click',()=>{inp.value=el.dataset.value;dd.classList.remove('show');}));}
   document.addEventListener('click',e=>{if(!inp.contains(e.target)&&!dd.contains(e.target))dd.classList.remove('show');});
 }
 
-// âââ ë©ê¸°: í­ê° ëê¸°í âââ
+// ━━━ 납기: 탭간 동기화 ━━━
 let globalDL='';
 document.querySelectorAll('.dl-sync').forEach(inp=>{
   inp.addEventListener('change',function(){globalDL=this.value;document.querySelectorAll('.dl-sync').forEach(el=>el.value=globalDL);updateDLMsgs();});
@@ -408,19 +408,19 @@ function gDays(d){if(!d)return null;const t=new Date(d),n=new Date();n.setHours(
 function updateDLMsgs(){
   [['p-deadline','p-deadline-msg'],['b-deadline','b-deadline-msg'],['v-deadline','v-deadline-msg']].forEach(([i,m])=>{
     const d=document.getElementById(i).value,msg=document.getElementById(m);if(!d){msg.innerHTML='';return;}
-    const days=gDays(d);if(days<0){msg.innerHTML='<span class="tag badge-danger">ì´ë¯¸ ì§ë ë ì§</span>';return;}
-    let p=[];if(days<=7)p.push('<span class="tag badge-danger">êµ­ë´ ê¸íë§ ê°ë¥</span>');else if(days<=14)p.push('<span class="tag badge-warn">êµ­ë´ ìì° ê°ë¥ (ë¹ ë¯)</span>');else if(days<=21)p.push('<span class="tag badge-ok">êµ­ë´ ì¬ì </span>','<span class="tag badge-warn">ì¤êµ­ ë¹ ë¯</span>');else if(days<=35)p.push('<span class="tag badge-ok">êµ­ë´ ì¬ì </span>','<span class="tag badge-ok">ì¤êµ­ ê°ë¥</span>');else p.push('<span class="tag badge-ok">ëª¨ë  êµ­ê° ì¬ì </span>');
-    msg.innerHTML=`D-${days}ì¼ â `+p.join(' ');
+    const days=gDays(d);if(days<0){msg.innerHTML='<span class="tag badge-danger">이미 지난 날짜</span>';return;}
+    let p=[];if(days<=7)p.push('<span class="tag badge-danger">국내 급행만 가능</span>');else if(days<=14)p.push('<span class="tag badge-warn">국내 생산 가능 (빠듯)</span>');else if(days<=21)p.push('<span class="tag badge-ok">국내 여유</span>','<span class="tag badge-warn">중국 빠듯</span>');else if(days<=35)p.push('<span class="tag badge-ok">국내 여유</span>','<span class="tag badge-ok">중국 가능</span>');else p.push('<span class="tag badge-ok">모든 국가 여유</span>');
+    msg.innerHTML=`D-${days}일 — `+p.join(' ');
   });
 }
-function evalDL(days,it){if(days==null)return{c:'',t:''};const d=it.ì ìì¼ì||14,os=it.êµ­ê°==='ì¤êµ­'||it.êµ­ê°==='ê¸°íí´ì¸',sh=os?10:0,nd=d+sh;if(days>=nd+7)return{c:'badge-ok',t:'ì¬ì '};if(days>=nd)return{c:'badge-warn',t:'ë¹ ë¯'};return{c:'badge-danger',t:os?'í´ì¸ìì° ë¶ê°':'ë©ê¸°ì´ê³¼ ìí'};}
+function evalDL(days,it){if(days==null)return{c:'',t:''};const d=it.제작일수||14,os=it.국가==='중국'||it.국가==='기타해외',sh=os?10:0,nd=d+sh;if(days>=nd+7)return{c:'badge-ok',t:'여유'};if(days>=nd)return{c:'badge-warn',t:'빠듯'};return{c:'badge-danger',t:os?'해외생산 불가':'납기초과 위험'};}
 
-function trustHTML(cnt){const lvl=cnt>=5?5:cnt>=3?4:cnt>=2?3:cnt;const lb=['','ë®ì','ë®ì','ë³´íµ','ëì','ë§¤ì°ëì'];const dots=Array.from({length:5},(_,i)=>`<div class="trust-dot${i<lvl?' filled':''}"></div>`).join('');return`<div class="trust-bar"><div class="trust-dots">${dots}</div><span class="trust-label">${lb[lvl]||'ë®ì'}</span></div>`;}
+function trustHTML(cnt){const lvl=cnt>=5?5:cnt>=3?4:cnt>=2?3:cnt;const lb=['','낮음','낮음','보통','높음','매우높음'];const dots=Array.from({length:5},(_,i)=>`<div class="trust-dot${i<lvl?' filled':''}"></div>`).join('');return`<div class="trust-bar"><div class="trust-dots">${dots}</div><span class="trust-label">${lb[lvl]||'낮음'}</span></div>`;}
 
-// í­ì í
+// 탭전환
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-page').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('page-'+b.dataset.tab).classList.add('active');}));
 function goToVendorTab(){
-  // í­1ìì ì íë íëª ì¤ ì²« ë²ì§¸ë¥¼ ê±°ëì²ë¹êµ í­ì¼ë¡ ì ë¬
+  // 탭1에서 선택된 품명 중 첫 번째를 거래처비교 탭으로 전달
   const sel=getChecked('p-prod');
   const p=sel&&sel.length?sel[0]:null;
   if(p)document.getElementById('v-product').value=p;
@@ -431,33 +431,33 @@ function goToVendorTab(){
   if(p)searchVendorCompare();
 }
 
-// âââ ì íâë¨ê° âââ
+// ━━━ 제품→단가 ━━━
 function searchProducts(){
   const aCats=getChecked('p-cat'),aProds=getChecked('p-prod'),aCountry=getChecked('p-country'),dl=gDays(globalDL);
   let items=DATA.slice();
-  if(aCats)items=items.filter(i=>aCats.includes(i.íëª©));
-  if(aProds)items=items.filter(i=>(i.íëª||[]).some(n=>aProds.includes(n)));
-  if(aCountry)items=items.filter(i=>aCountry.includes(i.êµ­ê°));
-  const en=items.map(i=>{const r=SURCHARGE[i.êµ­ê°]||0;return{...i,ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨:i.ê°ë¹ë¨ê°!=null?Math.round(i.ê°ë¹ë¨ê°*(1+r)):null};});
+  if(aCats)items=items.filter(i=>aCats.includes(i.품목));
+  if(aProds)items=items.filter(i=>(i.품명||[]).some(n=>aProds.includes(n)));
+  if(aCountry)items=items.filter(i=>aCountry.includes(i.국가));
+  const en=items.map(i=>{const r=SURCHARGE[i.국가]||0;return{...i,개당단가_부대비용포함:i.개당단가!=null?Math.round(i.개당단가*(1+r)):null};});
   if(!en.length){document.getElementById('product-stats').style.display='none';document.getElementById('scatter-wrap').style.display='none';document.getElementById('product-table-wrap').style.display='none';document.getElementById('product-empty').style.display='block';return;}
   document.getElementById('product-empty').style.display='none';
-  const pr=en.map(i=>i.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨).filter(Boolean);
+  const pr=en.map(i=>i.개당단가_부대비용포함).filter(Boolean);
   document.getElementById('s-count').textContent=en.length;document.getElementById('s-avg').textContent=pr.length?fmtP(Math.round(pr.reduce((a,b)=>a+b,0)/pr.length)):'-';document.getElementById('s-min').textContent=pr.length?fmtP(Math.min(...pr)):'-';document.getElementById('s-max').textContent=pr.length?fmtP(Math.max(...pr)):'-';document.getElementById('s-trust').innerHTML=trustHTML(en.length);document.getElementById('product-stats').style.display='grid';
   renderScatter(en);document.getElementById('scatter-wrap').style.display='block';
-  document.getElementById('product-tbody').innerHTML=en.map(i=>{const d=dl!=null?evalDL(dl,i):{c:'',t:''};return`<tr><td>${i.íë¡ì í¸ëª||'-'}</td><td>${i.ê±°ëì²||'-'}</td><td>${cB(i.êµ­ê°)}</td><td>${fmt(i.ìë)}</td><td class="price">${fmtP(i.ê°ë¹ë¨ê°)}</td><td class="price">${fmtP(i.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨)}</td><td>${fmtP(i.ì ìë¹)}</td><td>${(i.ì¤ííê·¸||[]).join(', ')}</td><td>${i.ë°ì£¼ì¼||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">ì ì${i.ì ìì¼ì||'?'}ì¼</span>`:'-'}</td></tr>`;}).join('');
+  document.getElementById('product-tbody').innerHTML=en.map(i=>{const d=dl!=null?evalDL(dl,i):{c:'',t:''};return`<tr><td>${i.프로젝트명||'-'}</td><td>${i.거래처||'-'}</td><td>${cB(i.국가)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가)}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}</td><td>${fmtP(i.제작비)}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${i.발주일||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;}).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
 function renderScatter(items){
   const ctx=document.getElementById('scatterChart').getContext('2d');if(scatterChart)scatterChart.destroy();
-  const vs=[...new Set(items.map(i=>i.ê±°ëì²||'ë¯¸ì§ì '))],cl=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6'];
-  const ds=vs.map((v,vi)=>({label:v,data:items.filter(i=>(i.ê±°ëì²||'ë¯¸ì§ì ')===v).filter(i=>i.ì í¨ìë&&i.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨).map(i=>({x:i.ì í¨ìë,y:i.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¨í¨;raw:i})),backgroundColor:cl[vi%cl.length]+'80',borderColor:cl[vi%cl.length],pointRadius:7,pointHoverRadius:10}));
-  const pts=items.filter(i=>i.ì í¨ìë&&i.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨);
-  if(pts.length>=2){const xs=pts.map(p=>p.ì í¨ìë),ys=pts.map(p=>p.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨),n=xs.length,sX=xs.reduce((a,b)=>a+b,0),sY=ys.reduce((a,b)=>a+b,0),sXY=xs.reduce((a,x,i)=>a+x*ys[i],0),sX2=xs.reduce((a,x)=>a+x*x,0),sl=(n*sXY-sX*sY)/(n*sX2-sX*sX),it=(sY-sl*sX)/n;ds.push({label:'ì¶ì¸ì ',data:[{x:Math.min(...xs),y:Math.round(sl*Math.min(...xs)+it)},{x:Math.max(...xs),y:Math.round(sl*Math.max(...xs)+it)}],type:'line',borderColor:'#94a3b8',borderDash:[6,3],borderWidth:2,pointRadius:0,fill:false});}
+  const vs=[...new Set(items.map(i=>i.거래처||'미지정'))],cl=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6'];
+  const ds=vs.map((v,vi)=>({label:v,data:items.filter(i=>(i.거래처||'미지정')===v).filter(i=>i.유효수량&&i.개당단가_부대비용포함).map(i=>({x:i.유효수량,y:i.개당단가_부대비용폨함;raw:i})),backgroundColor:cl[vi%cl.length]+'80',borderColor:cl[vi%cl.length],pointRadius:7,pointHoverRadius:10}));
+  const pts=items.filter(i=>i.유효수량&&i.개당단가_부대비용포함);
+  if(pts.length>=2){const xs=pts.map(p=>p.유효수량),ys=pts.map(p=>p.개당단가_부대비용포함),n=xs.length,sX=xs.reduce((a,b)=>a+b,0),sY=ys.reduce((a,b)=>a+b,0),sXY=xs.reduce((a,x,i)=>a+x*ys[i],0),sX2=xs.reduce((a,x)=>a+x*x,0),sl=(n*sXY-sX*sY)/(n*sX2-sX*sX),it=(sY-sl*sX)/n;ds.push({label:'추세선',data:[{x:Math.min(...xs),y:Math.round(sl*Math.min(...xs)+it)},{x:Math.max(...xs),y:Math.round(sl*Math.max(...xs)+it)}],type:'line',borderColor:'#94a3b8',borderDash:[6,3],borderWidth:2,pointRadius:0,fill:false});}
   const isDark=document.documentElement.getAttribute('data-theme')==='dark';const tc=isDark?'#94a3b8':'#64748b';const gc=isDark?'#334155':'#e2e8f0';
-  scatterChart=new Chart(ctx,{type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,scales:{x:{title:{display:true,text:'ì í¨ìë',color:tc},beginAtZero:true,ticks:{color:tc},grid:{color:gc}},y:{title:{display:true,text:'ê°ë¹ë¨ê°(â©)',color:tc},beginAtZero:true,ticks:{callback:v=>'â©'+v.toLocaleString(),color:tc},grid:{color:gc}}},plugins:{legend:{labels:{color:tc}},tooltip:{callbacks:{label(c){const r=c.raw.raw;return r?`${r.ê±°ëì²}|${r.íë¡ì í¸ëª}|ìë:${fmt(r.ì í¨ìë)}|${fmtP(r.ê°ë¹ë¨ê°_ë¶ëë¹ì©í¬í¨)}`:'';}}}}}});
+  scatterChart=new Chart(ctx,{type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,scales:{x:{title:{display:true,text:'유효수량',color:tc},beginAtZero:true,ticks:{color:tc},grid:{color:gc}},y:{title:{display:true,text:'개당단가(₩)',color:tc},beginAtZero:true,ticks:{callback:v=>'₩'+v.toLocaleString(),color:tc},grid:{color:gc}}},plugins:{legend:{labels:{color:tc}},tooltip:{callbacks:{label(c){const r=c.raw.raw;return r?`${r.거래처}|${r.프로젝트명}|수량:${fmt(r.유효수량)}|${fmtP(r.개당단가_부대비용포함)}`:'';}}}}}});
 }
 
-// âââ ìì°âì í âââ
+// ━━━ 예산→제품 ━━━
 function formatBudget(el){let v=el.value.replace(/\D/g,'');el.value=v?parseInt(v).toLocaleString('ko-KR'):'';}
 let budgetRecs=[];
 // comboItems: {name, unitPrice, margin(float), qty}
@@ -467,39 +467,39 @@ function getBudget(){return parseInt((document.getElementById('budget-input').va
 
 function searchBudget(){
   const budget=getBudget(),aCountry=getChecked('b-country'),aCats=getChecked('b-cat'),aProds=getChecked('b-prod'),dl=gDays(globalDL);
-  if(!budget){alert('ìì°ì ìë ¥í´ì£¼ì¸ì');return;}
+  if(!budget){alert('예산을 입력해주세요');return;}
   const pm={};
   DATA.forEach(it=>{
-    if(aCats&&!aCats.includes(it.íëª©))return;
-    if(aProds&&!(it.íëª||[]).some(n=>aProds.includes(n)))return;
-    (it.íëª||[]).forEach(name=>{
-      if(!pm[name])pm[name]={íëª:name,íëª©:it.íëª©,prices:[],countries:new Set(),ì ìì¼ì:[]};
-      if(it.ê°ë¹ë¨ê°!=null){
-        const r=SURCHARGE[it.êµ­ê°]||0;if(aCountry&&!aCountry.includes(it.êµ­ê°))return;
-        if(dl!=null){const nd=(it.ì ìì¼ì||14)+((it.êµ­ê°==='ì¤êµ­'||it.êµ­ê°==='ê¸°íí´ì¸')?10:0);if(dl<nd)return;}
-        pm[name].prices.push(Math.round(it.ê°ë¹ë¨ê°*(1+r)));pm[name].countries.add(it.êµ­ê°||'êµ­ë´');pm[name].ì ìì¼ì.push(it.ì ìì¼ì||14);
+    if(aCats&&!aCats.includes(it.품목))return;
+    if(aProds&&!(it.품명||[]).some(n=>aProds.includes(n)))return;
+    (it.품명||[]).forEach(name=>{
+      if(!pm[name])pm[name]={품명:name,품목:it.품목,prices:[],countries:new Set(),제작일수:[]};
+      if(it.개당단가!=null){
+        const r=SURCHARGE[it.국가]||0;if(aCountry&&!aCountry.includes(it.국가))return;
+        if(dl!=null){const nd=(it.제작일수||14)+((it.국가==='중국'||it.국가==='기타해외')?10:0);if(dl<nd)return;}
+        pm[name].prices.push(Math.round(it.개당단가*(1+r)));pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
       }
     });
   });
-  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.ì ìì¼ì.reduce((a,b)=>a+b,0)/p.ì ìì¼ì.length);return{íëª:p.íëª,íëª©:p.íëª©,íê· ë¨ê°:avg,ìµì ë¨ê°:min,ìììë_íê· :Math.floor(budget/avg),ìììë_ìµë:Math.floor(budget/min),ë°ì´í°ê±´ì:p.prices.length,êµ­ê°:[...p.countries],íê· ì ìì¼ì:avgD};}).filter(p=>p.ìììë_ìµë>0).sort((a,b)=>b.ìììë_íê· -a.ìììë_íê· );
+  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);return{품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,예상수량_평균:Math.floor(budget/avg),예상수량_최대:Math.floor(budget/min),데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD};}).filter(p=>p.예상수량_최대>0).sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
   const cont=document.getElementById('budget-results'),empty=document.getElementById('budget-empty');
-  if(!budgetRecs.length){cont.innerHTML='';empty.style.display='block';empty.querySelector('p').textContent='ì¡°ê±´ì ë§ë ì íì´ ììµëë¤';document.getElementById('suggested-combos').style.display='none';return;}
+  if(!budgetRecs.length){cont.innerHTML='';empty.style.display='block';empty.querySelector('p').textContent='조건에 맞는 제품이 없습니다';document.getElementById('suggested-combos').style.display='none';return;}
   empty.style.display='none';
 
-  // íëª©ë³ ê·¸ë£¹ ì ë ¬ í ë ë
+  // 품목별 그룹 정렬 후 렌더
   const grouped={};
-  budgetRecs.forEach(r=>{const cat=r.íëª©||'ê¸°í';if(!grouped[cat])grouped[cat]=[];grouped[cat].push(r);});
+  budgetRecs.forEach(r=>{const cat=r.품목||'기타';if(!grouped[cat])grouped[cat]=[];grouped[cat].push(r);});
   let html='';
   Object.keys(grouped).forEach(cat=>{
     html+=`<div class="cat-group-header">${cat}</div><div class="rec-grid" style="margin-bottom:8px;">`;
-    html+=grouped[cat].map(r=>`<div class="rec-card" onclick="addToCombo('${r.íëª}',${r.íê· ë¨ê°})"><div class="product-name">${r.íëª}<span class="add-hint">+ ì¡°í©ì¶ê°</span></div><div class="product-cat">${r.êµ­ê°.join('/')} Â· ${r.ë°ì´í°ê±´ì}ê±´ Â· íê·  ${r.íê· ì ìì¼ì}ì¼</div><div class="rec-detail"><span>íê· ë¨ê°</span><span class="val">${fmtP(r.íê· ë¨ê°)}</span></div><div class="rec-detail"><span>ìµì ë¨ê°</span><span class="val">${fmtP(r.ìµì ë¨ê°)}</span></div><div class="rec-detail"><span>ìììë</span><span class="val best">${fmt(r.ìììë_íê· )}~${fmt(r.ìììë_ìµë)}ê°</span></div><div style="margin-top:8px">${trustHTML(r.ë°ì´í°ê±´ì)}</div></div>`).join('');
+    html+=grouped[cat].map(r=>`<div class="rec-card" onclick="addToCombo('${r.품명}',${r.평균단가})"><div class="product-name">${r.품명}<span class="add-hint">+ 조합추가</span></div><div class="product-cat">${r.국가.join('/')} · ${r.데이터건수}건 · 평균 ${r.평균제작일수}일</div><div class="rec-detail"><span>평균단가</span><span class="val">${fmtP(r.평균단가)}</span></div><div class="rec-detail"><span>최저단가</span><span class="val">${fmtP(r.최저단가)}</span></div><div class="rec-detail"><span>예상수량</span><span class="val best">${fmt(r.예상수량_평균)}~${fmt(r.예상수량_최대)}개</span></div><div style="margin-top:8px">${trustHTML(r.데이터건수)}</div></div>`).join('');
     html+=`</div>`;
   });
   cont.innerHTML=html;
   genSugCombos(budget);
 }
 
-// âââ ì¡°í©ë¹ë: ë§ì§ â ìë ì°ë (ììì  ì§ì) âââ
+// ━━━ 조합빌더: 마진 ↔ 수량 연동 (소수점 지원) ━━━
 function addToCombo(name,unitPrice){
   if(comboItems.find(c=>c.name===name))return;
   comboItems.push({name,unitPrice,margin:30});
@@ -507,19 +507,19 @@ function addToCombo(name,unitPrice){
 }
 function removeFromCombo(name){comboItems=comboItems.filter(c=>c.name!==name);recalcComboQty();renderCombo();}
 
-// ë§ì§ì¨(%) ìë ¥
+// 마진율(%) 입력
 function onMarginRateChange(name,val){
   const c=comboItems.find(c=>c.name===name);
   if(c){c.margin=Math.max(0,Math.min(95,parseFloat(val)||0));delete c.manualQty;recalcComboQty();renderCombo();}
 }
-// ê°ë¹ë§ì§ê¸ì¡(ì) ìë ¥ â ë§ì§ì¨ ì­ì° (ììì  1ìë¦¬ ì ë°ë)
+// 개당마진금액(원) 입력 → 마진율 역산 (소수점 1자리 정밀도)
 function onMarginAmtChange(name,amtVal){
   const c=comboItems.find(c=>c.name===name);
   if(!c)return;
   const amt=Math.max(0,parseInt(amtVal)||0);
-  // ê²¬ì ë¨ê° = ìê°ë¨ê° + ë§ì§ê¸ì¡, ë§ì§ì¨ = ë§ì§ê¸ì¡ / ê²¬ì ë¨ê°
+  // 견적단가 = 원가단가 + 마진금액, 마진율 = 마진금액 / 견적단가
   const quotePrice=c.unitPrice+amt;
-  c.margin=amt>0?Math.round(amt/quotePrice*1000)/10:0; // ììì  1ìë¦¬
+  c.margin=amt>0?Math.round(amt/quotePrice*1000)/10:0; // 소수점 1자리
   c.margin=Math.min(95,c.margin);
   delete c.manualQty;
   recalcComboQty();renderCombo();
@@ -546,10 +546,10 @@ function renderCombo(){
   const budget=getBudget();
   const cont=document.getElementById('combo-items');
   if(!comboItems.length){
-    cont.innerHTML='<span style="font-size:13px;color:var(--text-muted)">ì¹´ëë¥¼ í´ë¦­íì¬ ì íì ì¶ê°íì¸ì</span>';
+    cont.innerHTML='<span style="font-size:13px;color:var(--text-muted)">카드를 클릭하여 제품을 추가하세요</span>';
     document.getElementById('margin-summary').style.display='none';
     document.getElementById('btn-export').style.display='none';
-    document.getElementById('combo-total-price').textContent='â©0';
+    document.getElementById('combo-total-price').textContent='₩0';
     document.getElementById('combo-remaining').innerHTML='';
     return;
   }
@@ -561,11 +561,11 @@ function renderCombo(){
     const quote=Math.round(cost/(1-c.margin/100));
     return`<div class="combo-row">
       <span class="c-name">${c.name}</span>
-      <span class="c-field"><input type="number" value="${qty}" min="1" step="50" onchange="onQtyManualChange('${c.name}',this.value)" title="ìë">ê°</span>
-      <span class="c-field">Ã ${fmtP(c.unitPrice)}</span>
-      <span class="c-margin-group">ë§ì§ <input type="number" value="${parseFloat(c.margin.toFixed(1))}" min="0" max="95" step="1" onchange="onMarginRateChange('${c.name}',this.value)">% = <input type="number" class="margin-amt-input" value="${marginAmt}" min="0" step="100" onchange="onMarginAmtChange('${c.name}',this.value)">ì/ê°</span>
+      <span class="c-field"><input type="number" value="${qty}" min="1" step="50" onchange="onQtyManualChange('${c.name}',this.value)" title="수량">개</span>
+      <span class="c-field">× ${fmtP(c.unitPrice)}</span>
+      <span class="c-margin-group">마진 <input type="number" value="${parseFloat(c.margin.toFixed(1))}" min="0" max="95" step="1" onchange="onMarginRateChange('${c.name}',this.value)">% = <input type="number" class="margin-amt-input" value="${marginAmt}" min="0" step="100" onchange="onMarginAmtChange('${c.name}',this.value)">원/개</span>
       <span class="c-result">${fmtP(quote)}</span>
-      <span class="remove-chip" onclick="removeFromCombo('${c.name}')">â</span>
+      <span class="remove-chip" onclick="removeFromCombo('${c.name}')">✕</span>
     </div>`;
   }).join('');
 
@@ -581,17 +581,17 @@ function renderCombo(){
   const rem=document.getElementById('combo-remaining');
   if(budget>0){
     const r=budget-totalQuote;
-    rem.innerHTML=r>=0?`ìì° ìì¬: <span class="positive">${fmtP(r)}</span>`:`ìì° ì´ê³¼: <span class="negative">${fmtP(Math.abs(r))}</span>`;
+    rem.innerHTML=r>=0?`예산 잔여: <span class="positive">${fmtP(r)}</span>`:`예산 초과: <span class="negative">${fmtP(Math.abs(r))}</span>`;
   }else{rem.innerHTML='';}
 
-  // ë§ì§ ìì½
+  // 마진 요약
   const ms=document.getElementById('margin-summary'),mr=document.getElementById('margin-rows');
   ms.style.display='block';
   mr.innerHTML=comboItems.map(c=>{
     const qty=c.manualQty||c.qty;
     const cost=c.unitPrice*qty;
     const quote=Math.round(cost/(1-c.margin/100));
-    return`<div class="ms-row"><span>${c.name} ${fmt(qty)}ê° (${c.margin.toFixed(1)}%)</span><span>${fmtP(cost)} â ${fmtP(quote)}</span></div>`;
+    return`<div class="ms-row"><span>${c.name} ${fmt(qty)}개 (${c.margin.toFixed(1)}%)</span><span>${fmtP(cost)} → ${fmtP(quote)}</span></div>`;
   }).join('');
   document.getElementById('grand-total').textContent=fmtP(totalQuote);
   const grandMargin=totalQuote>0?Math.round((totalQuote-totalCost)/totalQuote*100):0;
@@ -599,80 +599,80 @@ function renderCombo(){
   document.getElementById('btn-export').style.display='inline-flex';
 }
 
-// âââ ê²¬ì ê³ì°ê¸° ë´ë³´ë´ê¸° (í´ë¦½ë³´ë ë³µì¬) âââ
+// ━━━ 견적계산기 내보내기 (클립보드 복사) ━━━
 function exportToQuote(){
-  const data=comboItems.map(c=>{const qty=c.manualQty||c.qty;const cost=c.unitPrice*qty;const quote=Math.round(cost/(1-c.margin/100));return{íëª:c.name,ìë:qty,ë¨ê°:c.unitPrice,ìê°:cost,ë§ì§ì¨:c.margin,ê²¬ì ê°:quote};});
-  const grandQuote=data.reduce((s,d)=>s+d.ê²¬ì ê°,0),grandCost=data.reduce((s,d)=>s+d.ìê°,0);
+  const data=comboItems.map(c=>{const qty=c.manualQty||c.qty;const cost=c.unitPrice*qty;const quote=Math.round(cost/(1-c.margin/100));return{품명:c.name,수량:qty,단가:c.unitPrice,원가:cost,마진율:c.margin,견적가:quote};});
+  const grandQuote=data.reduce((s,d)=>s+d.견적가,0),grandCost=data.reduce((s,d)=>s+d.원가,0);
 
-  // í­ êµ¬ë¶ íì¤í¸ (ì¤íë ëìí¸ ë¶ì¬ë£ê¸° ê°ë¥)
-  let tsv='íëª\tìë\të¨ê°\tìê°\të§ì§ì¨\tê²¬ì ê°\n';
-  data.forEach(d=>{tsv+=`${d.íëª}\t${d.ìë}\t${d.ë¨ê°}\t${d.ìê°}\t${d.ë§ì§ì¨}%\t${d.ê²¬ì ê°}\n`;});
+  // 탭 구분 텍스트 (스프레드시트 붙여넣기 가능)
+  let tsv='품명\t수량\t단가\t원가\t마진율\t견적가\n';
+  data.forEach(d=>{tsv+=`${d.품명}\t${d.수량}\t${d.단가}\t${d.원가}\t${d.마진율}%\t${d.견적가}\n`;});
   tsv+=`\t\t\t${grandCost}\t${Math.round((grandQuote-grandCost)/grandQuote*100)}%\t${grandQuote}\n`;
 
   navigator.clipboard.writeText(tsv).then(()=>{
-    showToast('í´ë¦½ë³´ëì ë³µì¬ëììµëë¤. ê²¬ì ê³ì°ê¸°ì ë¶ì¬ë£ê¸° íì¸ì!');
+    showToast('클립보드에 복사되었습니다. 견적계산기에 붙여넣기 하세요!');
   }).catch(()=>{
-    // ë³µì¬ ì¤í¨ ì alert í´ë°±
-    alert('ë³µì¬ ì¤í¨ â ìë ë´ì©ì ì§ì  ë³µì¬íì¸ì:\n\n'+tsv);
+    // 복사 실패 시 alert 폴백
+    alert('복사 실패 — 아래 내용을 직접 복사하세요:\n\n'+tsv);
   });
 }
 
-// ì¶ì²ì¡°í©
+// 추천조합
 function genSugCombos(budget){
   const c=document.getElementById('suggested-combos'),list=document.getElementById('sug-combo-list');
   if(budgetRecs.length<2){c.style.display='none';return;}
-  const combos=[];const sorted=[...budgetRecs].sort((a,b)=>a.íê· ë¨ê°-b.íê· ë¨ê°);
-  if(sorted.length>=2)combos.push({label:'ê· ë± ë°°ë¶ (ì ê° 2ì¢)',items:[{name:sorted[0].íëª,price:sorted[0].íê· ë¨ê°},{name:sorted[1].íëª,price:sorted[1].íê· ë¨ê°}]});
-  const main=budgetRecs[0],sub=budgetRecs.find(r=>r.íëª!==main.íëª&&r.íëª©!==main.íëª©);
-  if(sub)combos.push({label:`ë©ì¸(${main.íëª})+ë³´ì¡°(${sub.íëª})`,items:[{name:main.íëª,price:main.íê· ë¨ê°},{name:sub.íëª,price:sub.íê· ë¨ê°}]});
-  const diff=budgetRecs.filter((r,i,a)=>i===0||r.íëª©!==a[i-1].íëª©).slice(0,3);
-  if(diff.length>=3)combos.push({label:'3ì¢ ì¸í¸ (íëª© ë¤ìí)',items:diff.map(r=>({name:r.íëª,price:r.íê· ë¨ê°}))});
+  const combos=[];const sorted=[...budgetRecs].sort((a,b)=>a.평균단가-b.평균단가);
+  if(sorted.length>=2)combos.push({label:'균등 배분 (저가 2종)',items:[{name:sorted[0].품명,price:sorted[0].평균단가},{name:sorted[1].품명,price:sorted[1].평균단가}]});
+  const main=budgetRecs[0],sub=budgetRecs.find(r=>r.품명!==main.품명&&r.품목!==main.품목);
+  if(sub)combos.push({label:`메인(${main.품명})+보조(${sub.품명})`,items:[{name:main.품명,price:main.평균단가},{name:sub.품명,price:sub.평균단가}]});
+  const diff=budgetRecs.filter((r,i,a)=>i===0||r.품목!==a[i-1].품목).slice(0,3);
+  if(diff.length>=3)combos.push({label:'3종 세트 (품목 다양화)',items:diff.map(r=>({name:r.품명,price:r.평균단가}))});
   if(!combos.length){c.style.display='none';return;}
   c.style.display='block';
   list.innerHTML=combos.map(co=>{
     const n=co.items.length,share=Math.floor(budget/n);
     const itemsWithQty=co.items.map(i=>{const costB=Math.floor(share*0.7);return{...i,qty:Math.floor(costB/i.price)};});
     const totalCost=itemsWithQty.reduce((s,i)=>s+i.price*i.qty,0);
-    return`<div class="sug-combo-card" onclick='applySugCombo(${JSON.stringify(co.items).replace(/'/g,"\\'")})'><div class="sug-combo-items">${co.label}<br>${itemsWithQty.map(i=>`<strong>${i.name}</strong> ~${fmt(i.qty)}ê°`).join(' + ')}</div><div class="sug-combo-price">ìê° ~${fmtP(totalCost)}</div></div>`;
+    return`<div class="sug-combo-card" onclick='applySugCombo(${JSON.stringify(co.items).replace(/'/g,"\\'")})'><div class="sug-combo-items">${co.label}<br>${itemsWithQty.map(i=>`<strong>${i.name}</strong> ~${fmt(i.qty)}개`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(totalCost)}</div></div>`;
   }).join('');
 }
 function applySugCombo(items){comboItems=items.map(c=>({name:c.name,unitPrice:c.price,margin:30}));recalcComboQty();renderCombo();}
 
-// âââ ê±°ëì² ë¹êµ âââ
+// ━━━ 거래처 비교 ━━━
 function searchVendorCompare(){
-  const prod=document.getElementById('v-product').value;if(!prod){alert('íëªì ìë ¥/ì íí´ì£¼ì¸ì');return;}
-  const dl=gDays(globalDL);const items=DATA.filter(i=>(i.íëª||[]).includes(prod));
-  const bv={};items.forEach(it=>{const v=it.ê±°ëì²||'ë¯¸ì§ì ';if(!bv[v])bv[v]={ê±°ëì²:v,êµ­ê°:it.êµ­ê°,records:[]};bv[v].records.push(it);});
-  const comp=Object.values(bv).map(g=>{const recs=g.records,prices=recs.map(r=>r.ê°ë¹ë¨ê°).filter(Boolean),rate=SURCHARGE[g.êµ­ê°]||0,days=recs.map(r=>r.ì ìì¼ì).filter(Boolean),avgD=days.length?Math.round(days.reduce((a,b)=>a+b,0)/days.length):null;
-    return{ê±°ëì²:g.ê±°ëì²,êµ­ê°:g.êµ­ê°,ê±´ì:recs.length,ìµì ë¨ê°:prices.length?Math.min(...prices):null,íê· ë¨ê°:prices.length?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length):null,íê· ë¨ê°_ë¶ëë¹ì©í¬í¨:prices.length?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length*(1+rate)):null,ë©íì¤ì :recs.filter(r=>r.ê±°ëìí==='ë©íìë£').length,ìµê·¼ë°ì£¼:recs.map(r=>r.ë°ì£¼ì¼).filter(Boolean).sort().reverse()[0]||null,íê· ì ìì¼ì:avgD};
-  }).sort((a,b)=>(a.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨||Infinity)-(b.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨||Infinity));
+  const prod=document.getElementById('v-product').value;if(!prod){alert('품명을 입력/선택해주세요');return;}
+  const dl=gDays(globalDL);const items=DATA.filter(i=>(i.품명||[]).includes(prod));
+  const bv={};items.forEach(it=>{const v=it.거래처||'미지정';if(!bv[v])bv[v]={거래처:v,국가:it.국가,records:[]};bv[v].records.push(it);});
+  const comp=Object.values(bv).map(g=>{const recs=g.records,prices=recs.map(r=>r.개당단가).filter(Boolean),rate=SURCHARGE[g.국가]||0,days=recs.map(r=>r.제작일수).filter(Boolean),avgD=days.length?Math.round(days.reduce((a,b)=>a+b,0)/days.length):null;
+    return{거래처:g.거래처,국가:g.국가,건수:recs.length,최저단가:prices.length?Math.min(...prices):null,평균단가:prices.length?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length):null,평균단가_부대비용포함:prices.length?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length*(1+rate)):null,납품실적:recs.filter(r=>r.거래상태==='납품완료').length,최근발주:recs.map(r=>r.발주일).filter(Boolean).sort().reverse()[0]||null,평균제작일수:avgD};
+  }).sort((a,b)=>(a.평균단가_부대비용포함||Infinity)-(b.평균단가_부대비용포함||Infinity));
   if(!comp.length){['vendor-table-wrap','vendor-chart-wrap','vendor-recommend'].forEach(id=>document.getElementById(id).style.display='none');document.getElementById('vendor-empty').style.display='block';return;}
-  document.getElementById('vendor-empty').style.display='none';document.getElementById('vendor-title').textContent=`ê±°ëì² ë¹êµ â ${prod}`;
-  const scored=comp.map(v=>{let score=0;const reasons=[];const allP=comp.map(c=>c.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨).filter(Boolean),minP=Math.min(...allP);
-    if(v.íê· ë¨ê°_ë¶ëë¹ì©í¨í¨===minP){score+=40;reasons.push('ìµì  íê· ë¨ê°');}else if(v.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨){score+=Math.max(0,40-((v.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨-minP)/minP*100));}
-    const maxDel=Math.max(...comp.map(c=>c.ë©íì¤ì ));if(maxDel>0&&v.ë©íì¤ì >0){score+=(v.ë©íì¤ì /maxDel)*25;if(v.ë©íì¤ì ===maxDel)reasons.push(`ë©íì¤ì  ${v.ë©íì¤ì }ê±´ ìµë¤`);}
-    const isOS=v.êµ­ê°==='ì¤êµ­'||v.êµ­ê°==='ê¸°íí´ì¸';
-    if(dl!=null&&v.íê· ì ìì¼ì){const nd=v.íê· ì ìì¼ì+(isOS?10:0);if(dl>=nd+7){score+=25;reasons.push('ë©ê¸° ì¬ì ');}else if(dl>=nd){score+=10;reasons.push('ë©ê¸° ë¹ ë¯');}else{score-=isOS?40:20;reasons.push(isOS?'í´ì¸ìì° ë¶ê° (ë©ê¸°ì´ê³¼+ì´ì¡)':'ë©ê¸°ì´ê³¼ ìí');}}else{score+=12;}
-    if(v.ìµê·¼ë°ì£¼){const rc=gDays(v.ìµê·¼ë°ì£¼);if(rc!=null&&rc>-180){score+=10;reasons.push('ìµê·¼ ê±°ë');}}
+  document.getElementById('vendor-empty').style.display='none';document.getElementById('vendor-title').textContent=`거래처 비교 — ${prod}`;
+  const scored=comp.map(v=>{let score=0;const reasons=[];const allP=comp.map(c=>c.평균단가_부대비용포함).filter(Boolean),minP=Math.min(...allP);
+    if(v.평균단가_부대비용폨함===minP){score+=40;reasons.push('최저 평균단가');}else if(v.평균단가_부대비용포함){score+=Math.max(0,40-((v.평균단가_부대비용포함-minP)/minP*100));}
+    const maxDel=Math.max(...comp.map(c=>c.납품실적));if(maxDel>0&&v.납품실적>0){score+=(v.납품실적/maxDel)*25;if(v.납품실적===maxDel)reasons.push(`납품실적 ${v.납품실적}건 최다`);}
+    const isOS=v.국가==='중국'||v.국가==='기타해외';
+    if(dl!=null&&v.평균제작일수){const nd=v.평균제작일수+(isOS?10:0);if(dl>=nd+7){score+=25;reasons.push('납기 여유');}else if(dl>=nd){score+=10;reasons.push('납기 빠듯');}else{score-=isOS?40:20;reasons.push(isOS?'해외생산 불가 (납기초과+운송)':'납기초과 위험');}}else{score+=12;}
+    if(v.최근발주){const rc=gDays(v.최근발주);if(rc!=null&&rc>-180){score+=10;reasons.push('최근 거래');}}
     return{...v,score,reasons};
   }).sort((a,b)=>b.score-a.score);
-  const best=scored[0];document.getElementById('vendor-rec-title').textContent=`ì¶ì²: ${best.ê±°ëì²} (${best.êµ­ê°})`;
-  const rp=[];if(best.reasons.length)rp.push(best.reasons.join(', '));if(best.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨)rp.push(`íê· ë¨ê° ${fmtP(best.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨)}`);if(best.íê· ì ìì¼ì)rp.push(`íê·  ì ìê¸°ê° ${best.íê· ì ìì¼ì}ì¼`);
-  document.getElementById('vendor-rec-reason').textContent=rp.join(' Â· ');document.getElementById('vendor-recommend').style.display='block';
-  document.getElementById('vendor-tbody').innerHTML=scored.map((v,i)=>{const d=dl!=null&&v.íê· ì ìì¼ì?evalDL(dl,{êµ­ê°:v.êµ­ê°,ì ìì¼ì:v.íê· ì ìì¼ì}):{c:'',t:''};return`<tr><td>${i===0?'<span style="color:var(--primary);font-weight:700;font-size:16px;">â</span>':''}</td><td><strong>${v.ê±°ëì²}</strong></td><td>${cB(v.êµ­ê°)}</td><td>${v.ê±´ì}</td><td class="price">${fmtP(v.ìµì ë¨ê°)}</td><td class="price">${fmtP(v.íê· ë¨ê°)}</td><td class="price">${fmtP(v.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨)}</td><td>${v.ë©íì¤ì }ê±´</td><td>${v.íê· ì ìì¼ì?v.íê· ì ìì¼ì+'ì¼':'-'}</td><td>${v.ìµê·¼ë°ì£¼||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span>`:'-'}</td></tr>`;}).join('');
+  const best=scored[0];document.getElementById('vendor-rec-title').textContent=`추천: ${best.거래처} (${best.국가})`;
+  const rp=[];if(best.reasons.length)rp.push(best.reasons.join(', '));if(best.평균단가_부대비용포함)rp.push(`평균단가 ${fmtP(best.평균단가_부대비용포함)}`);if(best.평균제작일수)rp.push(`평균 제작기간 ${best.평균제작일수}일`);
+  document.getElementById('vendor-rec-reason').textContent=rp.join(' · ');document.getElementById('vendor-recommend').style.display='block';
+  document.getElementById('vendor-tbody').innerHTML=scored.map((v,i)=>{const d=dl!=null&&v.평균제작일수?evalDL(dl,{국가:v.국가,제작일수:v.평균제작일수}):{c:'',t:''};return`<tr><td>${i===0?'<span style="color:var(--primary);font-weight:700;font-size:16px;">★</span>':''}</td><td><strong>${v.거래처}</strong></td><td>${cB(v.국가)}</td><td>${v.건수}</td><td class="price">${fmtP(v.최저단가)}</td><td class="price">${fmtP(v.평균단가)}</td><td class="price">${fmtP(v.평균단가_부대비용포함)}</td><td>${v.납품실적}건</td><td>${v.평균제작일수?v.평균제작일수+'일':'-'}</td><td>${v.최근발주||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span>`:'-'}</td></tr>`;}).join('');
   document.getElementById('vendor-table-wrap').style.display='block';
   renderVendorBar(scored);document.getElementById('vendor-chart-wrap').style.display='block';
 }
 function renderVendorBar(comp){
   const ctx=document.getElementById('vendorBarChart').getContext('2d');if(vendorBarChart)vendorBarChart.destroy();
-  const cl=comp.map(v=>v.êµ­ê°==='êµ­ë´'?'#34d399':v.êµ­ê°==='ì¤êµ­'?'#fbbf24':'#a78bfa');
+  const cl=comp.map(v=>v.국가==='국내'?'#34d399':v.국가==='중국'?'#fbbf24':'#a78bfa');
   const isDark=document.documentElement.getAttribute('data-theme')==='dark';const tc=isDark?'#94a3b8':'#64748b';const gc=isDark?'#334155':'#e2e8f0';
-  vendorBarChart=new Chart(ctx,{type:'bar',data:{labels:comp.map(v=>v.ê±°ëì²),datasets:[{label:'íê· ë¨ê°(ë¶ëë¹ì©)',data:comp.map(v=>v.íê· ë¨ê°_ë¶ëë¹ì©í¬í¨),backgroundColor:cl.map(c=>c+'80'),borderColor:cl,borderWidth:1},{label:'íê· ë¨ê°(ìê°)',data:comp.map(v=>v.íê· ë¨ê°),backgroundColor:cl.map(c=>c+'30'),borderColor:cl.map(c=>c+'80'),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{callback:v=>'â©'+v.toLocaleString(),color:tc},grid:{color:gc}},x:{ticks:{color:tc},grid:{color:gc}}},plugins:{legend:{labels:{color:tc}},tooltip:{callbacks:{label(c){return c.dataset.label+': '+fmtP(c.raw);}}}}}});
+  vendorBarChart=new Chart(ctx,{type:'bar',data:{labels:comp.map(v=>v.거래처),datasets:[{label:'평균단가(부대비용)',data:comp.map(v=>v.평균단가_부대비용포함),backgroundColor:cl.map(c=>c+'80'),borderColor:cl,borderWidth:1},{label:'평균단가(원가)',data:comp.map(v=>v.평균단가),backgroundColor:cl.map(c=>c+'30'),borderColor:cl.map(c=>c+'80'),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{callback:v=>'₩'+v.toLocaleString(),color:tc},grid:{color:gc}},x:{ticks:{color:tc},grid:{color:gc}}},plugins:{legend:{labels:{color:tc}},tooltip:{callbacks:{label(c){return c.dataset.label+': '+fmtP(c.raw);}}}}}});
 }
 
-let allCountries=['êµ­ë´','ì¤êµ­','ê¸°íí´ì¸'];
+let allCountries=['국내','중국','기타해외'];
 
-// ì´ê¸°í: íì´ì§ ë¡ë ì ìë²ìì ë°ì´í° ê°ì ¸ì¤ê¸°
+// 초기화: 페이지 로드 시 서버에서 데이터 가져오기
 loadData();
 renderCombo();
 </script>
