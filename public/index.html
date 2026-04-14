@@ -297,8 +297,14 @@ async function loadData(){
     const res=await fetch('/api/products');
     const json=await res.json();
     DATA=json.items||json||[];
-    // 품명이 문자열인 경우 배열로 변환
-    DATA.forEach(d=>{if(typeof d.품명==='string')d.품명=[d.품명];if(!d.품명)d.품명=[];});
+    // 품명이 문자열인 경우 배열로 변환, null/undefined 방어
+    DATA.forEach(d=>{
+      if(typeof d.품명==='string')d.품명=[d.품명];
+      if(!d.품명||!Array.isArray(d.품명))d.품명=[];
+      if(!d.품목)d.품목=null;
+      if(!d.거래처)d.거래처=null;
+      if(!d.국가)d.국가=null;
+    });
     initFilters();
     showToast(`데이터 ${DATA.length}건 로드 완료`);
   }catch(e){console.error('데이터 로드 실패:',e);showToast('데이터 로드 실패 — 서버를 확인하세요');}
@@ -353,7 +359,7 @@ const checkDDState={}; // key → Set of selected items
 function initCheckDD(key,menuId,labelId,items){
   checkDDState[key]=new Set(items); // 기본: 전체 선택
   const menu=document.getElementById(menuId);
-  menu.innerHTML=items.map(v=>`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="chk-${key}-${v}" checked onchange="onCheckDD('${key}','${v}',this.checked,'${labelId}')"><label for="chk-${key}-${v}">${v}</label></div>`).join('');
+  menu.innerHTML=items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" checked onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${v}</label></div>`;}).join('');
   updateCheckLabel(key,labelId,items);
 }
 function toggleCheckDD(key){
@@ -365,7 +371,7 @@ function toggleCheckDD(key){
 function onCheckDD(key,val,checked,labelId){
   const s=checkDDState[key];
   if(checked)s.add(val);else s.delete(val);
-  const allItems=[...document.querySelectorAll(`#${key}-menu input[type="checkbox"]`)].map(el=>el.id.replace(`chk-${key}-`,''));
+  const allItems=[...document.querySelectorAll(`#${key}-menu input[type="checkbox"]`)].map(el=>el.getAttribute('data-val')||el.id.replace(`chk-${key}-`,''));
   updateCheckLabel(key,labelId,allItems);
 }
 function updateCheckLabel(key,labelId,allItems){
@@ -376,11 +382,10 @@ function updateCheckLabel(key,labelId,allItems){
 }
 function getChecked(key){
   const s=checkDDState[key];
-  if(!s)return null;
-  // 전체 메뉴의 항목 수 확인
+  if(!s||s.size===0)return null;
   const menu=document.getElementById(key+'-menu');
   const total=menu?menu.querySelectorAll('input[type="checkbox"]').length:0;
-  if(s.size===total||s.size===0)return null; // 전체 = 필터 없음
+  if(s.size>=total)return null; // 전체 = 필터 없음
   return[...s];
 }
 // 외부 클릭으로 닫기
