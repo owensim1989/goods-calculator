@@ -105,6 +105,9 @@ tbody tr:hover{background:var(--primary-light);}
 .cat-dd-item:hover{background:var(--primary-light);}
 .cat-dd-item input[type="checkbox"]{accent-color:var(--primary);width:16px;height:16px;cursor:pointer;}
 .cat-dd-item label{cursor:pointer;flex:1;}
+.cat-dd-item .solo-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;color:var(--text-muted);cursor:pointer;white-space:nowrap;opacity:0;transition:opacity .15s;}
+.cat-dd-item:hover .solo-btn{opacity:1;}
+.cat-dd-item .solo-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);}
 
 /* 조합빌더 */
 .combo-builder{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;}
@@ -215,7 +218,7 @@ tbody tr:hover{background:var(--primary-light);}
       <h3 style="margin:0">상세 데이터</h3>
       <button class="btn-goto-vendor" onclick="goToVendorTab()">🏭 이 품명으로 거래처 비교 →</button>
     </div>
-    <div class="table-wrap"><table><thead><tr><th>프로젝트</th><th>거래처</th><th>국가</th><th>수량</th><th>개당단가</th><th>단가(부대비용)</th><th>제작비</th><th>스펙</th><th>발주일</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>국가</th><th>제품명</th><th>거래처</th><th>수량</th><th>개당단가</th><th>단가(부대비용)</th><th>제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
   </div>
   <div class="empty-state" id="product-empty"><div class="icon">📦</div><p>품명을 선택하고 조회 버튼을 눌러주세요</p></div>
 </div>
@@ -286,8 +289,8 @@ tbody tr:hover{background:var(--primary-light);}
 // ━━━ 데이터: 서버에서 로드 ━━━
 let DATA=[]; // 서버에서 fetch한 전체 데이터
 const SURCHARGE={'국내':0,'중국':0.15,'기타해외':0.20};
-const fmt=n=>n!=null?n.toLocaleString('ko-KR'):'-';
-const fmtP=n=>n!=null?'₩'+n.toLocaleString('ko-KR'):'-';
+const fmt=n=>n!=null?Math.round(n).toLocaleString('ko-KR'):'-';
+const fmtP=n=>n!=null?'₩'+Math.round(n).toLocaleString('ko-KR'):'-';
 function cB(c){return c==='국내'?'<span class="badge badge-domestic">국내</span>':c==='중국'?'<span class="badge badge-china">중국</span>':c==='기타해외'?'<span class="badge badge-overseas">해외</span>':(c||'-');}
 let scatterChart=null,vendorBarChart=null;
 
@@ -359,7 +362,7 @@ const checkDDState={}; // key → Set of selected items
 function initCheckDD(key,menuId,labelId,items){
   checkDDState[key]=new Set(items); // 기본: 전체 선택
   const menu=document.getElementById(menuId);
-  menu.innerHTML=items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" checked onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${v}</label></div>`;}).join('');
+  menu.innerHTML=items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" checked onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${v}</label><button class="solo-btn" onclick="event.stopPropagation();soloCheck('${key}','${ev}','${labelId}')">이것만</button></div>`;}).join('');
   updateCheckLabel(key,labelId,items);
 }
 function toggleCheckDD(key){
@@ -379,6 +382,14 @@ function updateCheckLabel(key,labelId,allItems){
   if(s.size===allItems.length||s.size===0)el.textContent='전체';
   else if(s.size<=2)el.textContent=[...s].join(', ');
   else el.textContent=[...s].slice(0,2).join(', ')+` +${s.size-2}`;
+}
+function soloCheck(key,val,labelId){
+  const menu=document.getElementById(key+'-menu');
+  const cbs=[...menu.querySelectorAll('input[type="checkbox"]')];
+  checkDDState[key]=new Set([val]);
+  cbs.forEach(cb=>{const v=cb.getAttribute('data-val')||'';cb.checked=(v===val);});
+  const allItems=cbs.map(el=>el.getAttribute('data-val')||'');
+  updateCheckLabel(key,labelId,allItems);
 }
 function getChecked(key){
   const s=checkDDState[key];
@@ -449,7 +460,7 @@ function searchProducts(){
   const pr=en.map(i=>i.개당단가_부대비용포함).filter(Boolean);
   document.getElementById('s-count').textContent=en.length;document.getElementById('s-avg').textContent=pr.length?fmtP(Math.round(pr.reduce((a,b)=>a+b,0)/pr.length)):'-';document.getElementById('s-min').textContent=pr.length?fmtP(Math.min(...pr)):'-';document.getElementById('s-max').textContent=pr.length?fmtP(Math.max(...pr)):'-';document.getElementById('s-trust').innerHTML=trustHTML(en.length);document.getElementById('product-stats').style.display='grid';
   renderScatter(en);document.getElementById('scatter-wrap').style.display='block';
-  document.getElementById('product-tbody').innerHTML=en.map(i=>{const d=dl!=null?evalDL(dl,i):{c:'',t:''};return`<tr><td>${i.프로젝트명||'-'}</td><td>${i.거래처||'-'}</td><td>${cB(i.국가)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가)}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}</td><td>${fmtP(i.제작비)}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${i.발주일||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;}).join('');
+  document.getElementById('product-tbody').innerHTML=en.map(i=>{const d=dl!=null?evalDL(dl,i):{c:'',t:''};return`<tr><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${i.거래처||'-'}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가)}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}</td><td>${fmtP(i.제작비)}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;}).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
 function renderScatter(items){
