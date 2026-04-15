@@ -94,6 +94,10 @@ tbody tr:hover{background:var(--primary-light);}
 .recommend-banner .rec-reason{font-size:13px;color:var(--text);line-height:1.5;}
 
 .guide-box{background:var(--primary-light);border:1px solid var(--primary);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.biz-cat-bar{display:flex;gap:6px;margin-left:auto;}
+.biz-cat-btn{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:6px 16px;font-size:13px;color:var(--text-muted);cursor:pointer;transition:all .2s;white-space:nowrap;}
+.biz-cat-btn:hover{border-color:var(--primary);color:var(--primary);}
+.biz-cat-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
 
 /* 품목 드롭다운 체크박스 */
 .cat-dd-wrap{position:relative;min-width:140px;}
@@ -198,6 +202,12 @@ tbody tr:hover{background:var(--primary-light);}
     <label>납기일정:</label>
     <input type="date" class="deadline-date-input dl-sync" id="p-deadline">
     <span id="p-deadline-msg" class="deadline-result"></span>
+    <div class="biz-cat-bar">
+      <button class="biz-cat-btn active" onclick="setBizCat('all',this)">전체</button>
+      <button class="biz-cat-btn" onclick="setBizCat('product',this)">제품제작</button>
+      <button class="biz-cat-btn" onclick="setBizCat('ad',this)">광고물</button>
+      <button class="biz-cat-btn" onclick="setBizCat('etc',this)">시공·기타</button>
+    </div>
   </div>
   <div class="filter-bar">
     <div class="filter-group"><label>품목</label><div class="cat-dd-wrap" id="p-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-cat')"><span id="p-cat-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="p-cat-menu"></div></div></div>
@@ -382,6 +392,25 @@ function updateCheckLabel(key,labelId,allItems){
   if(s.size===allItems.length||s.size===0)el.textContent='전체';
   else if(s.size<=2)el.textContent=[...s].join(', ');
   else el.textContent=[...s].slice(0,2).join(', ')+` +${s.size-2}`;
+}
+const BIZ_CAT_MAP={
+  'product':['의류','문구펜시','피규어 및 인형','모바일 악세사리','생활잡화','인쇄물'],
+  'ad':['광고물'],
+  'etc':['시공','기타지출','행사물품']
+};
+function setBizCat(type,btn){
+  document.querySelectorAll('.biz-cat-bar .biz-cat-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const menu=document.getElementById('p-cat-menu');
+  const cbs=[...menu.querySelectorAll('input[type="checkbox"]')];
+  if(type==='all'){
+    cbs.forEach(cb=>{cb.checked=true;});
+    checkDDState['p-cat']=new Set(allCats);
+  }else{
+    const allowed=BIZ_CAT_MAP[type]||[];
+    cbs.forEach(cb=>{const v=cb.getAttribute('data-val')||'';const on=allowed.includes(v);cb.checked=on;if(on)checkDDState['p-cat'].add(v);else checkDDState['p-cat'].delete(v);});
+  }
+  updateCheckLabel('p-cat','p-cat-label',allCats);
 }
 function soloCheck(key,val,labelId){
   const menu=document.getElementById(key+'-menu');
