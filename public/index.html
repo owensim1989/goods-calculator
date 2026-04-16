@@ -103,8 +103,11 @@ tbody tr:hover{background:var(--primary-light);}
 .cat-dd-wrap{position:relative;min-width:140px;}
 .cat-dd-btn{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;min-width:140px;}
 .cat-dd-btn .arrow{font-size:10px;color:var(--text-muted);}
-.cat-dd-menu{position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:50;display:none;max-height:280px;overflow-y:auto;}
-.cat-dd-menu.show{display:block;}
+.cat-dd-menu{position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:50;display:none;max-height:320px;overflow:hidden;min-width:180px;}
+.cat-dd-menu.show{display:flex;flex-direction:column;}
+.cat-dd-search{padding:6px 10px;border:none;border-bottom:1px solid var(--border);font-size:13px;background:var(--input-bg);color:var(--text);outline:none;width:100%;box-sizing:border-box;}
+.cat-dd-search::placeholder{color:var(--text-muted);}
+.cat-dd-list{overflow-y:auto;flex:1;max-height:260px;}
 .cat-dd-item{padding:8px 12px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;}
 .cat-dd-item:hover{background:var(--primary-light);}
 .cat-dd-item input[type="checkbox"]{accent-color:var(--primary);width:16px;height:16px;cursor:pointer;}
@@ -460,11 +463,24 @@ function cCnt(n){return DATA.filter(i=>i.품목===n).length;}
 
 // ━━━ 통합 드롭다운 체크박스 (품목/품명/국가 공통) ━━━
 const checkDDState={}; // key → Set of selected items
+const checkDDItems={}; // key → sorted items array
 function initCheckDD(key,menuId,labelId,items){
-  checkDDState[key]=new Set(items); // 기본: 전체 선택
+  // ㄱㄴㄷ순 정렬
+  const sorted=[...items].sort((a,b)=>a.localeCompare(b,'ko'));
+  checkDDItems[key]=sorted;
+  checkDDState[key]=new Set(sorted); // 기본: 전체 선택
   const menu=document.getElementById(menuId);
-  menu.innerHTML=items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" checked onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${v}</label><button class="solo-btn" onclick="event.stopPropagation();soloCheck('${key}','${ev}','${labelId}')">이것만</button></div>`;}).join('');
-  updateCheckLabel(key,labelId,items);
+  menu.innerHTML=`<input type="text" class="cat-dd-search" placeholder="검색 (초성 가능)" onclick="event.stopPropagation()" oninput="filterCheckDD('${key}','${menuId}','${labelId}',this.value)"><div class="cat-dd-list" id="${key}-list">${renderCheckItems(key,labelId,sorted)}</div>`;
+  updateCheckLabel(key,labelId,sorted);
+}
+function renderCheckItems(key,labelId,items){
+  return items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");const checked=checkDDState[key].has(v)?'checked':'';return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" ${checked} onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${v}</label><button class="solo-btn" onclick="event.stopPropagation();soloCheck('${key}','${ev}','${labelId}')">이것만</button></div>`;}).join('');
+}
+function filterCheckDD(key,menuId,labelId,query){
+  const all=checkDDItems[key]||[];
+  const filtered=query?all.filter(v=>matchQ(v,query)):all;
+  const list=document.getElementById(key+'-list');
+  list.innerHTML=renderCheckItems(key,labelId,filtered);
 }
 function toggleCheckDD(key){
   const menu=document.getElementById(key+'-menu');
@@ -475,8 +491,7 @@ function toggleCheckDD(key){
 function onCheckDD(key,val,checked,labelId){
   const s=checkDDState[key];
   if(checked)s.add(val);else s.delete(val);
-  const allItems=[...document.querySelectorAll(`#${key}-menu input[type="checkbox"]`)].map(el=>el.getAttribute('data-val')||el.id.replace(`chk-${key}-`,''));
-  updateCheckLabel(key,labelId,allItems);
+  updateCheckLabel(key,labelId,checkDDItems[key]||[]);
 }
 function updateCheckLabel(key,labelId,allItems){
   const s=checkDDState[key],el=document.getElementById(labelId);
@@ -504,18 +519,16 @@ function setBizCat(type,btn){
   updateCheckLabel('p-cat','p-cat-label',allCats);
 }
 function soloCheck(key,val,labelId){
-  const menu=document.getElementById(key+'-menu');
-  const cbs=[...menu.querySelectorAll('input[type="checkbox"]')];
   checkDDState[key]=new Set([val]);
-  cbs.forEach(cb=>{const v=cb.getAttribute('data-val')||'';cb.checked=(v===val);});
-  const allItems=cbs.map(el=>el.getAttribute('data-val')||'');
-  updateCheckLabel(key,labelId,allItems);
+  // 리스트 다시 렌더 (체크 상태 반영)
+  const list=document.getElementById(key+'-list');
+  if(list)list.innerHTML=renderCheckItems(key,labelId,checkDDItems[key]||[]);
+  updateCheckLabel(key,labelId,checkDDItems[key]||[]);
 }
 function getChecked(key){
   const s=checkDDState[key];
   if(!s||s.size===0)return null;
-  const menu=document.getElementById(key+'-menu');
-  const total=menu?menu.querySelectorAll('input[type="checkbox"]').length:0;
+  const total=(checkDDItems[key]||[]).length;
   if(s.size>=total)return null; // 전체 = 필터 없음
   return[...s];
 }
