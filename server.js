@@ -580,6 +580,82 @@ app.get('/api/fx', (req, res) => {
   res.json(fxCache);
 });
 
+// ━━━ 채택률 추적 API ━━━
+const ADOPTION_FILE = path.join(__dirname, 'data', 'quote-adoption.json');
+
+function loadAdoption() {
+  try {
+    if (fs.existsSync(ADOPTION_FILE)) return JSON.parse(fs.readFileSync(ADOPTION_FILE, 'utf-8'));
+  } catch (e) { console.error('[채택률] 로드 실패', e.message); }
+  return [];
+}
+function saveAdoption(data) {
+  const dir = path.dirname(ADOPTION_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(ADOPTION_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+// 견적 채택 데이터 목록
+app.get('/api/adoption', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const data = loadAdoption();
+  const year = req.query.year || new Date().getFullYear().toString();
+  const filtered = data.filter(d => d.날짜 && d.날짜.startsWith(year));
+
+  const adopted = filtered.filter(d => d.상태 === '채택');
+  const rejected = filtered.filter(d => d.상태 === '미채택');
+  const pending = filtered.filter(d => d.상태 === '대기');
+
+  // 월별 통계
+  const monthly = {};
+  filtered.forEach(d => {
+    const m = d.날짜 ? d.날짜.substring(0, 7) : 'unknown';
+    if (!monthly[m]) monthly[m] = { total: 0, adopted: 0, rejected: 0, pending: 0 };
+    monthly[m].total++;
+    if (d.상태 === '채택') monthly[m].adopted++;
+    else if (d.상태 === '미채택') monthly[m].rejected++;
+    else monthly[m].pending++;
+  });
+
+  res.json({
+    year,
+    총건수: filtered.length,
+    채택: adopted.length,
+    미채택: rejected.length,
+    대기: pending.length,
+    채택률: filtered.length > 0 ? Math.round(adopted.length / (adopted.length + rejected.length) * 100) || 0 : 0,
+    월별: monthly,
+    내역: filtered.sort((a, b) => (b.날짜 || '').localeCompare(a.날짜 || '')),
+    미채택사유: rejected.reduce((acc, d) => { const r = d.사유 || '기타'; acc[r] = (acc[r] || 0) + 1; return acc; }, {})
+  });
+});
+
+// 견적 채택 데이터 추가/수정
+app.post('/api/adoption', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const data = loadAdoption();
+  const item = req.body;
+  if (!item.클라이언트 || !item.품명) return res.status(400).json({ error: '클라이언트, 품명 필수' });
+
+  item.id = item.id || Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  item.날짜 = item.날짜 || new Date().toISOString().split('T')[0];
+  item.상태 = item.상태 || '대기';
+  data.push(item);
+  saveAdoption(data);
+  res.json({ success: true, item });
+});
+
+// 상태 업데이트
+app.patch('/api/adoption/:id', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const data = loadAdoption();
+  const idx = data.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  Object.assign(data[idx], req.body);
+  saveAdoption(data);
+  res.json({ success: true, item: data[idx] });
+});
+
 // SPA 폴백
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

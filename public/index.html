@@ -257,6 +257,7 @@ tbody tr:hover{background:var(--primary-light);}
   <button class="tab-btn active" data-tab="product">제품 → 단가</button>
   <button class="tab-btn" data-tab="budget">예산 → 제품</button>
   <button class="tab-btn" data-tab="vendor">거래처 비교</button>
+  <button class="tab-btn" data-tab="adoption">📊 채택률</button>
 </div>
 <div class="fx-bar" id="fx-bar">
   <label>💱 환율:</label>
@@ -377,6 +378,49 @@ tbody tr:hover{background:var(--primary-light);}
   </div>
   <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">거래처별 평균단가 비교</h3><canvas id="vendorBarChart"></canvas></div>
   <div class="empty-state" id="vendor-empty"><div class="icon">🏭</div><p>품명을 선택하면 거래처별 단가·납품실적을 비교합니다</p></div>
+</div>
+
+<!-- 탭4: 채택률 -->
+<div class="tab-page" id="page-adoption">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+    <h3 style="font-size:16px;font-weight:700;">📊 견적 채택률 추적</h3>
+    <select id="adopt-year" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:13px;" onchange="loadAdoption()"></select>
+    <span id="adopt-year-label" style="font-size:12px;color:var(--text-muted);">연간 기준</span>
+    <button class="btn-search" onclick="showAdoptForm()" style="margin-left:auto;">+ 견적 등록</button>
+  </div>
+
+  <div class="stats-row" id="adopt-stats">
+    <div class="stat-card"><div class="num" id="adopt-total" style="color:var(--primary);">-</div><div class="label">연간 총 견적</div></div>
+    <div class="stat-card"><div class="num" id="adopt-yes" style="color:var(--success);">-</div><div class="label">채택</div></div>
+    <div class="stat-card"><div class="num" id="adopt-no" style="color:var(--danger);">-</div><div class="label">미채택</div></div>
+    <div class="stat-card"><div class="num" id="adopt-wait" style="color:var(--warning);">-</div><div class="label">대기</div></div>
+    <div class="stat-card"><div class="num" id="adopt-rate" style="color:var(--primary);">-</div><div class="label">채택률</div></div>
+  </div>
+
+  <div class="card" style="height:280px;"><h3 style="margin-bottom:8px;">월별 견적 채택률</h3><canvas id="adoptChart"></canvas></div>
+
+  <!-- 등록 폼 (숨김) -->
+  <div class="card" id="adopt-form" style="display:none;border-color:var(--primary);">
+    <h3>📝 견적 등록</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+      <div class="filter-group"><label>클라이언트 *</label><input type="text" id="af-client" placeholder="예: 수성구청"></div>
+      <div class="filter-group"><label>품명 *</label><input type="text" id="af-product" placeholder="예: 키링 1000개"></div>
+      <div class="filter-group"><label>견적금액</label><input type="text" id="af-amount" placeholder="예: 1,612,000" inputmode="numeric"></div>
+      <div class="filter-group"><label>상태</label><select id="af-status"><option value="대기">대기</option><option value="채택">채택</option><option value="미채택">미채택</option></select></div>
+      <div class="filter-group"><label>미채택 사유</label><input type="text" id="af-reason" placeholder="가격/일정/경쟁사 등"></div>
+      <div class="filter-group"><label>날짜</label><input type="date" id="af-date"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button class="btn-search" style="background:var(--text-muted);" onclick="document.getElementById('adopt-form').style.display='none'">취소</button>
+      <button class="btn-search" onclick="submitAdoption()">저장</button>
+    </div>
+  </div>
+
+  <!-- 내역 테이블 -->
+  <div class="card">
+    <h3>최근 견적 내역</h3>
+    <div class="table-wrap"><table><thead><tr><th>날짜</th><th>클라이언트</th><th>품명</th><th>견적금액</th><th>상태</th><th>사유</th><th></th></tr></thead><tbody id="adopt-tbody"></tbody></table></div>
+  </div>
 </div>
 
 <!-- 토스트 -->
@@ -998,10 +1042,106 @@ function renderVendorBar(comp){
 
 let allCountries=['국내','중국','기타해외'];
 
+// ━━━ 채택률 추적 ━━━
+let adoptChart=null;
+
+function initAdoptYear(){
+  const sel=document.getElementById('adopt-year');
+  const y=new Date().getFullYear();
+  sel.innerHTML='';
+  for(let i=y;i>=y-2;i--) sel.innerHTML+=`<option value="${i}">${i}년</option>`;
+  document.getElementById('af-date').value=new Date().toISOString().split('T')[0];
+}
+initAdoptYear();
+
+async function loadAdoption(){
+  const year=document.getElementById('adopt-year').value;
+  try{
+    const res=await fetch('/api/adoption?year='+year);
+    const d=await res.json();
+    document.getElementById('adopt-total').textContent=d.총건수;
+    document.getElementById('adopt-yes').textContent=d.채택;
+    document.getElementById('adopt-no').textContent=d.미채택;
+    document.getElementById('adopt-wait').textContent=d.대기;
+    document.getElementById('adopt-rate').textContent=d.채택률+'%';
+
+    // 차트
+    const months=[];for(let m=1;m<=12;m++) months.push(year+'-'+(m<10?'0'+m:m));
+    const totals=months.map(m=>(d.월별[m]||{}).total||0);
+    const adopteds=months.map(m=>(d.월별[m]||{}).adopted||0);
+    const labels=months.map(m=>parseInt(m.split('-')[1])+'월');
+
+    const isDark=document.documentElement.dataset.theme==='dark';
+    const tc=isDark?'#94a3b8':'#64748b';
+    const gc=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
+
+    if(adoptChart) adoptChart.destroy();
+    const ctx=document.getElementById('adoptChart').getContext('2d');
+    adoptChart=new Chart(ctx,{type:'bar',data:{labels,datasets:[
+      {label:'전체 견적',data:totals,backgroundColor:'rgba(59,130,246,0.3)',borderColor:'rgba(59,130,246,0.7)',borderWidth:1},
+      {label:'채택',data:adopteds,backgroundColor:'rgba(34,197,94,0.6)',borderColor:'rgba(34,197,94,0.9)',borderWidth:1}
+    ]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{color:tc,stepSize:1},grid:{color:gc}},x:{ticks:{color:tc},grid:{color:gc}}},plugins:{legend:{labels:{color:tc}}}}});
+
+    // 테이블
+    const tbody=document.getElementById('adopt-tbody');
+    tbody.innerHTML=d.내역.map(r=>{
+      const sc=r.상태==='채택'?'color:var(--success)':r.상태==='미채택'?'color:var(--danger)':'color:var(--warning)';
+      const amt=r.견적금액?'₩'+parseInt(r.견적금액).toLocaleString():'—';
+      return `<tr>
+        <td>${r.날짜||'—'}</td><td>${r.클라이언트}</td><td>${r.품명}</td>
+        <td style="font-weight:600;color:var(--primary);">${amt}</td>
+        <td><select style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);font-size:12px;${sc}" onchange="updateAdoptStatus('${r.id}',this.value)">
+          <option value="대기" ${r.상태==='대기'?'selected':''}>대기</option>
+          <option value="채택" ${r.상태==='채택'?'selected':''}>채택</option>
+          <option value="미채택" ${r.상태==='미채택'?'selected':''}>미채택</option>
+        </select></td>
+        <td style="font-size:12px;color:var(--text-muted);">${r.사유||'—'}</td>
+        <td></td>
+      </tr>`;
+    }).join('');
+
+  }catch(e){console.error('채택률 로드 실패',e);}
+}
+
+function showAdoptForm(){
+  document.getElementById('adopt-form').style.display='block';
+  document.getElementById('af-client').focus();
+}
+
+async function submitAdoption(){
+  const client=document.getElementById('af-client').value.trim();
+  const product=document.getElementById('af-product').value.trim();
+  if(!client||!product){showToast('클라이언트와 품명은 필수','error');return;}
+  const body={
+    클라이언트:client,
+    품명:product,
+    견적금액:document.getElementById('af-amount').value.replace(/[^0-9]/g,''),
+    상태:document.getElementById('af-status').value,
+    사유:document.getElementById('af-reason').value.trim(),
+    날짜:document.getElementById('af-date').value
+  };
+  try{
+    await fetch('/api/adoption',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    document.getElementById('adopt-form').style.display='none';
+    ['af-client','af-product','af-amount','af-reason'].forEach(id=>document.getElementById(id).value='');
+    showToast('견적 등록 완료','success');
+    loadAdoption();
+  }catch(e){showToast('등록 실패: '+e.message,'error');}
+}
+
+async function updateAdoptStatus(id,status){
+  try{
+    await fetch('/api/adoption/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({상태:status})});
+    showToast('상태 변경: '+status,'success');
+    loadAdoption();
+  }catch(e){showToast('변경 실패','error');}
+}
+
 // 초기화: 페이지 로드 시 서버에서 데이터 + 환율 가져오기
 loadData();
 loadFx();
 renderCombo();
+loadAdoption();
 </script>
 </body>
 </html>
