@@ -233,7 +233,7 @@ tbody tr:hover{background:var(--primary-light);}
   <label>💱 환율:</label>
   <label>USD</label><input type="text" id="fx-usd" value="1,380" oninput="onFxChange()"><label>원</label>
   <label style="margin-left:8px;">RMB</label><input type="text" id="fx-rmb" value="190" oninput="onFxChange()"><label>원</label>
-  <span class="fx-hint">해외 거래처 단가에 원화 환산 표시됩니다</span>
+  <span class="fx-hint" id="fx-hint">환율 로딩 중...</span>
 </div>
 
 <!-- 탭1: 제품→단가 -->
@@ -361,12 +361,27 @@ let lastEnriched=[]; // 상세데이터 보존
 
 // ━━━ 환율 ━━━
 let FX={USD:1380,RMB:190};
+async function loadFx(){
+  try{
+    const res=await fetch('/api/fx');
+    const data=await res.json();
+    if(data.USD)FX.USD=data.USD;
+    if(data.RMB)FX.RMB=data.RMB;
+    document.getElementById('fx-usd').value=FX.USD.toLocaleString('ko-KR');
+    document.getElementById('fx-rmb').value=FX.RMB.toLocaleString('ko-KR');
+    if(data.updatedAt){
+      const d=new Date(data.updatedAt);
+      document.getElementById('fx-hint').textContent=`실시간 환율 (${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')} 기준)`;
+    }
+  }catch(e){console.log('환율 로드 실패, 기본값 사용');}
+}
 function onFxChange(){
   const uv=document.getElementById('fx-usd').value.replace(/\D/g,'');
   const rv=document.getElementById('fx-rmb').value.replace(/\D/g,'');
   FX.USD=parseInt(uv)||1380;FX.RMB=parseInt(rv)||190;
   document.getElementById('fx-usd').value=FX.USD.toLocaleString('ko-KR');
   document.getElementById('fx-rmb').value=FX.RMB.toLocaleString('ko-KR');
+  document.getElementById('fx-hint').textContent='수동 입력 적용됨';
 }
 function getFxForCountry(country){
   if(country==='중국')return{code:'RMB',rate:FX.RMB};
@@ -682,11 +697,11 @@ function searchBudget(){
       if(it.개당단가!=null){
         const r=SURCHARGE[it.국가]||0;if(aCountry&&!aCountry.includes(it.국가))return;
         if(dl!=null){const nd=(it.제작일수||14)+((it.국가==='중국'||it.국가==='기타해외')?10:0);if(dl<nd)return;}
-        pm[name].prices.push(Math.round(it.개당단가*(1+r)));pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
+        const adjP=Math.round(it.개당단가*(1+r));if(adjP>0)pm[name].prices.push(adjP);pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
       }
     });
   });
-  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);return{품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,예상수량_평균:Math.floor(budget/avg),예상수량_최대:Math.floor(budget/min),데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD};}).filter(p=>p.예상수량_최대>0).sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
+  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);const qAvg=avg>0?Math.floor(budget/avg):0;const qMax=min>0?Math.floor(budget/min):0;return{품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,예상수량_평균:isFinite(qAvg)?qAvg:0,예상수량_최대:isFinite(qMax)?qMax:0,데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD};}).filter(p=>p.예상수량_최대>0&&p.평균단가>0).sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
   const cont=document.getElementById('budget-results'),empty=document.getElementById('budget-empty');
   if(!budgetRecs.length){cont.innerHTML='';empty.style.display='block';empty.querySelector('p').textContent='조건에 맞는 제품이 없습니다';document.getElementById('suggested-combos').style.display='none';return;}
   empty.style.display='none';
@@ -836,7 +851,7 @@ function genSugCombos(budget){
   c.style.display='block';
   list.innerHTML=combos.map(co=>{
     const n=co.items.length,share=Math.floor(budget/n);
-    const itemsWithQty=co.items.map(i=>{const costB=Math.floor(share*0.7);return{...i,qty:Math.floor(costB/i.price)};});
+    const itemsWithQty=co.items.map(i=>{const costB=Math.floor(share*0.7);const q=i.price>0?Math.floor(costB/i.price):0;return{...i,qty:isFinite(q)?q:0};});
     const totalCost=itemsWithQty.reduce((s,i)=>s+i.price*i.qty,0);
     return`<div class="sug-combo-card" onclick='applySugCombo(${JSON.stringify(co.items).replace(/'/g,"\\'")})'><div class="sug-combo-items">${co.label}<br>${itemsWithQty.map(i=>`<strong>${i.name}</strong> ~${fmt(i.qty)}개`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(totalCost)}</div></div>`;
   }).join('');
@@ -877,8 +892,9 @@ function renderVendorBar(comp){
 
 let allCountries=['국내','중국','기타해외'];
 
-// 초기화: 페이지 로드 시 서버에서 데이터 가져오기
+// 초기화: 페이지 로드 시 서버에서 데이터 + 환율 가져오기
 loadData();
+loadFx();
 renderCombo();
 </script>
 </body>
