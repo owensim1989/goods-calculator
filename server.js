@@ -236,7 +236,8 @@ app.get('/api/products', (req, res) => {
   // 통화 환산 + 부대비용 포함 단가 계산
   const enriched = items.map(it => {
     const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
-    const currency = it.통화 || 'KRW';
+    // 통화 필드 우선, 없으면 국가 기반 추정 (fallback)
+    const currency = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
     const fxRate = currency === 'USD' ? fxCache.USD
                  : currency === 'RMB' ? fxCache.RMB
                  : 1;
@@ -286,7 +287,7 @@ app.get('/api/compare', (req, res) => {
     // 통화 환산 후 KRW 단가 배열
     const krwPrices = records.map(r => {
       if (r.개당단가 == null) return null;
-      const cur = r.통화 || 'KRW';
+      const cur = r.통화 || (r.국가 === '중국' || r.국가 === '기타해외' ? 'USD' : 'KRW');
       const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
       return Math.round(r.개당단가 * fx);
     }).filter(x => x != null);
@@ -330,7 +331,7 @@ app.get('/api/budget', (req, res) => {
       if (!productMap[name]) productMap[name] = { 품명: name, 품목: it.품목, prices: [], countries: new Set() };
       if (it.개당단가 != null) {
         const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
-        const cur = it.통화 || 'KRW';
+        const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
         const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
         const krwPrice = Math.round(it.개당단가 * fx);
         const adjustedPrice = 국가 && 국가 !== it.국가 ? null : Math.round(krwPrice * (1 + surcharge.rate));
