@@ -135,6 +135,7 @@ function parsePage(page) {
     데이터유형: extractProp(page, '데이터유형', 'select'),
     데이터출처: extractProp(page, '데이터출처', 'rich_text'),
     연락처: extractProp(page, '연락처', 'rich_text'),
+    통화: extractProp(page, '통화', 'select'),
   };
 }
 
@@ -232,13 +233,30 @@ app.get('/api/products', (req, res) => {
   if (거래처) items = items.filter(i => i.거래처 === 거래처);
   if (데이터유형) items = items.filter(i => i.데이터유형 === 데이터유형);
 
-  // 부대비용 포함 단가 계산
+  // 통화 환산 + 부대비용 포함 단가 계산
   const enriched = items.map(it => {
     const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
-    const 개당단가_부대비용포함 = it.개당단가 != null
-      ? Math.round(it.개당단가 * (1 + surcharge.rate))
+    const currency = it.통화 || 'KRW';
+    const fxRate = currency === 'USD' ? fxCache.USD
+                 : currency === 'RMB' ? fxCache.RMB
+                 : 1;
+    // 원본 단가(원래 통화)
+    const 원본단가 = it.개당단가;
+    // KRW 환산 단가
+    const 개당단가_KRW = 원본단가 != null ? Math.round(원본단가 * fxRate) : null;
+    // KRW 환산 + 부대비용
+    const 개당단가_부대비용포함 = 개당단가_KRW != null
+      ? Math.round(개당단가_KRW * (1 + surcharge.rate))
       : null;
-    return { ...it, 개당단가_부대비용포함, 부대비용율: surcharge.rate, 부대비용설명: surcharge.label };
+    return {
+      ...it,
+      통화: currency,
+      환율: fxRate,
+      개당단가_KRW,
+      개당단가_부대비용포함,
+      부대비용율: surcharge.rate,
+      부대비용설명: surcharge.label,
+    };
   });
 
   res.json({
@@ -264,18 +282,25 @@ app.get('/api/compare', (req, res) => {
 
   const comparison = Object.values(byVendor).map(group => {
     const records = group.records;
-    const prices = records.map(r => r.개당단가).filter(x => x != null);
     const surcharge = SURCHARGE[group.국가] || SURCHARGE['국내'];
+    // 통화 환산 후 KRW 단가 배열
+    const krwPrices = records.map(r => {
+      if (r.개당단가 == null) return null;
+      const cur = r.통화 || 'KRW';
+      const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+      return Math.round(r.개당단가 * fx);
+    }).filter(x => x != null);
 
     return {
       거래처: group.거래처,
       국가: group.국가,
+      통화: records[0]?.통화 || 'KRW',
       건수: records.length,
-      최저단가: prices.length ? Math.min(...prices) : null,
-      최고단가: prices.length ? Math.max(...prices) : null,
-      평균단가: prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : null,
-      평균단가_부대비용포함: prices.length
-        ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length * (1 + surcharge.rate))
+      최저단가: krwPrices.length ? Math.min(...krwPrices) : null,
+      최고단가: krwPrices.length ? Math.max(...krwPrices) : null,
+      평균단가: krwPrices.length ? Math.round(krwPrices.reduce((a, b) => a + b, 0) / krwPrices.length) : null,
+      평균단가_부대비용포함: krwPrices.length
+        ? Math.round(krwPrices.reduce((a, b) => a + b, 0) / krwPrices.length * (1 + surcharge.rate))
         : null,
       부대비용율: surcharge.rate,
       제작기간: records.map(r => r.제작기간).filter(Boolean),
@@ -305,8 +330,11 @@ app.get('/api/budget', (req, res) => {
       if (!productMap[name]) productMap[name] = { 품명: name, 품목: it.품목, prices: [], countries: new Set() };
       if (it.개당단가 != null) {
         const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
-        const adjustedPrice = 국가 && 국가 !== it.국가 ? null : Math.round(it.개당단가 * (1 + surcharge.rate));
-        if (adjustedPrice != null) {
+        const cur = it.통화 || 'KRW';
+        const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+        const krwPrice = Math.round(it.개당단가 * fx);
+        const adjustedPrice = 국가 && 국가 !== it.국가 ? null : Math.round(krwPrice * (1 + surcharge.rate));
+        if (adjustedPrice != null && adjustedPrice > 0) {
           productMap[name].prices.push(adjustedPrice);
           productMap[name].countries.add(it.국가 || '국내');
         }
