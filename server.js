@@ -136,6 +136,12 @@ function parsePage(page) {
     데이터출처: extractProp(page, '데이터출처', 'rich_text'),
     연락처: extractProp(page, '연락처', 'rich_text'),
     통화: extractProp(page, '통화', 'select'),
+    해외운송비: extractProp(page, '해외운송비', 'number'),
+    관세: extractProp(page, '관세', 'number'),
+    부가세: extractProp(page, '부가세', 'number'),
+    기타부대비용: extractProp(page, '기타부대비용', 'number'),
+    부대비용메모: extractProp(page, '부대비용메모', 'rich_text'),
+    부대비용상태: extractProp(page, '부대비용상태', 'select'),
   };
 }
 
@@ -245,18 +251,40 @@ app.get('/api/products', (req, res) => {
     const 원본단가 = it.개당단가;
     // KRW 환산 단가
     const 개당단가_KRW = 원본단가 != null ? Math.round(원본단가 * fxRate) : null;
-    // KRW 환산 + 부대비용
-    const 개당단가_부대비용포함 = 개당단가_KRW != null
-      ? Math.round(개당단가_KRW * (1 + surcharge.rate))
-      : null;
+
+    // 부대비용: 확정이면 실제 금액, 아니면 % 추정
+    const 부대비용합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
+    const is확정 = it.부대비용상태 === '확정' && 부대비용합계 > 0;
+    let 개당단가_부대비용포함, 부대비용율_실제, 부대비용설명_실제;
+
+    if (is확정 && it.수량 > 0) {
+      // 확정: 제작비 + 부대비용합계 → 개당
+      const 개당부대비용 = Math.round(부대비용합계 / it.수량);
+      개당단가_부대비용포함 = 개당단가_KRW != null ? 개당단가_KRW + 개당부대비용 : null;
+      부대비용율_실제 = 개당단가_KRW ? 부대비용합계 / (개당단가_KRW * it.수량) : 0;
+      부대비용설명_실제 = '확정';
+    } else {
+      개당단가_부대비용포함 = 개당단가_KRW != null
+        ? Math.round(개당단가_KRW * (1 + surcharge.rate))
+        : null;
+      부대비용율_실제 = surcharge.rate;
+      부대비용설명_실제 = surcharge.rate > 0 ? '추정' : '없음';
+    }
+
     return {
       ...it,
       통화: currency,
       환율: fxRate,
       개당단가_KRW,
       개당단가_부대비용포함,
-      부대비용율: surcharge.rate,
-      부대비용설명: surcharge.label,
+      부대비용율: 부대비용율_실제,
+      부대비용설명: 부대비용설명_실제,
+      부대비용상태: it.부대비용상태 || (surcharge.rate > 0 ? '추정' : null),
+      부대비용합계,
+      해외운송비: it.해외운송비,
+      관세: it.관세,
+      부가세: it.부가세,
+      기타부대비용: it.기타부대비용,
     };
   });
 
@@ -284,13 +312,20 @@ app.get('/api/compare', (req, res) => {
   const comparison = Object.values(byVendor).map(group => {
     const records = group.records;
     const surcharge = SURCHARGE[group.국가] || SURCHARGE['국내'];
-    // 통화 환산 후 KRW 단가 배열
-    const krwPrices = records.map(r => {
+    // 통화 환산 + 부대비용(확정/추정) 반영 단가 배열
+    const adjustedPrices = records.map(r => {
       if (r.개당단가 == null) return null;
       const cur = r.통화 || (r.국가 === '중국' || r.국가 === '기타해외' ? 'USD' : 'KRW');
       const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
-      return Math.round(r.개당단가 * fx);
+      const krw = Math.round(r.개당단가 * fx);
+      const 부대합계 = (r.해외운송비 || 0) + (r.관세 || 0) + (r.부가세 || 0) + (r.기타부대비용 || 0);
+      if (r.부대비용상태 === '확정' && 부대합계 > 0 && r.수량 > 0) {
+        return { krw, adjusted: krw + Math.round(부대합계 / r.수량) };
+      }
+      return { krw, adjusted: Math.round(krw * (1 + surcharge.rate)) };
     }).filter(x => x != null);
+    const krwPrices = adjustedPrices.map(p => p.krw);
+    const adjPrices = adjustedPrices.map(p => p.adjusted);
 
     return {
       거래처: group.거래처,
@@ -300,8 +335,8 @@ app.get('/api/compare', (req, res) => {
       최저단가: krwPrices.length ? Math.min(...krwPrices) : null,
       최고단가: krwPrices.length ? Math.max(...krwPrices) : null,
       평균단가: krwPrices.length ? Math.round(krwPrices.reduce((a, b) => a + b, 0) / krwPrices.length) : null,
-      평균단가_부대비용포함: krwPrices.length
-        ? Math.round(krwPrices.reduce((a, b) => a + b, 0) / krwPrices.length * (1 + surcharge.rate))
+      평균단가_부대비용포함: adjPrices.length
+        ? Math.round(adjPrices.reduce((a, b) => a + b, 0) / adjPrices.length)
         : null,
       부대비용율: surcharge.rate,
       제작기간: records.map(r => r.제작기간).filter(Boolean),
