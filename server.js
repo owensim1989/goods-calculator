@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 3100;
 
 // ━━━ 환경변수 ━━━
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
-const UNIFIED_DB_ID = process.env.UNIFIED_DB_ID || 'dea15bf8b2a54fa09a5b33661cf73c37';
+const UNIFIED_DB_ID = process.env.UNIFIED_DB_ID || 'be89a5d46bac4ffcbbc2e81e2ed425c3';
 const VENDOR_DB_ID  = process.env.VENDOR_DB_ID  || 'da7e2fc516d74c2aa0c742e7c394ce78';
 const ADMIN_SECRET  = process.env.ADMIN_SECRET   || '';
 
@@ -402,6 +402,41 @@ app.get('/api/surcharge', (req, res) => {
   res.json(SURCHARGE);
 });
 
+// ━━━ 실시간 환율 (캐시 1시간) ━━━
+let fxCache = { USD: 1380, RMB: 190, updatedAt: null };
+const https = require('https');
+
+function fetchJSON(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function refreshFx() {
+  try {
+    // open.er-api.com — 무료, 키 불필요
+    const data = await fetchJSON('https://open.er-api.com/v6/latest/USD');
+    if (data && data.rates && data.rates.KRW && data.rates.CNY) {
+      const usdKrw = Math.round(data.rates.KRW);           // USD → KRW
+      const rmbKrw = Math.round(data.rates.KRW / data.rates.CNY); // CNY → KRW
+      fxCache = { USD: usdKrw, RMB: rmbKrw, updatedAt: new Date().toISOString() };
+      console.log(`[환율] USD=${usdKrw} RMB=${rmbKrw}`);
+    }
+  } catch (e) {
+    console.error('[환율 갱신 실패]', e.message);
+  }
+}
+
+app.get('/api/fx', (req, res) => {
+  res.json(fxCache);
+});
+
 // SPA 폴백
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -410,8 +445,9 @@ app.get('*', (req, res) => {
 // ━━━ 서버 시작 ━━━
 app.listen(PORT, async () => {
   console.log(`[제품원가 계산기] http://localhost:${PORT}`);
-  // 시작 시 동기화
-  await syncFromNotion();
-  // 30분마다 자동 동기화
+  // 시작 시 동기화 + 환율
+  await Promise.all([syncFromNotion(), refreshFx()]);
+  // 30분마다 자동 동기화, 1시간마다 환율 갱신
   setInterval(syncFromNotion, 30 * 60 * 1000);
+  setInterval(refreshFx, 60 * 60 * 1000);
 });
