@@ -711,7 +711,7 @@ function searchBudget(){
       if(it.개당단가!=null){
         const r=SURCHARGE[it.국가]||0;if(aCountry&&!aCountry.includes(it.국가))return;
         if(dl!=null){const nd=(it.제작일수||14)+((it.국가==='중국'||it.국가==='기타해외')?10:0);if(dl<nd)return;}
-        const adjP=Math.round(it.개당단가*(1+r));if(adjP>0)pm[name].prices.push(adjP);pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
+        const cur=it.통화||(it.국가==='중국'||it.국가==='기타해외'?'USD':'KRW');const fx=cur==='USD'?FX.USD:cur==='RMB'?FX.RMB:1;const adjP=Math.round(it.개당단가*fx*(1+r));if(adjP>0)pm[name].prices.push(adjP);pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
       }
     });
   });
