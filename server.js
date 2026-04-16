@@ -466,6 +466,85 @@ app.get('/api/surcharge', (req, res) => {
   res.json(SURCHARGE);
 });
 
+// ━━━ 연동 API: 견적 계산기에서 제작 원가 조회 ━━━
+// CORS 허용 (jeisha-quote Worker에서 호출)
+app.get('/api/quote-assist', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const { 품명, 수량, 품목 } = req.query;
+  if (!품명) return res.status(400).json({ error: '품명 파라미터 필요' });
+
+  let items = (cache.items || []).filter(i => (i.품명 || []).includes(품명));
+  if (품목) items = items.filter(i => i.품목 === 품목);
+
+  if (!items.length) return res.json({ found: false, 품명, message: '데이터 없음' });
+
+  const qty = parseInt(수량) || null;
+
+  // 통화 환산 + 부대비용 반영 단가 계산
+  const enriched = items.map(it => {
+    const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
+    const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
+    const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+    const krw = it.개당단가 != null ? Math.round(it.개당단가 * fx) : null;
+
+    // 확정 부대비용 처리
+    const 부대합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
+    const is확정 = it.부대비용상태 === '확정' && 부대합계 > 0;
+    let adjPrice;
+    if (is확정 && it.수량 > 0) {
+      adjPrice = krw != null ? krw + Math.round(부대합계 / it.수량) : null;
+    } else {
+      adjPrice = krw != null ? Math.round(krw * (1 + surcharge.rate)) : null;
+    }
+    return { ...it, 개당단가_KRW: krw, 개당단가_부대비용포함: adjPrice, 부대비용상태: it.부대비용상태 || null };
+  }).filter(e => e.개당단가_부대비용포함 != null);
+
+  const prices = enriched.map(e => e.개당단가_부대비용포함);
+  const avgPrice = prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : null;
+  const minPrice = prices.length ? Math.min(...prices) : null;
+  const maxPrice = prices.length ? Math.max(...prices) : null;
+
+  // 최저가 거래처
+  const bestItem = enriched.reduce((best, e) => (!best || e.개당단가_부대비용포함 < best.개당단가_부대비용포함) ? e : best, null);
+
+  // 수량 기반 총 원가 추정
+  const estimate = qty && avgPrice ? { 총원가_평균: qty * avgPrice, 총원가_최저: qty * minPrice } : null;
+
+  res.json({
+    found: true,
+    품명,
+    데이터건수: enriched.length,
+    평균단가: avgPrice,
+    최저단가: minPrice,
+    최고단가: maxPrice,
+    추천거래처: bestItem ? { 거래처: bestItem.거래처 || '미지정', 국가: bestItem.국가, 단가: bestItem.개당단가_부대비용포함, 부대비용상태: bestItem.부대비용상태 } : null,
+    수량별추정: estimate,
+    거래처별: Object.values(enriched.reduce((acc, e) => {
+      const v = e.거래처 || '미지정';
+      if (!acc[v]) acc[v] = { 거래처: v, 국가: e.국가, prices: [] };
+      acc[v].prices.push(e.개당단가_부대비용포함);
+      return acc;
+    }, {})).map(g => ({
+      거래처: g.거래처, 국가: g.국가,
+      평균단가: Math.round(g.prices.reduce((a, b) => a + b, 0) / g.prices.length),
+      최저단가: Math.min(...g.prices), 건수: g.prices.length,
+    })).sort((a, b) => a.평균단가 - b.평균단가),
+  });
+});
+
+// 연동 API: 사용 가능한 품명 목록 (자동완성용)
+app.get('/api/quote-assist/options', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const items = cache.items || [];
+  const 품명Set = {};
+  items.forEach(it => {
+    (it.품명 || []).forEach(n => { 품명Set[n] = (품명Set[n] || 0) + 1; });
+  });
+  res.json({
+    품명: Object.entries(품명Set).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+  });
+});
+
 // ━━━ 실시간 환율 (캐시 1시간) ━━━
 let fxCache = { USD: 1380, RMB: 190, updatedAt: null };
 const https = require('https');
