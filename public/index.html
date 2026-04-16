@@ -166,6 +166,30 @@ tbody tr:hover{background:var(--primary-light);}
 .rec-card .rec-detail{display:flex;justify-content:space-between;font-size:13px;margin-top:6px;}
 .rec-card .rec-detail .val{font-weight:600;}
 .rec-card .best{color:var(--success);}
+.rec-card .surcharge-tag{font-size:10px;padding:2px 6px;border-radius:4px;margin-top:8px;display:inline-block;}
+.rec-card .surcharge-tag.included{background:rgba(251,191,36,0.15);color:#fbbf24;}
+.rec-card .surcharge-tag.domestic{background:rgba(52,211,153,0.15);color:#34d399;}
+
+/* 정렬 버튼 */
+.sort-bar{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+.sort-bar span.label{font-size:12px;color:var(--text-muted);margin-right:4px;}
+.sort-btn{font-size:12px;padding:4px 12px;border-radius:14px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;transition:all .15s;}
+.sort-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+/* 상세 패널 */
+.detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;}
+.detail-panel{background:var(--card);border-radius:12px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;padding:24px;position:relative;}
+.detail-panel .close-btn{position:absolute;top:12px;right:12px;background:none;border:none;font-size:20px;color:var(--text-muted);cursor:pointer;}
+.detail-panel h3{font-size:18px;font-weight:700;margin-bottom:4px;}
+.detail-panel .detail-sub{font-size:13px;color:var(--text-muted);margin-bottom:16px;}
+.detail-panel table{width:100%;border-collapse:collapse;font-size:13px;}
+.detail-panel th{text-align:left;padding:8px 6px;border-bottom:2px solid var(--border);color:var(--text-muted);font-weight:600;}
+.detail-panel td{padding:8px 6px;border-bottom:1px solid var(--border);}
+.detail-panel td.price{text-align:right;font-weight:600;}
+.detail-panel .summary-row{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;}
+.detail-panel .summary-item{flex:1;min-width:100px;background:var(--bg);border-radius:8px;padding:10px 12px;text-align:center;}
+.detail-panel .summary-item .s-label{font-size:11px;color:var(--text-muted);}
+.detail-panel .summary-item .s-val{font-size:18px;font-weight:700;margin-top:2px;}
 
 .empty-state{text-align:center;padding:60px 20px;color:var(--text-muted);}
 .empty-state .icon{font-size:48px;margin-bottom:12px;}
@@ -322,7 +346,14 @@ tbody tr:hover{background:var(--primary-light);}
     <button class="btn-export" id="btn-export" style="display:none;" onclick="exportToQuote()">📤 견적계산기로 내보내기</button>
   </div>
   <div class="suggested-combos" id="suggested-combos" style="display:none;"><h4>추천 조합</h4><div id="sug-combo-list"></div></div>
-  <div id="budget-results" style="margin-top:16px;"></div>
+  <div id="budget-sort-bar" class="sort-bar" style="display:none;margin-top:16px;">
+    <span class="label">정렬:</span>
+    <button class="sort-btn active" onclick="sortBudget('price')">낮은가격순</button>
+    <button class="sort-btn" onclick="sortBudget('qty')">수량순</button>
+    <button class="sort-btn" onclick="sortBudget('cat')">카테고리별</button>
+  </div>
+  <div id="budget-results" style="margin-top:8px;"></div>
+  <div id="budget-detail-overlay"></div>
   <div class="empty-state" id="budget-empty"><div class="icon">💰</div><p>예산을 입력하면 제작 가능한 제품과 수량을 추천합니다</p></div>
 </div>
 
@@ -699,6 +730,8 @@ let comboItems=[];
 
 function getBudget(){return parseInt((document.getElementById('budget-input').value||'').replace(/\D/g,''))||0;}
 
+let budgetSortMode='price'; // 'price','qty','cat'
+
 function searchBudget(){
   const budget=getBudget(),aCountry=getChecked('b-country'),aCats=getChecked('b-cat'),aProds=getChecked('b-prod'),dl=gDays(globalDL);
   if(!budget){alert('예산을 입력해주세요');return;}
@@ -707,31 +740,80 @@ function searchBudget(){
     if(aCats&&!aCats.includes(it.품목))return;
     if(aProds&&!(it.품명||[]).some(n=>aProds.includes(n)))return;
     (it.품명||[]).forEach(name=>{
-      if(!pm[name])pm[name]={품명:name,품목:it.품목,prices:[],countries:new Set(),제작일수:[]};
+      if(!pm[name])pm[name]={품명:name,품목:it.품목,prices:[],countries:new Set(),제작일수:[],details:[]};
       if(it.개당단가!=null){
         const r=SURCHARGE[it.국가]||0;if(aCountry&&!aCountry.includes(it.국가))return;
         if(dl!=null){const nd=(it.제작일수||14)+((it.국가==='중국'||it.국가==='기타해외')?10:0);if(dl<nd)return;}
-        const cur=it.통화||(it.국가==='중국'||it.국가==='기타해외'?'USD':'KRW');const fx=cur==='USD'?FX.USD:cur==='RMB'?FX.RMB:1;const adjP=Math.round(it.개당단가*fx*(1+r));if(adjP>0)pm[name].prices.push(adjP);pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
+        const cur=it.통화||(it.국가==='중국'||it.국가==='기타해외'?'USD':'KRW');const fx=cur==='USD'?FX.USD:cur==='RMB'?FX.RMB:1;const krw=Math.round(it.개당단가*fx);const adjP=Math.round(krw*(1+r));
+        if(adjP>0){
+          pm[name].prices.push(adjP);pm[name].countries.add(it.국가||'국내');pm[name].제작일수.push(it.제작일수||14);
+          pm[name].details.push({거래처:it.거래처||'-',국가:it.국가||'국내',통화:cur,원본단가:it.개당단가,KRW단가:krw,부대비용포함:adjP,수량:it.수량,부대비용율:r,프로젝트명:it.프로젝트명||'-',제작일수:it.제작일수||null});
+        }
       }
     });
   });
-  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);const qAvg=avg>0?Math.floor(budget/avg):0;const qMax=min>0?Math.floor(budget/min):0;return{품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,예상수량_평균:isFinite(qAvg)?qAvg:0,예상수량_최대:isFinite(qMax)?qMax:0,데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD};}).filter(p=>p.예상수량_최대>0&&p.평균단가>0).sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
+  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);const qAvg=avg>0?Math.floor(budget/avg):0;const qMax=min>0?Math.floor(budget/min):0;const hasOverseas=p.details.some(d=>d.국가==='중국'||d.국가==='기타해외');return{품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,예상수량_평균:isFinite(qAvg)?qAvg:0,예상수량_최대:isFinite(qMax)?qMax:0,데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD,details:p.details.sort((a,b)=>a.부대비용포함-b.부대비용포함),hasOverseas};}).filter(p=>p.예상수량_최대>0&&p.평균단가>0);
   const cont=document.getElementById('budget-results'),empty=document.getElementById('budget-empty');
-  if(!budgetRecs.length){cont.innerHTML='';empty.style.display='block';empty.querySelector('p').textContent='조건에 맞는 제품이 없습니다';document.getElementById('suggested-combos').style.display='none';return;}
+  if(!budgetRecs.length){cont.innerHTML='';empty.style.display='block';empty.querySelector('p').textContent='조건에 맞는 제품이 없습니다';document.getElementById('suggested-combos').style.display='none';document.getElementById('budget-sort-bar').style.display='none';return;}
   empty.style.display='none';
-
-  // 품목별 그룹 정렬 후 렌더
-  const grouped={};
-  budgetRecs.forEach(r=>{const cat=r.품목||'기타';if(!grouped[cat])grouped[cat]=[];grouped[cat].push(r);});
-  let html='';
-  Object.keys(grouped).forEach(cat=>{
-    html+=`<div class="cat-group-header">${cat}</div><div class="rec-grid" style="margin-bottom:8px;">`;
-    html+=grouped[cat].map(r=>`<div class="rec-card" onclick="addToCombo('${r.품명}',${r.평균단가})"><div class="product-name">${r.품명}<span class="add-hint">+ 조합추가</span></div><div class="product-cat">${r.국가.join('/')} · ${r.데이터건수}건 · 평균 ${r.평균제작일수}일</div><div class="rec-detail"><span>평균단가</span><span class="val">${fmtP(r.평균단가)}</span></div><div class="rec-detail"><span>최저단가</span><span class="val">${fmtP(r.최저단가)}</span></div><div class="rec-detail"><span>예상수량</span><span class="val best">${fmt(r.예상수량_평균)}~${fmt(r.예상수량_최대)}개</span></div><div style="margin-top:8px">${trustHTML(r.데이터건수)}</div></div>`).join('');
-    html+=`</div>`;
-  });
-  cont.innerHTML=html;
+  document.getElementById('budget-sort-bar').style.display='flex';
+  sortBudget(budgetSortMode);
   genSugCombos(budget);
 }
+
+function sortBudget(mode){
+  budgetSortMode=mode;
+  document.querySelectorAll('#budget-sort-bar .sort-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`#budget-sort-bar .sort-btn[onclick*="'${mode}'"]`).classList.add('active');
+  renderBudgetCards();
+}
+
+function budgetSurchargeTag(r){
+  if(!r.hasOverseas)return'<span class="surcharge-tag domestic">국내 · 부대비용 없음</span>';
+  const rates=[...new Set(r.details.filter(d=>d.부대비용율>0).map(d=>Math.round(d.부대비용율*100)))];
+  if(!rates.length)return'<span class="surcharge-tag domestic">국내 · 부대비용 없음</span>';
+  return`<span class="surcharge-tag included">부대비용 +${rates.join('/')}% 추정 가산</span>`;
+}
+
+function renderBudgetCards(){
+  let sorted=[...budgetRecs];
+  if(budgetSortMode==='price')sorted.sort((a,b)=>a.평균단가-b.평균단가);
+  else if(budgetSortMode==='qty')sorted.sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
+  // 'cat' stays in category groups
+
+  const cont=document.getElementById('budget-results');
+  const renderCard=r=>`<div class="rec-card" onclick="event.stopPropagation();addToCombo('${r.품명}',${r.평균단가})"><div class="product-name">${r.품명}<span class="add-hint">+ 조합추가</span> <span style="font-size:11px;cursor:pointer;color:var(--primary);margin-left:4px;" onclick="event.stopPropagation();showBudgetDetail('${r.품명}')">상세▸</span></div><div class="product-cat">${r.국가.join('/')} · ${r.데이터건수}건 · 평균 ${r.평균제작일수}일</div><div class="rec-detail"><span>평균단가</span><span class="val">${fmtP(r.평균단가)}</span></div><div class="rec-detail"><span>최저단가</span><span class="val">${fmtP(r.최저단가)}</span></div><div class="rec-detail"><span>예상수량</span><span class="val best">${fmt(r.예상수량_평균)}~${fmt(r.예상수량_최대)}개</span></div>${budgetSurchargeTag(r)}<div style="margin-top:6px">${trustHTML(r.데이터건수)}</div></div>`;
+
+  let html='';
+  if(budgetSortMode==='cat'){
+    const grouped={};
+    sorted.forEach(r=>{const cat=r.품목||'기타';if(!grouped[cat])grouped[cat]=[];grouped[cat].push(r);});
+    Object.keys(grouped).forEach(cat=>{
+      grouped[cat].sort((a,b)=>a.평균단가-b.평균단가);
+      html+=`<div class="cat-group-header">${cat}</div><div class="rec-grid" style="margin-bottom:8px;">`;
+      html+=grouped[cat].map(renderCard).join('');
+      html+=`</div>`;
+    });
+  }else{
+    html+=`<div class="rec-grid">`;
+    html+=sorted.map(renderCard).join('');
+    html+=`</div>`;
+  }
+  cont.innerHTML=html;
+}
+
+function showBudgetDetail(name){
+  const rec=budgetRecs.find(r=>r.품명===name);
+  if(!rec)return;
+  const ol=document.getElementById('budget-detail-overlay');
+  const rows=rec.details.map(d=>{
+    const fxLabel=d.통화!=='KRW'?`<span style="font-size:11px;color:var(--text-muted)">${d.통화} ${d.원본단가}</span>`:'';
+    const costLabel=d.부대비용율>0?`<span style="font-size:10px;color:#fbbf24">+${Math.round(d.부대비용율*100)}%</span>`:'';
+    return`<tr><td>${d.거래처}</td><td>${cB(d.국가)}</td><td class="price">${fmtP(d.KRW단가)} ${fxLabel}</td><td class="price">${fmtP(d.부대비용포함)} ${costLabel}</td><td style="text-align:right">${d.수량?fmt(d.수량):'-'}</td><td style="text-align:right">${d.제작일수?d.제작일수+'일':'-'}</td></tr>`;
+  }).join('');
+  ol.innerHTML=`<div class="detail-overlay" onclick="closeBudgetDetail()"><div class="detail-panel" onclick="event.stopPropagation()"><button class="close-btn" onclick="closeBudgetDetail()">✕</button><h3>${rec.품명}</h3><div class="detail-sub">${rec.품목} · ${rec.국가.join('/')} · ${rec.데이터건수}건</div><div class="summary-row"><div class="summary-item"><div class="s-label">평균단가</div><div class="s-val">${fmtP(rec.평균단가)}</div></div><div class="summary-item"><div class="s-label">최저단가</div><div class="s-val" style="color:var(--success)">${fmtP(rec.최저단가)}</div></div><div class="summary-item"><div class="s-label">예상수량</div><div class="s-val">${fmt(rec.예상수량_평균)}개</div></div></div><table><thead><tr><th>거래처</th><th>국가</th><th>단가(KRW)</th><th>부대비용포함</th><th style="text-align:right">수량</th><th style="text-align:right">납기</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+function closeBudgetDetail(){document.getElementById('budget-detail-overlay').innerHTML='';}
 
 // ━━━ 조합빌더: 마진 ↔ 수량 연동 (소수점 지원) ━━━
 function addToCombo(name,unitPrice){
