@@ -111,6 +111,11 @@ tbody tr:hover{background:var(--primary-light);}
 .cat-dd-item{padding:8px 12px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;}
 .cat-dd-item:hover{background:var(--primary-light);}
 .cat-dd-item input[type="checkbox"]{accent-color:var(--primary);width:16px;height:16px;cursor:pointer;}
+/* 선택된 행 하이라이트 */
+#product-tbody tr.row-selected{background:color-mix(in srgb,var(--primary) 10%,var(--bg));}
+/* 체크박스 다크모드 */
+input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);border:1px solid var(--border);border-radius:3px;appearance:auto;}
+[data-theme="dark"] input[type="checkbox"]{color-scheme:dark;}
 .cat-dd-item label{cursor:pointer;flex:1;}
 .cat-dd-item .solo-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;color:var(--text-muted);cursor:pointer;white-space:nowrap;opacity:0;transition:opacity .15s;}
 .cat-dd-item:hover .solo-btn{opacity:1;}
@@ -160,6 +165,8 @@ tbody tr:hover{background:var(--primary-light);}
 .rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
 .rec-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;cursor:pointer;transition:all .2s;}
 .rec-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.1);border-color:var(--primary);}
+.rec-card.selected{border-color:var(--success);border-width:2px;background:color-mix(in srgb,var(--success) 8%,var(--card));box-shadow:0 0 12px rgba(52,211,153,0.15);}
+.rec-card.selected .add-hint{background:var(--success);color:#fff;}
 .rec-card .product-name{font-size:15px;font-weight:600;margin-bottom:4px;}
 .rec-card .add-hint{font-size:11px;color:var(--primary);background:var(--primary-light);padding:2px 8px;border-radius:10px;margin-left:6px;}
 .rec-card .product-cat{font-size:12px;color:var(--text-muted);margin-bottom:12px;}
@@ -622,6 +629,9 @@ function goToVendorTab(){
 // ━━━ 복수선택 비교 ━━━
 function onCompareCheck(idx,checked){
   if(checked)compareSelected.add(idx);else compareSelected.delete(idx);
+  // 행 하이라이트
+  const rows=document.querySelectorAll('#product-tbody tr');
+  if(rows[idx])rows[idx].classList.toggle('row-selected',checked);
   updateCompareBar();
 }
 function toggleAllCompare(checked){
@@ -680,6 +690,11 @@ function showComparePanel(){
   panel.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function hideComparePanel(){document.getElementById('compare-panel').classList.remove('show');}
+function toggleRowCheck(idx,tr){
+  const cb=tr.querySelector('input[type="checkbox"]');
+  cb.checked=!cb.checked;
+  onCompareCheck(idx,cb.checked);
+}
 
 // ━━━ 제품→단가 ━━━
 function searchProducts(){
@@ -735,7 +750,7 @@ function searchProducts(){
     }else{
       제작비HTML=`<span style="color:var(--text-muted)">-</span>`;
     }
-    return`<tr><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${i.거래처||'-'}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    return`<tr style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${i.거래처||'-'}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
@@ -845,7 +860,8 @@ function renderBudgetCards(){
   // 'cat' stays in category groups
 
   const cont=document.getElementById('budget-results');
-  const renderCard=r=>`<div class="rec-card" onclick="event.stopPropagation();addToCombo('${r.품명}',${r.평균단가})"><div class="product-name">${r.품명}<span class="add-hint">+ 조합추가</span> <span style="font-size:11px;cursor:pointer;color:var(--primary);margin-left:4px;" onclick="event.stopPropagation();showBudgetDetail('${r.품명}')">상세▸</span></div><div class="product-cat">${r.국가.join('/')} · ${r.데이터건수}건 · 평균 ${r.평균제작일수}일</div><div class="rec-detail"><span>평균단가</span><span class="val">${fmtP(r.평균단가)}</span></div><div class="rec-detail"><span>최저단가</span><span class="val">${fmtP(r.최저단가)}</span></div><div class="rec-detail"><span>예상수량</span><span class="val best">${fmt(r.예상수량_평균)}~${fmt(r.예상수량_최대)}개</span></div>${budgetSurchargeTag(r)}<div style="margin-top:6px">${trustHTML(r.데이터건수)}</div></div>`;
+  const isInCombo=name=>comboItems.some(c=>c.name===name);
+  const renderCard=r=>{const sel=isInCombo(r.품명);return`<div class="rec-card${sel?' selected':''}" onclick="event.stopPropagation();toggleCombo('${r.품명}',${r.평균단가})"><div class="product-name">${r.품명}<span class="add-hint">${sel?'✓ 선택됨':'+ 조합추가'}</span> <span style="font-size:11px;cursor:pointer;color:var(--primary);margin-left:4px;" onclick="event.stopPropagation();showBudgetDetail('${r.품명}')">상세▸</span></div><div class="product-cat">${r.국가.join('/')} · ${r.데이터건수}건 · 평균 ${r.평균제작일수}일</div><div class="rec-detail"><span>평균단가</span><span class="val">${fmtP(r.평균단가)}</span></div><div class="rec-detail"><span>최저단가</span><span class="val">${fmtP(r.최저단가)}</span></div><div class="rec-detail"><span>예상수량</span><span class="val best">${fmt(r.예상수량_평균)}~${fmt(r.예상수량_최대)}개</span></div>${budgetSurchargeTag(r)}<div style="margin-top:6px">${trustHTML(r.데이터건수)}</div></div>`;
 
   let html='';
   if(budgetSortMode==='cat'){
@@ -879,12 +895,16 @@ function showBudgetDetail(name){
 function closeBudgetDetail(){document.getElementById('budget-detail-overlay').innerHTML='';}
 
 // ━━━ 조합빌더: 마진 ↔ 수량 연동 (소수점 지원) ━━━
+function toggleCombo(name,unitPrice){
+  if(comboItems.find(c=>c.name===name)){removeFromCombo(name);}
+  else{addToCombo(name,unitPrice);}
+}
 function addToCombo(name,unitPrice){
   if(comboItems.find(c=>c.name===name))return;
   comboItems.push({name,unitPrice,margin:30});
-  recalcComboQty();renderCombo();
+  recalcComboQty();renderCombo();renderBudgetCards();
 }
-function removeFromCombo(name){comboItems=comboItems.filter(c=>c.name!==name);recalcComboQty();renderCombo();}
+function removeFromCombo(name){comboItems=comboItems.filter(c=>c.name!==name);recalcComboQty();renderCombo();renderBudgetCards();}
 
 // 마진율(%) 입력
 function onMarginRateChange(name,val){
