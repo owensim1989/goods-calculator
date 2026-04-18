@@ -435,13 +435,13 @@ function getFxForCurrency(cur){
 function fmtFx(krw,cur){
   const fx=getFxForCurrency(cur);
   if(!fx||!krw)return'';
-  const val=(krw/fx.rate).toFixed(1);
+  const val=(krw/fx.rate).toFixed(2);
   return`<span class="currency-sub">${fx.code} ${val}</span>`;
 }
 // 원본 통화 단가를 직접 표시 (역산 X)
 function fmtOriginal(originalVal,cur){
   if(originalVal==null||!cur||cur==='KRW')return'';
-  return`<span class="currency-sub">${cur} ${Number(originalVal).toLocaleString('en',{minimumFractionDigits:1,maximumFractionDigits:1})}</span>`;
+  return`<span class="currency-sub">${cur} ${Number(originalVal).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
 }
 
 // ━━━ 서버 데이터 로드 + 동기화 ━━━
@@ -892,7 +892,7 @@ function showBudgetDetail(name){
   if(!rec)return;
   const ol=document.getElementById('budget-detail-overlay');
   const rows=rec.details.map(d=>{
-    const fxLabel=d.통화!=='KRW'?`<span style="font-size:11px;color:var(--text-muted)">${d.통화} ${d.원본단가}</span>`:'';
+    const fxLabel=d.통화!=='KRW'?`<span style="font-size:11px;color:var(--text-muted)">${d.통화} ${d.통화==='KRW'?Number(d.원본단가).toLocaleString('ko-KR'):Number(d.원본단가).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`:'';
     const costLabel=d.부대비용상태==='확정'?`<span style="font-size:10px;color:#60a5fa">확정</span>`:d.부대비용율>0?`<span style="font-size:10px;color:#fbbf24">+${Math.round(d.부대비용율*100)}%</span>`:'';
     return`<tr><td>${d.거래처}</td><td>${cB(d.국가)}</td><td class="price">${fmtP(d.KRW단가)} ${fxLabel}</td><td class="price">${fmtP(d.부대비용포함)} ${costLabel}</td><td style="text-align:right">${d.수량?fmt(d.수량):'-'}</td><td style="text-align:right">${d.제작일수?d.제작일수+'일':'-'}</td></tr>`;
   }).join('');
