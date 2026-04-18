@@ -247,36 +247,49 @@ app.get('/api/products', (req, res) => {
     const fxRate = currency === 'USD' ? fxCache.USD
                  : currency === 'RMB' ? fxCache.RMB
                  : 1;
-    // 원본 단가(원래 통화)
+    // 원본 단가(원래 통화) — Notion formula: 제작비 ÷ 수량
     const 원본단가 = it.개당단가;
-    // KRW 환산 단가
+    // ① 제작단가: KRW 환산
     const 개당단가_KRW = 원본단가 != null ? Math.round(원본단가 * fxRate) : null;
 
-    // 부대비용: 확정이면 실제 금액, 아니면 % 추정
+    // 제작비도 KRW 환산 (Notion 제작비는 원래 통화 기준)
+    const 제작비_KRW = it.제작비 != null ? Math.round(it.제작비 * fxRate) : null;
+
+    // ② 부대비용(개당): 확정이면 실제 금액, 아니면 % 추정
     const 부대비용합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
     const is확정 = it.부대비용상태 === '확정' && 부대비용합계 > 0;
+    let 개당부대비용_val = 0;
     let 개당단가_부대비용포함, 부대비용율_실제, 부대비용설명_실제;
 
     if (is확정 && it.수량 > 0) {
-      // 확정: 제작비 + 부대비용합계 → 개당
-      const 개당부대비용 = Math.round(부대비용합계 / it.수량);
-      개당단가_부대비용포함 = 개당단가_KRW != null ? 개당단가_KRW + 개당부대비용 : null;
+      // 확정: 실제 부대비용 합계 → 개당 분배
+      개당부대비용_val = Math.round(부대비용합계 / it.수량);
+      개당단가_부대비용포함 = 개당단가_KRW != null ? 개당단가_KRW + 개당부대비용_val : null;
       부대비용율_실제 = 개당단가_KRW ? 부대비용합계 / (개당단가_KRW * it.수량) : 0;
       부대비용설명_실제 = '확정';
     } else {
+      개당부대비용_val = 개당단가_KRW != null ? Math.round(개당단가_KRW * surcharge.rate) : 0;
       개당단가_부대비용포함 = 개당단가_KRW != null
-        ? Math.round(개당단가_KRW * (1 + surcharge.rate))
+        ? 개당단가_KRW + 개당부대비용_val
         : null;
       부대비용율_실제 = surcharge.rate;
       부대비용설명_실제 = surcharge.rate > 0 ? '추정' : '없음';
     }
+
+    // ③ 최종단가 = 개당단가_부대비용포함 (이미 위에서 계산)
+    // 총 제작비: 자동산출 = ③ × 수량
+    const 총제작비_자동 = (개당단가_부대비용포함 != null && it.수량)
+      ? 개당단가_부대비용포함 * it.수량 : null;
 
     return {
       ...it,
       통화: currency,
       환율: fxRate,
       개당단가_KRW,
+      개당부대비용: 개당부대비용_val,
       개당단가_부대비용포함,
+      제작비_KRW,
+      총제작비_자동,
       부대비용율: 부대비용율_실제,
       부대비용설명: 부대비용설명_실제,
       부대비용상태: it.부대비용상태 || (surcharge.rate > 0 ? '추정' : null),
