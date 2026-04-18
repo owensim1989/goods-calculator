@@ -445,11 +445,17 @@ function fmtOriginal(originalVal,cur){
 }
 
 // ━━━ 서버 데이터 로드 + 동기화 ━━━
-async function loadData(){
+async function loadData(retryCount=0){
   try{
     const res=await fetch('/api/products');
     const json=await res.json();
     DATA=json.items||json||[];
+    // 0건이면 서버 동기화 후 재시도 (배포 직후 캐시 미생성 대응, 최대 2회)
+    if(DATA.length===0&&retryCount<2){
+      showToast('서버 동기화 중... 잠시 대기');
+      await fetch('/api/sync',{method:'POST'});
+      return loadData(retryCount+1);
+    }
     // 품명이 문자열인 경우 배열로 변환, null/undefined 방어
     DATA.forEach(d=>{
       if(typeof d.품명==='string')d.품명=[d.품명];
