@@ -654,10 +654,14 @@ function showComparePanel(){
     const curTag=i.통화&&i.통화!=='KRW'?` <span style="font-size:10px;opacity:.7">[${i.통화}]</span>`:'';
     const origUnit=fmtOriginal(i.개당단가,i.통화);
     const fxFinal=fmtFx(i.개당단가_부대비용포함,i.통화);
-    // 총 제작비
-    const has입력=i.제작비!=null&&i.제작비>0;
-    const 입력KRW=i.제작비_KRW||i.제작비;
-    const 제작비텍스트=has입력?`${fmtP(입력KRW)} <span style="font-size:9px;color:var(--warning)">(입력)</span>`:(i.총제작비_자동?`${fmtP(i.총제작비_자동)} <span style="font-size:9px;color:var(--accent)">(자동)</span>`:'—');
+    // 총 제작비: 자동(총원가) 우선
+    const has입력m=i.제작비!=null&&i.제작비>0;
+    const has자동m=i.총제작비_자동!=null&&i.총제작비_자동>0;
+    let 제작비텍스트='—';
+    if(has자동m){
+      제작비텍스트=`${fmtP(i.총제작비_자동)} <span style="font-size:9px;color:var(--accent)">(총원가)</span>`;
+      if(has입력m){const 입력KRW=i.제작비_KRW||i.제작비;제작비텍스트+=`<br><span style="font-size:10px;color:var(--text-muted)">${fmtP(입력KRW)} (제작비)</span>`;}
+    }else if(has입력m){const 입력KRW=i.제작비_KRW||i.제작비;제작비텍스트=`${fmtP(입력KRW)} <span style="font-size:9px;color:var(--warning)">(제작비)</span>`;}
     const sTag=i.부대비용설명==='확정'?' <span style="font-size:9px;color:var(--accent)">[확정]</span>':i.부대비용설명==='추정'?' <span style="font-size:9px;color:var(--warning)">[추정]</span>':'';
     return`<div class="compare-col" style="${isBest?'border-color:var(--success);border-width:2px;':''}">
       <div class="cc-header">${isBest?'⭐ ':''}${i.거래처||'미지정'} ${cB(i.국가)}${curTag}</div>
@@ -715,13 +719,19 @@ function searchProducts(){
     let 제작비HTML='';
     const has입력=i.제작비!=null&&i.제작비>0;
     const has자동=i.총제작비_자동!=null&&i.총제작비_자동>0;
-    if(has입력){
+    if(has자동){
+      // 자동(부대비용 포함 총원가)을 항상 크게 강조
+      제작비HTML=`<span style="font-weight:600;color:var(--accent)">${fmtP(i.총제작비_자동)}</span> <span style="font-size:8px;background:var(--accent-light);color:var(--accent);padding:1px 3px;border-radius:2px;">총원가</span>`;
+      if(has입력){
+        const 입력KRW=i.제작비_KRW||i.제작비;
+        const origNote=(i.통화&&i.통화!=='KRW')?` (${i.통화} ${Number(i.제작비).toLocaleString('en')})`:'';
+        제작비HTML+=`<br><span style="font-size:10px;color:var(--text-muted)">${fmtP(입력KRW)} <span style="font-size:8px;background:var(--warning-light,#92400e40);color:var(--warning);padding:0 3px;border-radius:2px;">제작비</span>${origNote}</span>`;
+      }else{
+        제작비HTML+=`<br><span style="font-size:10px;color:var(--text-muted);font-style:italic">견적 입력값 없음</span>`;
+      }
+    }else if(has입력){
       const 입력KRW=i.제작비_KRW||i.제작비;
-      const origNote=(i.통화&&i.통화!=='KRW')?`<br><span style="font-size:10px;color:var(--text-muted)">${i.통화} ${Number(i.제작비).toLocaleString('en')}</span>`:'';
-      제작비HTML=`<span style="font-weight:600;color:var(--warning)">${fmtP(입력KRW)}</span> <span class="surcharge-tag included" style="margin:0;font-size:8px;padding:1px 3px;">입력</span>${origNote}`;
-      if(has자동)제작비HTML+=`<br><span style="font-size:10px;color:var(--text-muted)">${fmtP(i.총제작비_자동)} <span style="font-size:8px;background:var(--accent-light);color:var(--accent);padding:0 3px;border-radius:2px;">자동</span></span>`;
-    }else if(has자동){
-      제작비HTML=`<span style="font-weight:600;color:var(--accent)">${fmtP(i.총제작비_자동)}</span> <span style="font-size:8px;background:var(--accent-light);color:var(--accent);padding:1px 3px;border-radius:2px;">자동</span><br><span style="font-size:10px;color:var(--text-muted);font-style:italic">입력값 없음</span>`;
+      제작비HTML=`<span style="font-weight:600;color:var(--warning)">${fmtP(입력KRW)}</span> <span style="font-size:8px;background:var(--warning-light,#92400e40);color:var(--warning);padding:1px 3px;border-radius:2px;">제작비</span>`;
     }else{
       제작비HTML=`<span style="color:var(--text-muted)">-</span>`;
     }
