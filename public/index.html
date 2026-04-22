@@ -480,6 +480,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <h3>📚 저장된 프로젝트
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
       <button class="cp-btn cp-btn-primary" style="font-size:12px;margin-left:8px;" onclick="cpExportBuyerExcel()" title="제품 카탈로그 전체를 바이어 공유용 엑셀 포맷으로 다운로드">📥 바이어 공유 엑셀</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpOpenBulkImport()" title="기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip)">📤 엑셀 일괄 Import</button>
     </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
@@ -670,6 +671,26 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
+
+<!-- 카탈로그 일괄 Import 모달 -->
+<div id="cp-bulk-import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--bg,#fff);color:var(--text,#000);border-radius:12px;padding:24px;max-width:560px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:85vh;overflow-y:auto;">
+    <h3 style="margin-top:0;">📤 제품 카탈로그 엑셀 일괄 Import</h3>
+    <p style="color:var(--text-muted,#666);font-size:13px;line-height:1.6;">
+      "Mr.Donothing Product List" 엑셀 파일을 업로드하세요. 바코드가 이미 카탈로그에 있으면 자동으로 건너뜁니다.<br>
+      <b>포맷</b>: FOB-CIF 22열 버전 권장 (구 23열도 호환)
+    </p>
+    <div style="border:2px dashed var(--border,#ccc);border-radius:8px;padding:30px;text-align:center;margin:16px 0;cursor:pointer;" onclick="document.getElementById('cp-bulk-file').click()" ondragover="event.preventDefault();this.style.borderColor='var(--primary,#3b82f6)';" ondragleave="this.style.borderColor='var(--border,#ccc)';" ondrop="event.preventDefault();this.style.borderColor='var(--border,#ccc)';cpHandleBulkFile(event.dataTransfer.files[0]);">
+      <div id="cp-bulk-filename" style="font-size:14px;">📁 클릭 또는 드래그해서 엑셀 업로드</div>
+      <input type="file" id="cp-bulk-file" accept=".xlsx,.xls" style="display:none;" onchange="cpHandleBulkFile(this.files[0])">
+    </div>
+    <div id="cp-bulk-status" style="font-size:13px;line-height:1.7;background:var(--input-bg,#f5f5f5);padding:12px;border-radius:6px;display:none;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="cp-btn cp-btn-ghost" onclick="cpCloseBulkImport()">닫기</button>
+      <button class="cp-btn cp-btn-primary" id="cp-bulk-go" onclick="cpRunBulkImport()" disabled>🚀 Import 실행</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ━━━ 데이터: 서버에서 로드 ━━━
@@ -1481,6 +1502,69 @@ async function cpExportBuyerExcel(){
     alert('엑셀 내보내기 실패:\n' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = origLabel || '📥 바이어 공유 엑셀'; }
+  }
+}
+
+// 📤 일괄 Import 모달 제어
+let _cpBulkBase64 = null;
+let _cpBulkFilename = '';
+function cpOpenBulkImport(){
+  document.getElementById('cp-bulk-import-modal').style.display = 'flex';
+  document.getElementById('cp-bulk-filename').textContent = '📁 클릭 또는 드래그해서 엑셀 업로드';
+  document.getElementById('cp-bulk-status').style.display = 'none';
+  document.getElementById('cp-bulk-go').disabled = true;
+  _cpBulkBase64 = null;
+  _cpBulkFilename = '';
+}
+function cpCloseBulkImport(){
+  document.getElementById('cp-bulk-import-modal').style.display = 'none';
+}
+function cpHandleBulkFile(file){
+  if (!file) return;
+  _cpBulkFilename = file.name;
+  document.getElementById('cp-bulk-filename').textContent = '📄 ' + file.name + ' (' + (file.size/1024/1024).toFixed(2) + ' MB)';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const arr = new Uint8Array(e.target.result);
+    let binary = '';
+    for (let i = 0; i < arr.byteLength; i++) binary += String.fromCharCode(arr[i]);
+    _cpBulkBase64 = btoa(binary);
+    document.getElementById('cp-bulk-go').disabled = false;
+  };
+  reader.readAsArrayBuffer(file);
+}
+async function cpRunBulkImport(){
+  if (!_cpBulkBase64) return;
+  const btn = document.getElementById('cp-bulk-go');
+  const status = document.getElementById('cp-bulk-status');
+  status.style.display = 'block';
+  status.innerHTML = '⏳ Notion에 등록 중... (수백 건은 30초~2분 걸릴 수 있습니다)';
+  btn.disabled = true; btn.textContent = '⏳ 진행 중';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/bulk-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64: _cpBulkBase64 })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Import 실패');
+    let html = '<b>✅ Import 완료</b><br>';
+    html += '• 총 대상: <b>' + data.total + '</b>건<br>';
+    html += '• 신규 등록: <b style="color:#10b981;">' + data.created + '</b>건<br>';
+    html += '• 중복 건너뜀: <b style="color:#f59e0b;">' + data.skipped + '</b>건<br>';
+    if (data.errors && data.errors.length) {
+      html += '• <b style="color:#ef4444;">에러: ' + data.errors.length + '건</b><br>';
+      html += '<details style="margin-top:8px;"><summary style="cursor:pointer;">에러 상세</summary><ul style="margin:8px 0 0 16px;font-size:12px;">';
+      data.errors.slice(0, 10).forEach(e => { html += '<li>' + (e.name||'?') + ' (' + (e.barcode||'no barcode') + '): ' + e.error + '</li>'; });
+      if (data.errors.length > 10) html += '<li>... 외 ' + (data.errors.length - 10) + '건</li>';
+      html += '</ul></details>';
+    }
+    status.innerHTML = html;
+    if (typeof showToast === 'function') showToast('📤 Import 완료: ' + data.created + '건 등록', 'success');
+  } catch(e) {
+    status.innerHTML = '❌ 실패: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '🚀 Import 실행';
   }
 }
 

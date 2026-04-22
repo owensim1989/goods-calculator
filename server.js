@@ -24,6 +24,7 @@ const UNIFIED_DB_ID = process.env.UNIFIED_DB_ID || 'be89a5d46bac4ffcbbc2e81e2ed4
 const VENDOR_DB_ID  = process.env.VENDOR_DB_ID  || 'da7e2fc516d74c2aa0c742e7c394ce78';
 const CONSUMER_PRICING_DB_ID = process.env.CONSUMER_PRICING_DB_ID || '016ec336fe324fc29f6590017ee3f023';
 const PRODUCT_CATALOG_DB_ID = process.env.PRODUCT_CATALOG_DB_ID || '59f797ebdc604186b4dd06781652f9b3';
+const PRODUCT_IMAGE_FOLDER_URL = process.env.PRODUCT_IMAGE_FOLDER_URL || ''; // Google Drive 공유 폴더 URL (바이어 공유 엑셀의 Image 컬럼 fallback)
 const EMPLOYEES_LIST = [
   { name: '심영민', team: '사업화지원', role: '관리자' },
   { name: '성은실', team: '디자인팀', role: '중간관리자' },
@@ -777,12 +778,11 @@ app.get('/api/consumer-pricing/hs-reference', (req, res) => {
   res.json({ items: HS_REFERENCE_DB });
 });
 
-// 📥 바이어 공유용 엑셀 다운로드 (Mr.Donothing Product List 포맷)
+// 📥 바이어 공유용 엑셀 다운로드 (Mr.Donothing Product List FOB-CIF 포맷, 22열)
 app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
   try {
-    // 카탈로그 DB 전체 조회 (페이지네이션)
     const allPages = [];
     let cursor = undefined;
     do {
@@ -795,24 +795,22 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       cursor = resp.has_more ? resp.next_cursor : undefined;
     } while (cursor);
 
-    // 원산지 코드 → 영문 변환 (엑셀은 영문 사용)
-    const originMap = { 'China': 'China', 'Korea': 'Korea', 'Vietnam': 'Vietnam', 'Other': 'Other' };
-
-    // 제품명 기준 정렬 (일관된 순서)
+    // Product Name 기준 정렬
     allPages.sort((a, b) => {
       const na = ((a.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
       const nb = ((b.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
       return na.localeCompare(nb);
     });
 
-    // 1번 엑셀 헤더 (원본 그대로)
+    // FOB-CIF 버전 헤더 (22열)
     const headers = [
       'no.', 'Image', 'Product Name', 'Barcode', 'Packaging',
       'Retail Price\n(South Korea)', 'Retail Price\n(Taiwan)', 'Retail Price\n(US)',
       'Retail Price\n(Thailand)', 'Retail Price\n(HK)', 'Retail Price\n(China)',
       'Retail Price\n(Indonesia)',
-      '원가', '원가(%)', 'HS CODE', '대만 통관 난이도', '포장합무게(g)\n(운송 참고용)',
-      'Size\n(mm)', 'Material', 'Country of\nOrigin', 'Order ', 'Amount', 'Note'
+      'FOB\n(Won)', 'FOB\n(discount rate)', 'CIF\n(Est, Asia avg)',
+      'HS CODE', 'Size\n(mm)', 'Material', 'Country of\nOrigin',
+      'Order ', 'Amount', 'Note'
     ];
 
     const aoa = [
@@ -820,73 +818,214 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       headers
     ];
 
+    // 이미지 하이퍼링크 수집 (엑셀 생성 후 링크 추가용)
+    const imageLinks = [];
+
     allPages.forEach((p, idx) => {
       const pr = p.properties || {};
       const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
       const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
       const getSel = k => pr[k] && pr[k].select ? pr[k].select.name : null;
+      const getUrl = k => pr[k] && pr[k].url ? pr[k].url : null;
 
-      const 원가KRW = getNum('원가_KRW');
+      const fobKRW = getNum('FOB_KRW');
       const 발주수량 = getNum('발주수량');
-      const amount = (원가KRW && 발주수량) ? 원가KRW * 발주수량 : null;
+      const amount = (fobKRW && 발주수량) ? fobKRW * 발주수량 : null;
+
+      const imgUrl = getUrl('Image_URL') || PRODUCT_IMAGE_FOLDER_URL;
+      if (imgUrl) imageLinks.push({ row: idx + 2, url: imgUrl }); // aoa 기준 0=title, 1=header, 2+=data
 
       aoa.push([
-        idx + 1,
-        '',
-        getText('Product Name'),
-        getText('Barcode'),
-        '',
-        getNum('Retail_KR_KRW'),
-        getNum('Retail_TW_TWD'),
-        getNum('Retail_US_USD'),
-        getNum('Retail_TH_THB'),
-        getNum('Retail_HK_HKD'),
-        getNum('Retail_CN_CNY'),
-        '',
-        원가KRW,
-        getNum('원가율'),
-        getText('HS_Code'),
-        getSel('대만통관난이도') || '',
-        getNum('포장합무게_g'),
-        getText('Size_mm'),
-        getText('Material'),
-        originMap[getSel('원산지')] || '',
-        발주수량,
-        amount,
-        getText('비고')
+        idx + 1,                                  // no.
+        imgUrl ? (getUrl('Image_URL') ? '🖼️ 이미지' : '🖼️ 공유 폴더 열기') : '',  // Image (개별 URL 우선, 없으면 공유 폴더)
+        getText('Product Name'),                  // Product Name
+        getText('Barcode'),                       // Barcode
+        getText('Packaging'),                     // Packaging
+        getNum('Retail_KR_KRW'),                  // KR
+        getNum('Retail_TW_TWD'),                  // TW
+        getNum('Retail_US_USD'),                  // US
+        getNum('Retail_TH_THB'),                  // TH
+        getNum('Retail_HK_HKD'),                  // HK
+        getNum('Retail_CN_CNY'),                  // CN
+        getNum('Retail_ID_IDR'),                  // ID
+        fobKRW,                                   // FOB (Won)
+        getNum('FOB_discount_rate'),              // FOB discount rate
+        getNum('CIF_KRW_asia'),                   // CIF Est Asia avg
+        getText('HS_Code'),                       // HS CODE
+        getText('Size_mm'),                       // Size
+        getText('Material'),                      // Material
+        getSel('원산지') || '',                   // Origin
+        발주수량,                                 // Order
+        amount,                                   // Amount
+        getText('비고')                           // Note
       ]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
 
+    // 컬럼 너비
     ws['!cols'] = [
-      { wch: 5 }, { wch: 8 }, { wch: 32 }, { wch: 15 }, { wch: 10 },
+      { wch: 5 }, { wch: 10 }, { wch: 32 }, { wch: 15 }, { wch: 12 },
       { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
-      { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 18 }, { wch: 10 },
-      { wch: 18 }, { wch: 15 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 25 }
+      { wch: 12 }, { wch: 14 }, { wch: 14 },
+      { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 12 },
+      { wch: 8 }, { wch: 12 }, { wch: 25 }
     ];
 
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 22 } }];
+    // 타이틀 행 병합 (A1:V1 = 22열)
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 21 } }];
 
+    // 이미지 하이퍼링크 적용 (B열 = col index 1)
+    imageLinks.forEach(({ row, url }) => {
+      const addr = XLSX.utils.encode_cell({ r: row, c: 1 });
+      if (!ws[addr]) ws[addr] = { t: 's', v: '🖼️ 이미지' };
+      ws[addr].l = { Target: url, Tooltip: '제품 이미지 보기' };
+    });
+
+    // FOB discount rate 퍼센트 포맷 (N열 = col 13)
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let R = 2; R <= range.e.r; R++) {
       const cell = ws[XLSX.utils.encode_cell({ r: R, c: 13 })];
-      if (cell && typeof cell.v === 'number') cell.z = '0.0%';
+      if (cell && typeof cell.v === 'number') cell.z = '0%';
     }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Mr.Donothing Product List_');
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const filename = `Mr.Donothing_Product_List_${today}.xlsx`;
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.send(buf);
   } catch (e) {
     console.error('[카탈로그 엑셀 내보내기 실패]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 📤 카탈로그 일괄 Import (엑셀 업로드 → Notion 카탈로그 DB에 create)
+app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
+  try {
+    const { base64, sheetName } = req.body || {};
+    if (!base64) return res.status(400).json({ error: 'base64 엑셀 데이터 필요' });
+    const buf = Buffer.from(base64, 'base64');
+    const wb = XLSX.read(buf, { type: 'buffer' });
+    const targetSheet = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0];
+    const ws = wb.Sheets[targetSheet];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+    // 기존 카탈로그 바코드 집합 (중복 방지)
+    const existing = new Set();
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      for (const p of resp.results) {
+        const bc = (p.properties?.Barcode?.rich_text || []).map(t => t.plain_text).join('').trim();
+        if (bc) existing.add(bc);
+      }
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    // 헤더 탐지 — 'no.' 와 'Product Name' 이 있는 행
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+      const r = rows[i] || [];
+      if (r.includes('no.') && r.some(c => String(c||'').includes('Product Name'))) {
+        headerRow = i; break;
+      }
+    }
+    if (headerRow < 0) return res.status(400).json({ error: '헤더 행을 찾을 수 없음 (no. + Product Name 필요)' });
+
+    const header = rows[headerRow].map(h => String(h||'').replace(/\s+/g,' ').trim());
+    const col = name => header.findIndex(h => h.includes(name));
+
+    const idxMap = {
+      no: col('no.'),
+      name: col('Product Name'),
+      barcode: col('Barcode'),
+      packaging: col('Packaging'),
+      KR: col('South Korea'),
+      TW: col('Taiwan'),
+      US: header.findIndex(h => h === 'Retail Price (US)' || h.startsWith('Retail Price (US)')),
+      TH: col('Thailand'),
+      HK: col('HK'),
+      CN: col('China'),
+      ID: col('Indonesia'),
+      FOB: col('FOB (Won)'),
+      FOB_rate: col('discount rate'),
+      CIF: col('CIF'),
+      HS: col('HS CODE'),
+      size: col('Size'),
+      material: col('Material'),
+      origin: col('Origin'),
+      note: col('Note')
+    };
+
+    const results = { total: 0, created: 0, skipped: 0, errors: [] };
+    for (let i = headerRow + 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || !r[idxMap.name]) continue;
+      const name = String(r[idxMap.name]).trim();
+      const barcode = r[idxMap.barcode] != null ? String(r[idxMap.barcode]).trim() : '';
+      if (!name) continue;
+      // 템플릿 행 ('제품명(같은 품목끼리...)' 같은 설명) 스킵
+      if (name.includes('제품명(같은') || name.includes('첫 제품명 통일')) continue;
+      results.total++;
+      if (barcode && existing.has(barcode)) { results.skipped++; continue; }
+
+      const num = v => (v === null || v === undefined || v === '') ? null : (typeof v === 'number' ? v : Number(String(v).replace(/[,\s]/g,'')) || null);
+      const txt = v => (v === null || v === undefined) ? '' : String(v);
+
+      // 원산지 매핑
+      const originRaw = txt(r[idxMap.origin]).trim();
+      const originMap = { 'China':'China', 'Korea':'Korea', 'Vietnam':'Vietnam' };
+      const origin = originMap[originRaw] || (originRaw ? 'Other' : null);
+
+      const props = {
+        'Product Name': { title: [{ text: { content: name } }] }
+      };
+      if (barcode) props['Barcode'] = { rich_text: [{ text: { content: barcode } }] };
+      if (txt(r[idxMap.packaging]).trim()) props['Packaging'] = { rich_text: [{ text: { content: txt(r[idxMap.packaging]) } }] };
+      const retailFields = { KR:'Retail_KR_KRW', TW:'Retail_TW_TWD', US:'Retail_US_USD', TH:'Retail_TH_THB', HK:'Retail_HK_HKD', CN:'Retail_CN_CNY', ID:'Retail_ID_IDR' };
+      for (const [k, f] of Object.entries(retailFields)) {
+        const n = num(r[idxMap[k]]);
+        if (n != null) props[f] = { number: n };
+      }
+      const fob = num(r[idxMap.FOB]);
+      if (fob != null) props['FOB_KRW'] = { number: fob };
+      const fobRate = num(r[idxMap.FOB_rate]);
+      if (fobRate != null) props['FOB_discount_rate'] = { number: fobRate };
+      const cif = num(r[idxMap.CIF]);
+      if (cif != null) props['CIF_KRW_asia'] = { number: cif };
+      if (txt(r[idxMap.HS]).trim()) props['HS_Code'] = { rich_text: [{ text: { content: txt(r[idxMap.HS]) } }] };
+      if (txt(r[idxMap.size]).trim()) props['Size_mm'] = { rich_text: [{ text: { content: txt(r[idxMap.size]) } }] };
+      if (txt(r[idxMap.material]).trim()) props['Material'] = { rich_text: [{ text: { content: txt(r[idxMap.material]) } }] };
+      if (origin) props['원산지'] = { select: { name: origin } };
+      if (txt(r[idxMap.note]).trim()) props['비고'] = { rich_text: [{ text: { content: txt(r[idxMap.note]) } }] };
+      props['판매상태'] = { select: { name: '판매중' } };
+      props['등록일'] = { date: { start: new Date().toISOString().slice(0,10) } };
+
+      try {
+        await notion.pages.create({ parent: { database_id: PRODUCT_CATALOG_DB_ID }, properties: props });
+        results.created++;
+      } catch (e) {
+        results.errors.push({ name, barcode, error: e.message });
+      }
+
+      // Notion API rate limit 회피 (3req/sec 권장)
+      if (results.created % 3 === 0) await new Promise(r => setTimeout(r, 400));
+    }
+
+    res.json(results);
+  } catch (e) {
+    console.error('[카탈로그 일괄 Import 실패]', e);
     res.status(500).json({ error: e.message });
   }
 });
