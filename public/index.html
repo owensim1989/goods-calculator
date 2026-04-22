@@ -469,14 +469,25 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="cp-field"><label>품목</label><select id="cp-category">
         <option value="">선택</option><option>의류</option><option>문구펜시</option><option>피규어 및 인형</option><option>모바일 악세사리</option><option>생활잡화</option><option>행사물품</option><option>인쇄물</option><option>광고물</option><option>시공</option><option>기타</option>
       </select></div>
-      <div class="cp-field"><label>HS Code</label><input type="text" id="cp-hs" placeholder="예: 9503.00-3900"></div>
+      <div class="cp-field">
+        <label>HS Code <span style="float:right;font-weight:400;">
+          <button class="cp-btn cp-btn-ghost" style="padding:2px 8px;font-size:11px;" onclick="cpHSSearch('customs')" title="관세청 UNI-PASS">🏛️ 관세청</button>
+          <button class="cp-btn cp-btn-ghost" style="padding:2px 8px;font-size:11px;" onclick="cpHSSearch('google')" title="구글 검색">🔎 구글</button>
+          <button class="cp-btn cp-btn-ghost" style="padding:2px 8px;font-size:11px;" onclick="cpHSSuggest()" title="AI 추천">🤖 AI</button>
+        </span></label>
+        <input type="text" id="cp-hs" placeholder="예: 9503.00-3900">
+      </div>
       <div class="cp-field"><label>상태</label><select id="cp-status">
         <option value="검토중">검토중</option><option value="승인">승인</option><option value="보류">보류</option><option value="거절">거절</option>
       </select></div>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-bottom:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-bottom:6px;flex-wrap:wrap;gap:8px;">
       <b style="font-size:13px;">🔍 경쟁사 시장 조사 (동일 스펙 제품)</b>
-      <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpAddCompetitor()">+ 경쟁사 추가</button>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <input type="url" id="cp-comp-url" placeholder="🌐 상품 URL 붙여넣기 → AI 자동 매칭" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--input-bg);color:var(--text);min-width:260px;">
+        <button class="cp-btn" style="font-size:12px;padding:6px 12px;" onclick="cpScrapeCompetitor()">🔗 URL 매칭</button>
+        <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpAddCompetitor()">+ 수동 추가</button>
+      </div>
     </div>
     <table class="cp-comp-table">
       <thead><tr><th style="width:22%">브랜드</th><th style="width:28%">제품명</th><th style="width:15%">가격(KRW)</th><th>URL / 메모</th><th style="width:40px;"></th></tr></thead>
@@ -501,7 +512,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div class="cp-section">
-    <h3><span class="step-no">2</span> 원가·수익률 분석</h3>
+    <h3><span class="step-no">2</span> 원가·수익률 분석 <button class="cp-btn" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpOpenQuoteUpload()">📄 견적서 업로드 (AI)</button></h3>
     <div class="cp-grid">
       <div class="cp-field"><label>생산 단가 (제조원가) *</label><input type="number" id="cp-cost-price" step="0.01" placeholder="0" oninput="cpRecalc()"></div>
       <div class="cp-field"><label>통화</label><select id="cp-cost-currency" onchange="cpRecalc()">
@@ -1498,23 +1509,24 @@ function cpRenderCountryTable(){
   if(!tb||!CP_COUNTRIES.length){if(tb)tb.innerHTML='';return;}
   const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
   const fx = (CP_PRESETS&&CP_PRESETS.fx)||{};
-
   tb.innerHTML = CP_COUNTRIES.map((c,i)=>{
     const rate = c.rate != null ? c.rate : (c.code==='KR'?1:(fx[c.currency]||null));
-    c.rate = rate; // store
-    const baseLocal = (rate && target) ? (target/rate) : null; // 타겟가 ÷ 환율 = 현지 통화 기준가
+    c.rate = rate;
+    const baseLocal = (rate && target) ? (target/rate) : null;
     const tariff = (c.tariffPct||0)/100;
     const vat = (c.vatPct||0)/100;
     const shipKRW = c.shippingKRW||0;
     const shipLocal = rate ? shipKRW/rate : 0;
-    // 권장 현지가 = (기준가 + 배송비) × (1+관세) × (1+VAT)
+    // 권장 현지가 = (기준환산 + 현지배송비) × (1+관세) × (1+VAT)
     const recommendLocal = baseLocal!=null ? (baseLocal+shipLocal) * (1+tariff) * (1+vat) : null;
-    if(c.finalLocal == null && recommendLocal!=null) c.finalLocal = Math.round(recommendLocal*100)/100;
+    const recRound = recommendLocal!=null ? Math.round(recommendLocal*100)/100 : null;
+    // 자동복사 제거: 사용자가 직접 "↓적용" 버튼을 눌러야 finalLocal 세팅
     const finalLocal = c.finalLocal;
     const finalKRW = (finalLocal!=null && rate) ? finalLocal*rate : null;
     const diff = (finalKRW!=null && target) ? ((finalKRW/target)-1)*100 : null;
     const diffCls = diff==null?'':(diff>=0?'cp-diff-plus':'cp-diff-minus');
     const diffTxt = diff==null?'-':(diff>=0?'+':'')+diff.toFixed(1)+'%';
+    const recTitle = recommendLocal!=null ? `계산: (${baseLocal.toFixed(2)} + ${shipLocal.toFixed(2)}) × ${(1+tariff).toFixed(3)} × ${(1+vat).toFixed(3)}` : '';
     return `<tr>
       <td><span class="cp-flag">${CP_FLAGS[c.code]||''}</span><b>${escapeHtml(c.name)}</b>${c.note?`<div style="font-size:10px;color:var(--text-muted);">${escapeHtml(c.note)}</div>`:''}</td>
       <td>${c.currency}</td>
@@ -1523,19 +1535,20 @@ function cpRenderCountryTable(){
       <td><input type="number" step="0.1" value="${c.tariffPct||0}" onchange="cpCountryEdit(${i},'tariffPct',this.value)"></td>
       <td><input type="number" step="0.1" value="${c.vatPct||0}" onchange="cpCountryEdit(${i},'vatPct',this.value)"></td>
       <td><input type="number" step="100" value="${c.shippingKRW||0}" onchange="cpCountryEdit(${i},'shippingKRW',this.value)"></td>
-      <td>${recommendLocal!=null?cpFmtLocal(recommendLocal,c.currency):'-'}</td>
-      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
+      <td title="${escapeHtml(recTitle)}">${recommendLocal!=null?cpFmtLocal(recommendLocal,c.currency):'-'} ${recRound!=null?`<button style="padding:2px 6px;font-size:10px;border:1px solid var(--primary);color:var(--primary);background:transparent;border-radius:4px;cursor:pointer;margin-left:4px;" onclick="cpApplyRec(${i},${recRound})">↓적용</button>`:''}</td>
+      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${recRound!=null?recRound:''}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
       <td class="cp-final">${finalKRW!=null?cpFmtKRW(finalKRW):'-'}</td>
       <td class="${diffCls}">${diffTxt}</td>
     </tr>`;
   }).join('');
 }
+function cpApplyRec(i, value){
+  CP_COUNTRIES[i].finalLocal = value;
+  cpRenderCountryTable();
+}
 function cpCountryEdit(i,key,val){
   const num = val===''?null:Number(val);
   CP_COUNTRIES[i][key] = num;
-  if(key==='tariffPct'||key==='vatPct'||key==='shippingKRW'||key==='rate'){
-    CP_COUNTRIES[i].finalLocal = null; // 재계산하도록 리셋
-  }
   cpRenderCountryTable();
 }
 
@@ -1604,6 +1617,149 @@ async function cpDeleteCurrent(){
   }catch(e){toast('삭제 실패: '+e.message);}
 }
 
+// ━━━ HS Code 조회 ━━━
+function cpHSSearch(kind){
+  const name = (document.getElementById('cp-name').value||'').trim();
+  const cat = document.getElementById('cp-category').value||'';
+  const q = encodeURIComponent([name, cat].filter(Boolean).join(' ') || '제품');
+  let url;
+  if(kind==='customs') url = `https://unipass.customs.go.kr/clip/index.do#/tr/Tr05/Tr05001Q?searchType=1&searchText=${q}`;
+  else if(kind==='google') url = `https://www.google.com/search?q=HS+code+${q}`;
+  else url = `https://chatgpt.com/?q=${encodeURIComponent('HS code for '+(name||'product')+' '+cat)}`;
+  window.open(url, '_blank', 'noopener');
+}
+async function cpHSSuggest(){
+  const name = (document.getElementById('cp-name').value||'').trim();
+  if(!name){toast('먼저 프로젝트명(또는 제품명)을 입력하세요');return;}
+  const modal = document.getElementById('cp-hs-modal');
+  const body = document.getElementById('cp-hs-modal-body');
+  body.innerHTML = '<div style="text-align:center;padding:30px;">🤖 AI 분석 중...</div>';
+  modal.style.display='flex';
+  try{
+    const r = await fetch('/api/consumer-pricing/hs-suggest',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ productName: name, category: document.getElementById('cp-category').value, spec: '' })
+    });
+    const d = await r.json();
+    if(!r.ok||d.error){body.innerHTML=`<div style="color:var(--danger);">오류: ${escapeHtml(d.error||r.status)}</div>`;return;}
+    const cands = d.candidates||[];
+    if(!cands.length){body.innerHTML='<div>추천 결과 없음</div>';return;}
+    body.innerHTML = cands.map((c,i)=>`
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b style="font-size:15px;color:var(--primary);">${escapeHtml(c.code||'')}</b>
+          <button class="cp-btn" style="padding:4px 12px;font-size:12px;" onclick="cpApplyHS('${escapeHtml(c.code||'')}')">✓ 이걸로</button>
+        </div>
+        <div style="font-size:13px;">${escapeHtml(c.name||'')}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escapeHtml(c.reason||'')}</div>
+        <div style="font-size:11px;margin-top:6px;">관세율: 🇰🇷 ${c.tariffKR||0}% · 🇺🇸 ${c.tariffUS||0}% · 🇨🇳 ${c.tariffCN||0}% · 🇯🇵 ${c.tariffJP||0}%</div>
+      </div>`).join('');
+  }catch(e){body.innerHTML=`<div style="color:var(--danger);">오류: ${escapeHtml(e.message)}</div>`;}
+}
+function cpCloseHSModal(){document.getElementById('cp-hs-modal').style.display='none';}
+function cpApplyHS(code){
+  document.getElementById('cp-hs').value = code;
+  cpCloseHSModal();
+  toast('HS Code 적용: '+code);
+}
+
+// ━━━ 경쟁사 URL 자동 매칭 ━━━
+async function cpScrapeCompetitor(){
+  const url = (document.getElementById('cp-comp-url').value||'').trim();
+  if(!url){toast('URL을 입력하세요');return;}
+  toast('🔗 URL 분석 중...');
+  try{
+    const r = await fetch('/api/consumer-pricing/scrape-competitor',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url})
+    });
+    const d = await r.json();
+    if(!r.ok||d.error){toast('실패: '+(d.error||r.status));return;}
+    let idx = CP_COMPETITORS.findIndex(c=>!c.brand&&!c.product&&!c.priceKRW);
+    if(idx<0){CP_COMPETITORS.push({brand:'',product:'',priceKRW:null,memo:''});idx=CP_COMPETITORS.length-1;}
+    CP_COMPETITORS[idx] = {
+      brand: d.brand||'',
+      product: d.product||'',
+      priceKRW: d.priceKRW||null,
+      memo: url + (d.currency&&d.currency!=='KRW'&&d.price?` (${d.price} ${d.currency})`:'')
+    };
+    cpRenderCompetitors();
+    document.getElementById('cp-comp-url').value='';
+    toast('✅ 추가됨: '+(d.brand||d.product||'제품'));
+  }catch(e){toast('오류: '+e.message);}
+}
+
+// ━━━ 견적서 업로드 ━━━
+let CP_QUOTE_FILE = null;
+function cpOpenQuoteUpload(){
+  CP_QUOTE_FILE=null;
+  document.getElementById('cp-quote-text').value='';
+  document.getElementById('cp-quote-filename').textContent='';
+  document.getElementById('cp-quote-result').style.display='none';
+  document.getElementById('cp-quote-modal').style.display='flex';
+}
+function cpCloseQuoteUpload(){document.getElementById('cp-quote-modal').style.display='none';}
+async function cpOnQuoteFile(file){
+  if(!file)return;
+  const ext = (file.name.split('.').pop()||'').toLowerCase();
+  let kind;
+  if(ext==='pdf') kind='pdf';
+  else if(['png','jpg','jpeg','webp','gif'].includes(ext)) kind='image';
+  else if(['xlsx','xls'].includes(ext)) kind='excel';
+  else { toast('지원하지 않는 형식: '+ext); return; }
+  const buf = await file.arrayBuffer();
+  // chunked base64 to avoid call stack overflow
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  const chunk = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
+  }
+  const b64 = btoa(bin);
+  CP_QUOTE_FILE = { kind, data:b64, mime:file.type||'', name:file.name };
+  document.getElementById('cp-quote-filename').textContent = '📎 '+file.name+' ('+(buf.byteLength/1024).toFixed(1)+'KB)';
+}
+async function cpSubmitQuote(){
+  const text = (document.getElementById('cp-quote-text').value||'').trim();
+  const btn = document.getElementById('cp-quote-submit');
+  const resEl = document.getElementById('cp-quote-result');
+  if(!CP_QUOTE_FILE && !text){toast('파일 또는 텍스트를 입력하세요');return;}
+  btn.disabled=true; btn.textContent='🤖 분석 중...';
+  try{
+    const body = CP_QUOTE_FILE ? { ...CP_QUOTE_FILE } : { kind:'text', text };
+    const r = await fetch('/api/consumer-pricing/parse-quote',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if(!r.ok||d.error){resEl.style.display='block';resEl.innerHTML=`<b style="color:var(--danger);">실패:</b> ${escapeHtml(d.error||r.status)}`;return;}
+    if(d.cost!=null) document.getElementById('cp-cost-price').value = d.cost;
+    if(d.currency) document.getElementById('cp-cost-currency').value = d.currency;
+    if(d.qty!=null) document.getElementById('cp-qty').value = d.qty;
+    if(d.surchargeEstimate_KRW!=null) document.getElementById('cp-surcharge').value = d.surchargeEstimate_KRW;
+    cpRecalc();
+    resEl.style.display='block';
+    resEl.innerHTML = `<b>✅ 추출 완료</b><br>
+      단가: ${d.cost||'-'} ${d.currency||''}<br>
+      수량: ${d.qty||'-'}<br>
+      ${d.vendor?`거래처: ${escapeHtml(d.vendor)}<br>`:''}
+      ${d.product?`제품: ${escapeHtml(d.product)}<br>`:''}
+      ${d.surchargeEstimate_KRW!=null?`부대비용 예상: ₩${Math.round(d.surchargeEstimate_KRW).toLocaleString()}<br>`:''}
+      <span style="color:var(--text-muted);font-size:11px;">→ 원가 입력란에 자동 반영됨</span>`;
+    toast('✅ 자동 반영 완료');
+    setTimeout(cpCloseQuoteUpload, 2500);
+  }catch(e){resEl.style.display='block';resEl.innerHTML=`<b style="color:var(--danger);">오류:</b> ${escapeHtml(e.message)}`;}
+  finally{btn.disabled=false; btn.textContent='🤖 AI 분석';}
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const drop = document.getElementById('cp-quote-drop');
+  if(drop){
+    ['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.style.borderColor='var(--primary)';}));
+    ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.style.borderColor='var(--border)';}));
+    drop.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])cpOnQuoteFile(ev.dataTransfer.files[0]);});
+  }
+});
+
 // 탭 전환 훅 — 최초 진입 시 초기화
 document.addEventListener('click',e=>{
   const btn = e.target.closest('.tab-btn[data-tab="consumer"]');
@@ -1611,4 +1767,39 @@ document.addEventListener('click',e=>{
 });
 </script>
 </body>
+<!-- 견적서 업로드 모달 -->
+<div id="cp-quote-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--card);border-radius:12px;padding:24px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="margin:0;font-size:16px;">📄 견적서 업로드 → AI 자동 추출</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);" onclick="cpCloseQuoteUpload()">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">PDF·이미지(PNG/JPG)·엑셀(xlsx) 파일을 올리거나 텍스트를 붙여넣으세요. 생산 단가·수량·통화·부대비용 예상을 자동으로 채웁니다.</p>
+    <div style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:12px;cursor:pointer;" id="cp-quote-drop" onclick="document.getElementById('cp-quote-file').click()">
+      <div style="font-size:28px;">📎</div>
+      <div style="font-size:13px;margin-top:6px;">파일을 드래그하거나 클릭해서 업로드</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">PDF · PNG · JPG · XLSX</div>
+      <input type="file" id="cp-quote-file" style="display:none;" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls" onchange="cpOnQuoteFile(this.files[0])">
+    </div>
+    <div id="cp-quote-filename" style="font-size:12px;color:var(--primary);margin-bottom:8px;"></div>
+    <div class="cp-field"><label>또는 텍스트로 붙여넣기</label><textarea id="cp-quote-text" rows="5" placeholder="견적서 내용 복사 & 붙여넣기..."></textarea></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;">
+      <button class="cp-btn cp-btn-ghost" onclick="cpCloseQuoteUpload()">취소</button>
+      <button class="cp-btn" id="cp-quote-submit" onclick="cpSubmitQuote()">🤖 AI 분석</button>
+    </div>
+    <div id="cp-quote-result" style="display:none;margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;font-size:12px;"></div>
+  </div>
+</div>
+
+<!-- HS Code AI 추천 모달 -->
+<div id="cp-hs-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--card);border-radius:12px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <h3 style="margin:0;font-size:16px;">🤖 HS Code AI 추천</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);" onclick="cpCloseHSModal()">✕</button>
+    </div>
+    <div id="cp-hs-modal-body">분석 중...</div>
+  </div>
+</div>
+
 </html>

@@ -23,7 +23,9 @@ const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const UNIFIED_DB_ID = process.env.UNIFIED_DB_ID || 'be89a5d46bac4ffcbbc2e81e2ed425c3';
 const VENDOR_DB_ID  = process.env.VENDOR_DB_ID  || 'da7e2fc516d74c2aa0c742e7c394ce78';
 const CONSUMER_PRICING_DB_ID = process.env.CONSUMER_PRICING_DB_ID || '016ec336fe324fc29f6590017ee3f023';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ADMIN_SECRET  = process.env.ADMIN_SECRET   || '';
+let XLSX = null; try { XLSX = require('xlsx'); } catch(e) { console.warn('[xlsx] 패키지 없음, 엑셀 파싱 비활성'); }
 
 // ━━━ Notion 클라이언트 ━━━
 const notion = NOTION_TOKEN ? new Client({ auth: NOTION_TOKEN }) : null;
@@ -40,7 +42,7 @@ app.use(cors({
     else cb(null, false);
   }
 }));
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
@@ -842,6 +844,239 @@ function consumerPricingToProps(b) {
   if (b.메모 != null) props['메모'] = asText(b.메모);
   return props;
 }
+
+// ━━━ Anthropic Claude API 호출 헬퍼 ━━━
+function callClaude(messages, opts = {}) {
+  return new Promise((resolve, reject) => {
+    if (!ANTHROPIC_API_KEY) return reject(new Error('ANTHROPIC_API_KEY 미설정'));
+    const body = JSON.stringify({
+      model: opts.model || 'claude-haiku-4-5-20251001',
+      max_tokens: opts.max_tokens || 1024,
+      messages
+    });
+    const req = https.request({
+      host: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(data);
+          if (j.error) return reject(new Error(j.error.message || 'claude error'));
+          const text = (j.content && j.content[0] && j.content[0].text) || '';
+          resolve(text);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function extractJSON(text) {
+  if (!text) return null;
+  // ```json ... ``` 블록 or 순수 JSON 모두 대응
+  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
+  const raw = (m[1] || text).trim();
+  // 첫 { ~ 마지막 } 만 추출
+  const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+  if (s < 0 || e < 0) return null;
+  try { return JSON.parse(raw.slice(s, e + 1)); } catch (err) { return null; }
+}
+
+function fetchHTML(url) {
+  return new Promise((resolve, reject) => {
+    try {
+      const mod = url.startsWith('http:') ? require('http') : https;
+      const req = mod.request(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ko,en;q=0.9'
+        }
+      }, res => {
+        // 리다이렉트 대응
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return fetchHTML(new URL(res.headers.location, url).toString()).then(resolve, reject);
+        }
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => resolve(data));
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => { req.destroy(new Error('timeout')); });
+      req.end();
+    } catch (e) { reject(e); }
+  });
+}
+
+// HTML → 핵심 텍스트 추출 (토큰 절약)
+function htmlToContext(html, maxChars = 8000) {
+  if (!html) return '';
+  // OG / meta / JSON-LD 우선 보존
+  const metaMatches = [];
+  const metaRe = /<meta\s+[^>]*(?:property|name)\s*=\s*["'](og:[\w:]+|twitter:[\w:]+|description|keywords|product:[\w:]+)["'][^>]*content\s*=\s*["']([^"']+)["']/gi;
+  let m; while ((m = metaRe.exec(html)) && metaMatches.length < 30) metaMatches.push(`${m[1]}: ${m[2]}`);
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const jsonLd = [];
+  const ldRe = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let l; while ((l = ldRe.exec(html)) && jsonLd.length < 5) jsonLd.push(l[1].trim().slice(0, 2000));
+  // 본문 텍스트
+  const stripped = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const out = [
+    titleMatch ? 'TITLE: ' + titleMatch[1].trim() : '',
+    'META:\n' + metaMatches.join('\n'),
+    jsonLd.length ? 'JSON-LD:\n' + jsonLd.join('\n---\n') : '',
+    'BODY:\n' + stripped.slice(0, maxChars - 500)
+  ].filter(Boolean).join('\n\n');
+  return out.slice(0, maxChars);
+}
+
+// ━━━ 경쟁사 URL 자동 매칭 ━━━
+app.post('/api/consumer-pricing/scrape-competitor', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL 형식 오류' });
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
+  try {
+    const html = await fetchHTML(url);
+    const ctx = htmlToContext(html);
+    const prompt = `다음 상품 페이지에서 정보를 추출해서 JSON만 반환. 추가 설명 금지.
+
+페이지 내용:
+${ctx}
+
+요구 형식:
+{
+  "brand": "브랜드 or 판매자명",
+  "product": "제품명",
+  "price": 숫자 (통화 기호 제외),
+  "currency": "KRW/USD/JPY/TWD/HKD/CNY/THB 중 하나",
+  "priceKRW": 숫자 (KRW 환산 대략값, 확실하지 않으면 null)
+}
+
+페이지 URL: ${url}`;
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 512 });
+    const parsed = extractJSON(out);
+    if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
+    // 통화 기반 KRW 환산 (priceKRW 없을 때)
+    if (parsed.price && parsed.currency && !parsed.priceKRW) {
+      const rate = fxCache[parsed.currency === 'CNY' ? 'CNY' : parsed.currency];
+      if (parsed.currency === 'KRW') parsed.priceKRW = parsed.price;
+      else if (rate) parsed.priceKRW = Math.round(parsed.price * rate);
+    }
+    res.json({ success: true, ...parsed });
+  } catch (e) {
+    console.error('[경쟁사 URL 파싱 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ━━━ HS Code AI 추천 ━━━
+app.post('/api/consumer-pricing/hs-suggest', async (req, res) => {
+  const { productName, category, spec } = req.body || {};
+  if (!productName) return res.status(400).json({ error: '제품명 필수' });
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+  try {
+    const prompt = `당신은 한국 관세청 HS Code 분류 전문가입니다. 다음 제품에 해당할 가능성이 높은 HS Code 후보 3개를 JSON으로 반환하세요. 설명 금지, JSON만.
+
+제품명: ${productName}
+카테고리: ${category || '미정'}
+상세 스펙: ${spec || '없음'}
+
+형식:
+{
+  "candidates": [
+    {"code": "9503.00-3900", "name": "인형·장난감류", "reason": "간단한 근거", "tariffKR": 8, "tariffUS": 0, "tariffCN": 10, "tariffJP": 3}
+  ]
+}
+
+관세율은 대표값. 확실하지 않으면 0으로.`;
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 800 });
+    const parsed = extractJSON(out);
+    if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
+    res.json({ success: true, ...parsed });
+  } catch (e) {
+    console.error('[HS 추천 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ━━━ 견적서 파일 파싱 ━━━
+// body: { kind: 'pdf'|'image'|'excel'|'text', data: base64 or text, mime: 'application/pdf' 등 }
+app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
+  const { kind, data, mime, text } = req.body || {};
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+  try {
+    let content;
+    const ask = `다음 견적서에서 생산 정보를 추출해 JSON만 반환. 설명 금지.
+
+형식:
+{
+  "cost": 숫자 (단가),
+  "currency": "KRW/USD/CNY/JPY/TWD/HKD/THB 중 하나",
+  "qty": 숫자 (수량),
+  "vendor": "거래처명",
+  "product": "제품명 (있으면)",
+  "spec": "스펙 요약 (있으면)",
+  "surchargeEstimate_KRW": 숫자 (해외운송·관세·VAT 등 부대비용 예상, 있으면)
+}
+
+규칙:
+- 단가가 "총액÷수량"으로만 표시돼 있으면 계산해서 cost에 넣기
+- 부대비용은 국가 기준(국내=0, 중국 약 15% 해외 약 20%)으로 추정하거나 실제 수치 사용
+- 여러 항목이면 첫 번째 또는 주력 항목 기준`;
+
+    if (kind === 'text' || text) {
+      content = [{ type: 'text', text: ask + '\n\n견적 내용:\n' + (text || '') }];
+    } else if (kind === 'pdf' && data) {
+      content = [
+        { type: 'document', source: { type: 'base64', media_type: mime || 'application/pdf', data } },
+        { type: 'text', text: ask }
+      ];
+    } else if (kind === 'image' && data) {
+      content = [
+        { type: 'image', source: { type: 'base64', media_type: mime || 'image/png', data } },
+        { type: 'text', text: ask }
+      ];
+    } else if (kind === 'excel' && data) {
+      if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
+      const buf = Buffer.from(data, 'base64');
+      const wb = XLSX.read(buf, { type: 'buffer' });
+      const parts = [];
+      wb.SheetNames.slice(0, 3).forEach(name => {
+        const sh = wb.Sheets[name];
+        const csv = XLSX.utils.sheet_to_csv(sh, { blankrows: false });
+        parts.push(`[Sheet: ${name}]\n${csv.slice(0, 6000)}`);
+      });
+      content = [{ type: 'text', text: ask + '\n\n엑셀 내용:\n' + parts.join('\n\n---\n\n') }];
+    } else {
+      return res.status(400).json({ error: 'kind 또는 data 누락' });
+    }
+
+    const out = await callClaude([{ role: 'user', content }], { max_tokens: 700 });
+    const parsed = extractJSON(out);
+    if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
+    res.json({ success: true, ...parsed });
+  } catch (e) {
+    console.error('[견적서 파싱 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // SPA 폴백
 app.get('*', (req, res) => {
