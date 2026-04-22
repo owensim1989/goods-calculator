@@ -248,6 +248,71 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .fx-bar .fx-hint{font-size:11px;color:var(--text-muted);margin-left:auto;}
 .currency-sub{font-size:10px;color:var(--text-muted);display:block;margin-top:1px;}
 
+
+/* ━━━ 소비자가 산정 탭 ━━━ */
+.cp-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+.cp-section h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.cp-section h3 .step-no{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:700;}
+.cp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px;}
+.cp-field{display:flex;flex-direction:column;gap:4px;}
+.cp-field label{font-size:12px;font-weight:500;color:var(--text-muted);}
+.cp-field input,.cp-field select,.cp-field textarea{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);font-family:inherit;}
+.cp-field textarea{resize:vertical;min-height:64px;}
+.cp-field input:focus,.cp-field select:focus,.cp-field textarea:focus{outline:none;border-color:var(--primary);}
+.cp-btn{background:var(--primary);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;}
+.cp-btn:hover{filter:brightness(1.1);}
+.cp-btn-ghost{background:transparent;color:var(--primary);border:1px solid var(--primary);}
+.cp-btn-ghost:hover{background:var(--primary-light);}
+.cp-btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);padding:6px 12px;font-size:12px;}
+.cp-btn-save{background:var(--success);color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+.cp-btn-save:hover{filter:brightness(1.1);}
+.cp-comp-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;}
+.cp-comp-table th{background:var(--bg);padding:8px;text-align:left;font-size:11px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);}
+.cp-comp-table td{padding:6px;border-bottom:1px solid var(--border);}
+.cp-comp-table input{width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--input-bg);color:var(--text);}
+.cp-comp-table input[type="number"]{text-align:right;}
+.cp-comp-stats{display:flex;gap:18px;margin-top:10px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px;flex-wrap:wrap;}
+.cp-comp-stats .stat{display:flex;gap:6px;align-items:baseline;}
+.cp-comp-stats .stat .lbl{color:var(--text-muted);font-size:11px;}
+.cp-comp-stats .stat .val{font-weight:700;color:var(--primary);font-size:15px;}
+.cp-margin-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;}
+.cp-margin-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;}
+.cp-margin-card .lbl{font-size:11px;color:var(--text-muted);}
+.cp-margin-card .val{font-size:18px;font-weight:700;margin-top:4px;}
+.cp-margin-card.highlight .val{font-size:22px;}
+.cp-margin-card.good .val{color:var(--success);}
+.cp-margin-card.warn .val{color:var(--warning);}
+.cp-margin-card.bad .val{color:var(--danger);}
+.cp-verdict{padding:12px 16px;border-radius:10px;margin-top:12px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px;}
+.cp-verdict.good{background:rgba(16,185,129,.1);color:var(--success);border:1px solid var(--success);}
+.cp-verdict.warn{background:rgba(245,158,11,.1);color:var(--warning);border:1px solid var(--warning);}
+.cp-verdict.bad{background:rgba(239,68,68,.1);color:var(--danger);border:1px solid var(--danger);}
+.cp-country-table{width:100%;border-collapse:collapse;font-size:13px;}
+.cp-country-table th{background:var(--bg);padding:10px 8px;text-align:right;font-size:11px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;}
+.cp-country-table th:first-child,.cp-country-table th:nth-child(2){text-align:left;}
+.cp-country-table td{padding:8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+.cp-country-table td:first-child,.cp-country-table td:nth-child(2){text-align:left;}
+.cp-country-table input{width:70px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:right;background:var(--input-bg);color:var(--text);}
+.cp-country-table input.wide{width:90px;}
+.cp-country-table .cp-final{font-weight:700;color:var(--primary);font-size:14px;}
+.cp-country-table .cp-diff-plus{color:var(--success);font-weight:600;}
+.cp-country-table .cp-diff-minus{color:var(--danger);font-weight:600;}
+.cp-flag{font-size:16px;margin-right:4px;}
+.cp-list-item{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;}
+.cp-list-item:hover{background:var(--primary-light);}
+.cp-list-item .cp-li-name{font-weight:600;}
+.cp-list-item .cp-li-meta{font-size:11px;color:var(--text-muted);}
+.cp-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;}
+.cp-badge-review{background:#fef3c7;color:#92400e;}
+.cp-badge-approve{background:#dcfce7;color:#166534;}
+.cp-badge-hold{background:#e5e7eb;color:#4b5563;}
+.cp-badge-reject{background:#fee2e2;color:#991b1b;}
+[data-theme="dark"] .cp-badge-review{background:#78350f;color:#fcd34d;}
+[data-theme="dark"] .cp-badge-approve{background:#064e3b;color:#6ee7b7;}
+[data-theme="dark"] .cp-badge-hold{background:#374151;color:#d1d5db;}
+[data-theme="dark"] .cp-badge-reject{background:#7f1d1d;color:#fca5a5;}
+.cp-save-bar{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap;}
+
 @media(max-width:640px){.filter-bar{flex-direction:column;}.filter-group select,.filter-group input{min-width:unset;width:100%;}.tabs{padding:0 12px;}.tab-page{padding:16px;}.deadline-bar{flex-direction:column;align-items:stretch;}.header h1{font-size:15px;}.combo-row{gap:6px;padding:8px 10px;}}
 </style>
 </head>
@@ -264,6 +329,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <button class="tab-btn active" data-tab="product">제품 → 단가</button>
   <button class="tab-btn" data-tab="budget">예산 → 제품</button>
   <button class="tab-btn" data-tab="vendor">거래처 비교</button>
+  <button class="tab-btn" data-tab="consumer">🌏 소비자가 산정</button>
 </div>
 <div class="fx-bar" id="fx-bar">
   <label>💱 환율:</label>
@@ -384,6 +450,107 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
   <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">거래처별 평균단가 비교</h3><canvas id="vendorBarChart"></canvas></div>
   <div class="empty-state" id="vendor-empty"><div class="icon">🏭</div><p>품명을 선택하면 거래처별 단가·납품실적을 비교합니다</p></div>
+</div>
+
+<!-- 탭4: 🌏 소비자가 산정 -->
+<div class="tab-page" id="page-consumer">
+  <div class="guide-box">💡 OEM 생산 제품의 <b>시장조사 → 수익률 분석 → 국가별 소비자가 산정</b>을 한 번에. 저장하면 Notion DB에 기록됩니다.</div>
+
+  <div class="cp-section" id="cp-list-section">
+    <h3>📚 저장된 프로젝트 <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button></h3>
+    <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
+    <div id="cp-list"></div>
+  </div>
+
+  <div class="cp-section">
+    <h3><span class="step-no">1</span> 프로젝트 정보 & 시장 조사</h3>
+    <div class="cp-grid">
+      <div class="cp-field"><label>프로젝트명 *</label><input type="text" id="cp-name" placeholder="예: 네이버 콜라보 키링 2026"></div>
+      <div class="cp-field"><label>품목</label><select id="cp-category">
+        <option value="">선택</option><option>의류</option><option>문구펜시</option><option>피규어 및 인형</option><option>모바일 악세사리</option><option>생활잡화</option><option>행사물품</option><option>인쇄물</option><option>광고물</option><option>시공</option><option>기타</option>
+      </select></div>
+      <div class="cp-field"><label>HS Code</label><input type="text" id="cp-hs" placeholder="예: 9503.00-3900"></div>
+      <div class="cp-field"><label>상태</label><select id="cp-status">
+        <option value="검토중">검토중</option><option value="승인">승인</option><option value="보류">보류</option><option value="거절">거절</option>
+      </select></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-bottom:6px;">
+      <b style="font-size:13px;">🔍 경쟁사 시장 조사 (동일 스펙 제품)</b>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpAddCompetitor()">+ 경쟁사 추가</button>
+    </div>
+    <table class="cp-comp-table">
+      <thead><tr><th style="width:22%">브랜드</th><th style="width:28%">제품명</th><th style="width:15%">가격(KRW)</th><th>URL / 메모</th><th style="width:40px;"></th></tr></thead>
+      <tbody id="cp-comp-tbody"></tbody>
+    </table>
+    <div class="cp-comp-stats">
+      <div class="stat"><span class="lbl">평균</span><span class="val" id="cp-comp-avg">-</span></div>
+      <div class="stat"><span class="lbl">최저</span><span class="val" id="cp-comp-min">-</span></div>
+      <div class="stat"><span class="lbl">최고</span><span class="val" id="cp-comp-max">-</span></div>
+      <div class="stat"><span class="lbl">건수</span><span class="val" id="cp-comp-cnt">0</span></div>
+    </div>
+    <div class="cp-grid" style="margin-top:14px;">
+      <div class="cp-field">
+        <label>🎯 타겟 소비자가 (KRW) — 한국 기준</label>
+        <input type="text" id="cp-target-price" placeholder="예: 15,000" oninput="cpOnTargetInput(this)">
+      </div>
+      <div class="cp-field">
+        <label>평균 대비 위치</label>
+        <input type="text" id="cp-target-vs-avg" readonly style="background:var(--bg);">
+      </div>
+    </div>
+  </div>
+
+  <div class="cp-section">
+    <h3><span class="step-no">2</span> 원가·수익률 분석</h3>
+    <div class="cp-grid">
+      <div class="cp-field"><label>생산 단가 (제조원가) *</label><input type="number" id="cp-cost-price" step="0.01" placeholder="0" oninput="cpRecalc()"></div>
+      <div class="cp-field"><label>통화</label><select id="cp-cost-currency" onchange="cpRecalc()">
+        <option value="KRW">KRW (원)</option><option value="USD">USD ($)</option><option value="CNY">CNY (¥)</option><option value="JPY">JPY (¥)</option><option value="TWD">TWD (NT$)</option><option value="HKD">HKD (HK$)</option><option value="THB">THB (฿)</option>
+      </select></div>
+      <div class="cp-field"><label>수량 (로트)</label><input type="number" id="cp-qty" placeholder="1000" oninput="cpRecalc()"></div>
+      <div class="cp-field"><label>생산 부대비용 (운송·관세·VAT, KRW)</label><input type="number" id="cp-surcharge" placeholder="0" oninput="cpRecalc()"></div>
+    </div>
+    <div class="cp-margin-summary">
+      <div class="cp-margin-card"><div class="lbl">개당 원가 (KRW)</div><div class="val" id="cp-m-unit">-</div></div>
+      <div class="cp-margin-card"><div class="lbl">총 원가</div><div class="val" id="cp-m-total">-</div></div>
+      <div class="cp-margin-card"><div class="lbl">매출 (타겟가×수량)</div><div class="val" id="cp-m-revenue">-</div></div>
+      <div class="cp-margin-card highlight"><div class="lbl">마진</div><div class="val" id="cp-m-profit">-</div></div>
+      <div class="cp-margin-card highlight"><div class="lbl">마진율</div><div class="val" id="cp-m-rate">-</div></div>
+    </div>
+    <div class="cp-verdict" id="cp-verdict" style="display:none;"></div>
+  </div>
+
+  <div class="cp-section">
+    <h3><span class="step-no">3</span> 국가별 현지 소비자가 산정</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">한국 타겟가를 기준으로 환율·관세·VAT·배송비를 더해 국가별 현지 소비자가를 자동 산출합니다. 값은 국가별로 수정 가능합니다.</p>
+    <div class="table-wrap"><table class="cp-country-table">
+      <thead><tr>
+        <th style="text-align:left;">국가</th>
+        <th style="text-align:left;">통화</th>
+        <th>환율(1=KRW)</th>
+        <th>기준환산</th>
+        <th>관세%</th>
+        <th>VAT%</th>
+        <th>배송비<br>(개당,KRW)</th>
+        <th>권장 현지가</th>
+        <th>확정 현지가</th>
+        <th>확정가(KRW)</th>
+        <th>한국대비</th>
+      </tr></thead>
+      <tbody id="cp-country-tbody"></tbody>
+    </table></div>
+  </div>
+
+  <div class="cp-section">
+    <h3><span class="step-no">4</span> 메모 & 저장</h3>
+    <div class="cp-field"><label>메모</label><textarea id="cp-memo" rows="3" placeholder="특이사항, 협상 포인트 등"></textarea></div>
+    <div class="cp-save-bar">
+      <span style="font-size:12px;color:var(--text-muted);margin-right:auto;" id="cp-save-hint">저장 시 Notion DB에 기록됩니다</span>
+      <button class="cp-btn cp-btn-ghost" id="cp-btn-new" onclick="cpNewProject()">초기화</button>
+      <button class="cp-btn cp-btn-danger" id="cp-btn-del" style="display:none;" onclick="cpDeleteCurrent()">삭제</button>
+      <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
+    </div>
+  </div>
 </div>
 
 
@@ -1084,6 +1251,364 @@ let allCountries=['국내','중국','기타해외'];
 loadData();
 loadFx();
 renderCombo();
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🌏 소비자가 산정 탭
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const CP_FLAGS = { KR:'🇰🇷', TW:'🇹🇼', HK:'🇭🇰', CN:'🇨🇳', TH:'🇹🇭', US:'🇺🇸', JP:'🇯🇵' };
+const CP_TARGET_MARGIN_GOOD = 0.5;   // 50%+ good
+const CP_TARGET_MARGIN_WARN = 0.3;   // 30~50% warn, <30 bad
+let CP_PRESETS = null;               // /api/consumer-pricing/presets 로 받아옴
+let CP_CURRENT = null;               // 현재 편집중 객체 (null=신규)
+let CP_COMPETITORS = [];             // [{brand,product,priceKRW,memo}]
+let CP_COUNTRIES = [];               // UI에 표시되는 국가 배열 (presets 복사본)
+
+const cpFmtNum = n => (n==null||isNaN(n))?'':Math.round(n).toLocaleString('ko-KR');
+const cpFmtKRW = n => (n==null||isNaN(n))?'-':'₩'+Math.round(n).toLocaleString('ko-KR');
+const cpFmtLocal = (n,cur) => {
+  if(n==null||isNaN(n))return'-';
+  if(cur==='KRW')return '₩'+Math.round(n).toLocaleString('ko-KR');
+  if(cur==='JPY')return '¥'+Math.round(n).toLocaleString('ko-KR');
+  return (n>=10?n.toFixed(2):n.toFixed(2))+' '+cur;
+};
+const cpParseNum = s => {
+  if(s==null)return null;
+  const v=String(s).replace(/[^0-9.-]/g,'');
+  return v===''?null:Number(v);
+};
+
+async function cpInit(){
+  try{
+    const r = await fetch('/api/consumer-pricing/presets');
+    CP_PRESETS = await r.json();
+    CP_COUNTRIES = JSON.parse(JSON.stringify(CP_PRESETS.countries));
+    cpRenderCountryTable();
+  }catch(e){console.error('[CP] presets 로드 실패',e);}
+  await cpLoadList();
+  cpNewProject();
+}
+
+async function cpLoadList(){
+  try{
+    const r = await fetch('/api/consumer-pricing');
+    const data = await r.json();
+    const items = data.items || [];
+    const listEl = document.getElementById('cp-list');
+    const emptyEl = document.getElementById('cp-list-empty');
+    if(!items.length){emptyEl.style.display='block';listEl.innerHTML='';return;}
+    emptyEl.style.display='none';
+    listEl.innerHTML = items.map(it=>{
+      const badge = it.상태==='승인'?'cp-badge-approve':it.상태==='보류'?'cp-badge-hold':it.상태==='거절'?'cp-badge-reject':'cp-badge-review';
+      const marginPct = (it.마진율!=null)?(it.마진율*100).toFixed(1)+'%':'-';
+      const updated = it.updatedAt?new Date(it.updatedAt).toLocaleDateString('ko-KR'):'';
+      return `<div class="cp-list-item" onclick="cpLoadProject('${it.id}')">
+        <div><div class="cp-li-name">${escapeHtml(it.프로젝트명||'(무제)')}</div><div class="cp-li-meta">${escapeHtml(it.품목||'')} · ${updated}</div></div>
+        <div>🎯 ${cpFmtKRW(it.타겟_소비자가_KRW)}</div>
+        <div>마진 ${marginPct}</div>
+        <div><span class="cp-badge ${badge}">${escapeHtml(it.상태||'검토중')}</span></div>
+        <div style="font-size:11px;color:var(--text-muted);">▶</div>
+      </div>`;
+    }).join('');
+  }catch(e){console.error('[CP] list 실패',e);}
+}
+
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function cpNewProject(){
+  CP_CURRENT = null;
+  document.getElementById('cp-name').value='';
+  document.getElementById('cp-category').value='';
+  document.getElementById('cp-hs').value='';
+  document.getElementById('cp-status').value='검토중';
+  document.getElementById('cp-target-price').value='';
+  document.getElementById('cp-target-vs-avg').value='';
+  document.getElementById('cp-cost-price').value='';
+  document.getElementById('cp-cost-currency').value='KRW';
+  document.getElementById('cp-qty').value='';
+  document.getElementById('cp-surcharge').value='';
+  document.getElementById('cp-memo').value='';
+  document.getElementById('cp-btn-del').style.display='none';
+  CP_COMPETITORS = [];
+  cpAddCompetitor();cpAddCompetitor();cpAddCompetitor();
+  CP_COUNTRIES = CP_PRESETS ? JSON.parse(JSON.stringify(CP_PRESETS.countries)) : [];
+  cpRenderCountryTable();
+  cpRecalc();
+}
+
+async function cpLoadProject(id){
+  try{
+    const r = await fetch('/api/consumer-pricing/'+id);
+    const it = await r.json();
+    if(!it || it.error){toast('불러오기 실패');return;}
+    CP_CURRENT = it;
+    document.getElementById('cp-name').value = it.프로젝트명||'';
+    document.getElementById('cp-category').value = it.품목||'';
+    document.getElementById('cp-hs').value = it.HS코드||'';
+    document.getElementById('cp-status').value = it.상태||'검토중';
+    document.getElementById('cp-target-price').value = it.타겟_소비자가_KRW?cpFmtNum(it.타겟_소비자가_KRW):'';
+    document.getElementById('cp-cost-price').value = it.생산_단가||'';
+    document.getElementById('cp-cost-currency').value = it.생산_통화||'KRW';
+    document.getElementById('cp-qty').value = it.생산_수량||'';
+    document.getElementById('cp-surcharge').value = it.부대비용_KRW||'';
+    document.getElementById('cp-memo').value = it.메모||'';
+    document.getElementById('cp-btn-del').style.display='inline-block';
+    CP_COMPETITORS = Array.isArray(it.competitors)?it.competitors.slice():[];
+    if(!CP_COMPETITORS.length){CP_COMPETITORS=[{brand:'',product:'',priceKRW:null,memo:''}];}
+    cpRenderCompetitors();
+    if(Array.isArray(it.countryPricing)&&it.countryPricing.length){
+      CP_COUNTRIES = JSON.parse(JSON.stringify(it.countryPricing));
+    }else if(CP_PRESETS){
+      CP_COUNTRIES = JSON.parse(JSON.stringify(CP_PRESETS.countries));
+    }
+    cpRenderCountryTable();
+    cpRecalc();
+    window.scrollTo({top:document.getElementById('cp-list-section').offsetTop-60,behavior:'smooth'});
+    toast('불러왔습니다');
+  }catch(e){console.error(e);toast('오류: '+e.message);}
+}
+
+// ━━━ 경쟁사 ━━━
+function cpAddCompetitor(){
+  CP_COMPETITORS.push({brand:'',product:'',priceKRW:null,memo:''});
+  cpRenderCompetitors();
+}
+function cpRemoveCompetitor(i){
+  CP_COMPETITORS.splice(i,1);
+  if(!CP_COMPETITORS.length)CP_COMPETITORS.push({brand:'',product:'',priceKRW:null,memo:''});
+  cpRenderCompetitors();
+}
+function cpRenderCompetitors(){
+  const tb = document.getElementById('cp-comp-tbody');
+  tb.innerHTML = CP_COMPETITORS.map((c,i)=>`<tr>
+    <td><input type="text" value="${escapeHtml(c.brand||'')}" oninput="cpCompEdit(${i},'brand',this.value)" placeholder="브랜드명"></td>
+    <td><input type="text" value="${escapeHtml(c.product||'')}" oninput="cpCompEdit(${i},'product',this.value)" placeholder="제품명"></td>
+    <td><input type="text" value="${c.priceKRW?cpFmtNum(c.priceKRW):''}" oninput="cpCompEditPrice(${i},this)" placeholder="0"></td>
+    <td><input type="text" value="${escapeHtml(c.memo||'')}" oninput="cpCompEdit(${i},'memo',this.value)" placeholder="URL, 색상 등"></td>
+    <td><button class="cp-btn-danger" style="padding:4px 8px;font-size:14px;" onclick="cpRemoveCompetitor(${i})">×</button></td>
+  </tr>`).join('');
+  cpUpdateCompStats();
+}
+function cpCompEdit(i,key,val){CP_COMPETITORS[i][key]=val;}
+function cpCompEditPrice(i,el){
+  const n = cpParseNum(el.value);
+  CP_COMPETITORS[i].priceKRW = n;
+  if(n!=null)el.value = cpFmtNum(n);
+  cpUpdateCompStats();
+  cpUpdateTargetVsAvg();
+}
+function cpUpdateCompStats(){
+  const prices = CP_COMPETITORS.map(c=>c.priceKRW).filter(p=>p!=null&&p>0);
+  const cnt = prices.length;
+  if(!cnt){
+    document.getElementById('cp-comp-avg').textContent='-';
+    document.getElementById('cp-comp-min').textContent='-';
+    document.getElementById('cp-comp-max').textContent='-';
+    document.getElementById('cp-comp-cnt').textContent='0';
+    return;
+  }
+  const avg = prices.reduce((a,b)=>a+b,0)/cnt;
+  document.getElementById('cp-comp-avg').textContent = cpFmtKRW(avg);
+  document.getElementById('cp-comp-min').textContent = cpFmtKRW(Math.min(...prices));
+  document.getElementById('cp-comp-max').textContent = cpFmtKRW(Math.max(...prices));
+  document.getElementById('cp-comp-cnt').textContent = cnt+'건';
+}
+function cpCompAvg(){
+  const prices = CP_COMPETITORS.map(c=>c.priceKRW).filter(p=>p!=null&&p>0);
+  if(!prices.length)return null;
+  return prices.reduce((a,b)=>a+b,0)/prices.length;
+}
+
+// ━━━ 타겟가 ━━━
+function cpOnTargetInput(el){
+  const n = cpParseNum(el.value);
+  if(n!=null)el.value = cpFmtNum(n);
+  cpUpdateTargetVsAvg();
+  cpRecalc();
+}
+function cpUpdateTargetVsAvg(){
+  const t = cpParseNum(document.getElementById('cp-target-price').value);
+  const avg = cpCompAvg();
+  const el = document.getElementById('cp-target-vs-avg');
+  if(t==null||avg==null){el.value='';return;}
+  const pct = ((t/avg)-1)*100;
+  const sign = pct>=0?'+':'';
+  el.value = `${sign}${pct.toFixed(1)}% (평균 ${cpFmtKRW(avg)})`;
+}
+
+// ━━━ 원가·마진 ━━━
+function cpUnitCostKRW(){
+  const price = parseFloat(document.getElementById('cp-cost-price').value)||0;
+  const cur = document.getElementById('cp-cost-currency').value;
+  if(!price)return 0;
+  if(cur==='KRW')return price;
+  const rate = CP_PRESETS && CP_PRESETS.fx ? CP_PRESETS.fx[cur] : null;
+  if(!rate)return price;
+  return price*rate;
+}
+function cpRecalc(){
+  const unit = cpUnitCostKRW();
+  const qty = parseFloat(document.getElementById('cp-qty').value)||0;
+  const surcharge = parseFloat(document.getElementById('cp-surcharge').value)||0;
+  const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
+  const totalCost = (unit*qty) + surcharge;
+  const revenue = target*qty;
+  const profit = revenue - totalCost;
+  const rate = revenue>0 ? profit/revenue : 0;
+  const unitAll = qty>0 ? totalCost/qty : unit;
+
+  document.getElementById('cp-m-unit').textContent = unit>0?cpFmtKRW(unitAll):'-';
+  document.getElementById('cp-m-total').textContent = totalCost>0?cpFmtKRW(totalCost):'-';
+  document.getElementById('cp-m-revenue').textContent = revenue>0?cpFmtKRW(revenue):'-';
+
+  const profEl = document.getElementById('cp-m-profit');
+  const rateEl = document.getElementById('cp-m-rate');
+  profEl.textContent = revenue>0?cpFmtKRW(profit):'-';
+  rateEl.textContent = revenue>0?(rate*100).toFixed(1)+'%':'-';
+
+  const profCard = profEl.closest('.cp-margin-card');
+  const rateCard = rateEl.closest('.cp-margin-card');
+  [profCard,rateCard].forEach(c=>c.classList.remove('good','warn','bad'));
+  if(revenue>0){
+    const cls = rate>=CP_TARGET_MARGIN_GOOD?'good':rate>=CP_TARGET_MARGIN_WARN?'warn':'bad';
+    profCard.classList.add(cls);rateCard.classList.add(cls);
+  }
+
+  const vEl = document.getElementById('cp-verdict');
+  if(revenue>0&&totalCost>0){
+    vEl.style.display='flex';
+    if(rate>=CP_TARGET_MARGIN_GOOD){
+      vEl.className='cp-verdict good';
+      vEl.innerHTML = `✅ <b>적정</b> — 마진율 ${(rate*100).toFixed(1)}%, 사업 전개 권장`;
+    }else if(rate>=CP_TARGET_MARGIN_WARN){
+      vEl.className='cp-verdict warn';
+      vEl.innerHTML = `⚠️ <b>검토 필요</b> — 마진율 ${(rate*100).toFixed(1)}%, 타겟가 상향 또는 원가 협상 검토`;
+    }else{
+      vEl.className='cp-verdict bad';
+      vEl.innerHTML = `⛔ <b>부적정</b> — 마진율 ${(rate*100).toFixed(1)}%, 사업 전개 비권장`;
+    }
+  }else{
+    vEl.style.display='none';
+  }
+
+  cpRenderCountryTable();
+}
+
+// ━━━ 국가별 소비자가 ━━━
+function cpRenderCountryTable(){
+  const tb = document.getElementById('cp-country-tbody');
+  if(!tb||!CP_COUNTRIES.length){if(tb)tb.innerHTML='';return;}
+  const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
+  const fx = (CP_PRESETS&&CP_PRESETS.fx)||{};
+
+  tb.innerHTML = CP_COUNTRIES.map((c,i)=>{
+    const rate = c.rate != null ? c.rate : (c.code==='KR'?1:(fx[c.currency]||null));
+    c.rate = rate; // store
+    const baseLocal = (rate && target) ? (target/rate) : null; // 타겟가 ÷ 환율 = 현지 통화 기준가
+    const tariff = (c.tariffPct||0)/100;
+    const vat = (c.vatPct||0)/100;
+    const shipKRW = c.shippingKRW||0;
+    const shipLocal = rate ? shipKRW/rate : 0;
+    // 권장 현지가 = (기준가 + 배송비) × (1+관세) × (1+VAT)
+    const recommendLocal = baseLocal!=null ? (baseLocal+shipLocal) * (1+tariff) * (1+vat) : null;
+    if(c.finalLocal == null && recommendLocal!=null) c.finalLocal = Math.round(recommendLocal*100)/100;
+    const finalLocal = c.finalLocal;
+    const finalKRW = (finalLocal!=null && rate) ? finalLocal*rate : null;
+    const diff = (finalKRW!=null && target) ? ((finalKRW/target)-1)*100 : null;
+    const diffCls = diff==null?'':(diff>=0?'cp-diff-plus':'cp-diff-minus');
+    const diffTxt = diff==null?'-':(diff>=0?'+':'')+diff.toFixed(1)+'%';
+    return `<tr>
+      <td><span class="cp-flag">${CP_FLAGS[c.code]||''}</span><b>${escapeHtml(c.name)}</b>${c.note?`<div style="font-size:10px;color:var(--text-muted);">${escapeHtml(c.note)}</div>`:''}</td>
+      <td>${c.currency}</td>
+      <td><input type="number" step="0.001" value="${c.rate!=null?c.rate:''}" onchange="cpCountryEdit(${i},'rate',this.value)" ${c.code==='KR'?'disabled':''}></td>
+      <td>${baseLocal!=null?cpFmtLocal(baseLocal,c.currency):'-'}</td>
+      <td><input type="number" step="0.1" value="${c.tariffPct||0}" onchange="cpCountryEdit(${i},'tariffPct',this.value)"></td>
+      <td><input type="number" step="0.1" value="${c.vatPct||0}" onchange="cpCountryEdit(${i},'vatPct',this.value)"></td>
+      <td><input type="number" step="100" value="${c.shippingKRW||0}" onchange="cpCountryEdit(${i},'shippingKRW',this.value)"></td>
+      <td>${recommendLocal!=null?cpFmtLocal(recommendLocal,c.currency):'-'}</td>
+      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
+      <td class="cp-final">${finalKRW!=null?cpFmtKRW(finalKRW):'-'}</td>
+      <td class="${diffCls}">${diffTxt}</td>
+    </tr>`;
+  }).join('');
+}
+function cpCountryEdit(i,key,val){
+  const num = val===''?null:Number(val);
+  CP_COUNTRIES[i][key] = num;
+  if(key==='tariffPct'||key==='vatPct'||key==='shippingKRW'||key==='rate'){
+    CP_COUNTRIES[i].finalLocal = null; // 재계산하도록 리셋
+  }
+  cpRenderCountryTable();
+}
+
+// ━━━ 저장/삭제 ━━━
+async function cpSave(){
+  const name = document.getElementById('cp-name').value.trim();
+  if(!name){toast('프로젝트명을 입력하세요');return;}
+  const target = cpParseNum(document.getElementById('cp-target-price').value);
+  const cost = parseFloat(document.getElementById('cp-cost-price').value)||null;
+  const qty = parseFloat(document.getElementById('cp-qty').value)||null;
+  const surcharge = parseFloat(document.getElementById('cp-surcharge').value)||0;
+  const unit = cpUnitCostKRW();
+  const totalCost = (unit*(qty||0))+surcharge;
+  const revenue = (target||0)*(qty||0);
+  const profit = revenue-totalCost;
+  const rate = revenue>0?profit/revenue:null;
+  const compPrices = CP_COMPETITORS.map(c=>c.priceKRW).filter(p=>p!=null&&p>0);
+  const compAvg = compPrices.length?compPrices.reduce((a,b)=>a+b,0)/compPrices.length:null;
+  const compMin = compPrices.length?Math.min(...compPrices):null;
+  const compMax = compPrices.length?Math.max(...compPrices):null;
+
+  const body = {
+    프로젝트명: name,
+    품목: document.getElementById('cp-category').value || null,
+    상태: document.getElementById('cp-status').value,
+    HS코드: document.getElementById('cp-hs').value,
+    시장조사_평균_KRW: compAvg,
+    시장조사_최저_KRW: compMin,
+    시장조사_최고_KRW: compMax,
+    타겟_소비자가_KRW: target,
+    competitors: CP_COMPETITORS.filter(c=>c.brand||c.product||c.priceKRW),
+    생산_단가: cost,
+    생산_통화: document.getElementById('cp-cost-currency').value,
+    생산_수량: qty,
+    부대비용_KRW: surcharge,
+    총원가_KRW: totalCost || null,
+    매출_KRW: revenue || null,
+    마진_KRW: revenue>0?profit:null,
+    마진율: rate,
+    countryPricing: CP_COUNTRIES,
+    메모: document.getElementById('cp-memo').value
+  };
+
+  try{
+    const url = CP_CURRENT ? '/api/consumer-pricing/'+CP_CURRENT.id : '/api/consumer-pricing';
+    const method = CP_CURRENT ? 'PATCH' : 'POST';
+    const r = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data = await r.json();
+    if(!r.ok || data.error){toast('저장 실패: '+(data.error||r.status));return;}
+    toast(CP_CURRENT?'수정 완료':'저장 완료');
+    CP_CURRENT = data.item || { id: data.id };
+    document.getElementById('cp-btn-del').style.display='inline-block';
+    await cpLoadList();
+  }catch(e){toast('저장 실패: '+e.message);}
+}
+
+async function cpDeleteCurrent(){
+  if(!CP_CURRENT || !CP_CURRENT.id)return;
+  if(!confirm('이 프로젝트를 삭제하시겠습니까?'))return;
+  try{
+    const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id,{method:'DELETE'});
+    if(!r.ok){toast('삭제 실패');return;}
+    toast('삭제 완료');
+    await cpLoadList();
+    cpNewProject();
+  }catch(e){toast('삭제 실패: '+e.message);}
+}
+
+// 탭 전환 훅 — 최초 진입 시 초기화
+document.addEventListener('click',e=>{
+  const btn = e.target.closest('.tab-btn[data-tab="consumer"]');
+  if(btn && !window._cpInited){window._cpInited=true;cpInit();}
+});
 </script>
 </body>
 </html>

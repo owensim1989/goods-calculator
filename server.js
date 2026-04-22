@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 3100;
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const UNIFIED_DB_ID = process.env.UNIFIED_DB_ID || 'be89a5d46bac4ffcbbc2e81e2ed425c3';
 const VENDOR_DB_ID  = process.env.VENDOR_DB_ID  || 'da7e2fc516d74c2aa0c742e7c394ce78';
+const CONSUMER_PRICING_DB_ID = process.env.CONSUMER_PRICING_DB_ID || '016ec336fe324fc29f6590017ee3f023';
 const ADMIN_SECRET  = process.env.ADMIN_SECRET   || '';
 
 // ━━━ Notion 클라이언트 ━━━
@@ -559,7 +560,7 @@ app.get('/api/quote-assist/options', (req, res) => {
 });
 
 // ━━━ 실시간 환율 (캐시 1시간) ━━━
-let fxCache = { USD: 1380, RMB: 190, updatedAt: null };
+let fxCache = { USD: 1380, RMB: 190, CNY: 190, TWD: 43, HKD: 177, THB: 40, JPY: 9.2, IDR: 0.087, updatedAt: null };
 const https = require('https');
 
 function fetchJSON(url) {
@@ -578,11 +579,28 @@ async function refreshFx() {
   try {
     // open.er-api.com — 무료, 키 불필요
     const data = await fetchJSON('https://open.er-api.com/v6/latest/USD');
-    if (data && data.rates && data.rates.KRW && data.rates.CNY) {
-      const usdKrw = Math.round(data.rates.KRW);           // USD → KRW
-      const rmbKrw = Math.round(data.rates.KRW / data.rates.CNY); // CNY → KRW
-      fxCache = { USD: usdKrw, RMB: rmbKrw, updatedAt: new Date().toISOString() };
-      console.log(`[환율] USD=${usdKrw} RMB=${rmbKrw}`);
+    if (data && data.rates && data.rates.KRW) {
+      const r = data.rates;
+      const krwPer = code => r[code] && r.KRW ? (r.KRW / r[code]) : null;
+      const usdKrw = Math.round(r.KRW);
+      const cnyKrw = krwPer('CNY');
+      const twdKrw = krwPer('TWD');
+      const hkdKrw = krwPer('HKD');
+      const thbKrw = krwPer('THB');
+      const jpyKrw = krwPer('JPY');
+      const idrKrw = krwPer('IDR');
+      fxCache = {
+        USD: usdKrw,
+        RMB: cnyKrw ? Math.round(cnyKrw) : fxCache.RMB,
+        CNY: cnyKrw ? Math.round(cnyKrw) : fxCache.CNY,
+        TWD: twdKrw ? +twdKrw.toFixed(2) : fxCache.TWD,
+        HKD: hkdKrw ? +hkdKrw.toFixed(2) : fxCache.HKD,
+        THB: thbKrw ? +thbKrw.toFixed(2) : fxCache.THB,
+        JPY: jpyKrw ? +jpyKrw.toFixed(3) : fxCache.JPY,
+        IDR: idrKrw ? +idrKrw.toFixed(4) : fxCache.IDR,
+        updatedAt: new Date().toISOString()
+      };
+      console.log(`[환율] USD=${fxCache.USD} CNY=${fxCache.CNY} TWD=${fxCache.TWD} HKD=${fxCache.HKD} THB=${fxCache.THB} JPY=${fxCache.JPY}`);
     }
   } catch (e) {
     console.error('[환율 갱신 실패]', e.message);
@@ -668,6 +686,162 @@ app.patch('/api/adoption/:id', (req, res) => {
   saveAdoption(data);
   res.json({ success: true, item: data[idx] });
 });
+
+// ━━━ 소비자가 산정 API (Notion DB: 016ec336fe324fc29f6590017ee3f023) ━━━
+// 국가별 관부가세·배송비 프리셋 (대표값, UI에서 수정 가능)
+const CONSUMER_PRICING_COUNTRIES = [
+  { code: 'KR', name: '한국',   currency: 'KRW', tariffPct: 0,    vatPct: 10, shippingKRW: 0 },
+  { code: 'TW', name: '대만',   currency: 'TWD', tariffPct: 3,    vatPct: 5,  shippingKRW: 3000 },
+  { code: 'HK', name: '홍콩',   currency: 'HKD', tariffPct: 0,    vatPct: 0,  shippingKRW: 3000, note: '홍콩 무관세' },
+  { code: 'CN', name: '중국',   currency: 'CNY', tariffPct: 10,   vatPct: 13, shippingKRW: 3500 },
+  { code: 'TH', name: '태국',   currency: 'THB', tariffPct: 20,   vatPct: 7,  shippingKRW: 4000 },
+  { code: 'US', name: '미국',   currency: 'USD', tariffPct: 5,    vatPct: 0,  shippingKRW: 5000, note: 'de minimis 검토' },
+  { code: 'JP', name: '일본',   currency: 'JPY', tariffPct: 3,    vatPct: 10, shippingKRW: 3500 }
+];
+
+app.get('/api/consumer-pricing/presets', (req, res) => {
+  res.json({ countries: CONSUMER_PRICING_COUNTRIES, fx: fxCache });
+});
+
+// 저장된 소비자가 산정 프로젝트 목록
+app.get('/api/consumer-pricing', async (req, res) => {
+  if (!notion) return res.json({ items: [] });
+  try {
+    const resp = await notion.databases.query({
+      database_id: CONSUMER_PRICING_DB_ID,
+      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      page_size: 100
+    });
+    const items = resp.results.map(pageToConsumerPricing);
+    res.json({ items });
+  } catch (e) {
+    console.error('[소비자가 목록] 실패', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 단건 조회
+app.get('/api/consumer-pricing/:id', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const page = await notion.pages.retrieve({ page_id: req.params.id });
+    res.json(pageToConsumerPricing(page));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 신규 저장
+app.post('/api/consumer-pricing', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const body = req.body || {};
+    const props = consumerPricingToProps(body);
+    const page = await notion.pages.create({
+      parent: { database_id: CONSUMER_PRICING_DB_ID },
+      properties: props
+    });
+    res.json({ success: true, id: page.id, item: pageToConsumerPricing(page) });
+  } catch (e) {
+    console.error('[소비자가 생성] 실패', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 수정
+app.patch('/api/consumer-pricing/:id', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const body = req.body || {};
+    const props = consumerPricingToProps(body);
+    const page = await notion.pages.update({ page_id: req.params.id, properties: props });
+    res.json({ success: true, item: pageToConsumerPricing(page) });
+  } catch (e) {
+    console.error('[소비자가 수정] 실패', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 삭제 (archive)
+app.delete('/api/consumer-pricing/:id', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    await notion.pages.update({ page_id: req.params.id, archived: true });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Notion page → 앱 객체
+function pageToConsumerPricing(page) {
+  const p = page.properties || {};
+  const getNum = (k) => p[k] && p[k].number != null ? p[k].number : null;
+  const getText = (k) => {
+    const arr = p[k] && (p[k].rich_text || p[k].title);
+    if (!arr || !arr.length) return '';
+    return arr.map(t => t.plain_text || (t.text && t.text.content) || '').join('');
+  };
+  const getSelect = (k) => p[k] && p[k].select ? p[k].select.name : null;
+  let competitors = [];
+  let countryPricing = [];
+  try { competitors = JSON.parse(getText('경쟁사_데이터_JSON') || '[]'); } catch(e) {}
+  try { countryPricing = JSON.parse(getText('국가별_가격_JSON') || '[]'); } catch(e) {}
+  return {
+    id: page.id,
+    프로젝트명: getText('프로젝트명'),
+    품목: getSelect('품목'),
+    상태: getSelect('상태'),
+    HS코드: getText('HS코드'),
+    시장조사_평균_KRW: getNum('시장조사_평균_KRW'),
+    시장조사_최저_KRW: getNum('시장조사_최저_KRW'),
+    시장조사_최고_KRW: getNum('시장조사_최고_KRW'),
+    타겟_소비자가_KRW: getNum('타겟_소비자가_KRW'),
+    competitors,
+    생산_단가: getNum('생산_단가'),
+    생산_통화: getSelect('생산_통화'),
+    생산_수량: getNum('생산_수량'),
+    부대비용_KRW: getNum('부대비용_KRW'),
+    총원가_KRW: getNum('총원가_KRW'),
+    매출_KRW: getNum('매출_KRW'),
+    마진_KRW: getNum('마진_KRW'),
+    마진율: getNum('마진율'),
+    countryPricing,
+    메모: getText('메모'),
+    createdAt: page.created_time,
+    updatedAt: page.last_edited_time
+  };
+}
+
+// 앱 객체 → Notion properties
+function consumerPricingToProps(b) {
+  const props = {};
+  const asTitle = (v) => ({ title: [{ type: 'text', text: { content: String(v || '') } }] });
+  const asText  = (v) => ({ rich_text: [{ type: 'text', text: { content: String(v || '') } }] });
+  const asNum   = (v) => ({ number: (v === '' || v == null || isNaN(Number(v))) ? null : Number(v) });
+  const asSel   = (v) => ({ select: v ? { name: String(v) } : null });
+
+  if (b.프로젝트명 != null) props['프로젝트명'] = asTitle(b.프로젝트명);
+  if (b.품목 != null) props['품목'] = asSel(b.품목);
+  if (b.상태 != null) props['상태'] = asSel(b.상태);
+  if (b.HS코드 != null) props['HS코드'] = asText(b.HS코드);
+  if (b.시장조사_평균_KRW != null) props['시장조사_평균_KRW'] = asNum(b.시장조사_평균_KRW);
+  if (b.시장조사_최저_KRW != null) props['시장조사_최저_KRW'] = asNum(b.시장조사_최저_KRW);
+  if (b.시장조사_최고_KRW != null) props['시장조사_최고_KRW'] = asNum(b.시장조사_최고_KRW);
+  if (b.타겟_소비자가_KRW != null) props['타겟_소비자가_KRW'] = asNum(b.타겟_소비자가_KRW);
+  if (b.competitors != null) props['경쟁사_데이터_JSON'] = asText(JSON.stringify(b.competitors || []));
+  if (b.생산_단가 != null) props['생산_단가'] = asNum(b.생산_단가);
+  if (b.생산_통화 != null) props['생산_통화'] = asSel(b.생산_통화);
+  if (b.생산_수량 != null) props['생산_수량'] = asNum(b.생산_수량);
+  if (b.부대비용_KRW != null) props['부대비용_KRW'] = asNum(b.부대비용_KRW);
+  if (b.총원가_KRW != null) props['총원가_KRW'] = asNum(b.총원가_KRW);
+  if (b.매출_KRW != null) props['매출_KRW'] = asNum(b.매출_KRW);
+  if (b.마진_KRW != null) props['마진_KRW'] = asNum(b.마진_KRW);
+  if (b.마진율 != null) props['마진율'] = asNum(b.마진율);
+  if (b.countryPricing != null) props['국가별_가격_JSON'] = asText(JSON.stringify(b.countryPricing || []));
+  if (b.메모 != null) props['메모'] = asText(b.메모);
+  return props;
+}
 
 // SPA 폴백
 app.get('*', (req, res) => {
