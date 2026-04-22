@@ -1124,6 +1124,7 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
     "shipping": 해외운송비 KRW,
     "customsPct": 관세율 %,
     "vatPct": VAT율 %,
+    "packaging": 포장·라벨링·패키지 비용 KRW,
     "misc": 통관수수료 등 기타 KRW,
     "reasoning": "산출 근거 1~2문장 (예: HS 3926 중국 수입 관세 8%, VAT 10%, 500개 배송비 kg당 환산)"
   },

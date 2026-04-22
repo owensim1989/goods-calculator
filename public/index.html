@@ -320,7 +320,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cp-input-section::before{content:'🖊️ 작업자 입력';position:absolute;top:-11px;left:20px;background:var(--primary);color:#fff;padding:4px 14px;border-radius:12px;font-size:12px;font-weight:600;letter-spacing:.3px;}
 .cp-input-section .cp-grid{margin-bottom:0;gap:14px;}
 .cp-input-section label{font-size:13px;font-weight:600;color:var(--text);}
-.cp-input-section input,.cp-input-section select,.cp-input-section textarea{background:var(--card);font-size:15px;padding:10px 14px;}
+.cp-input-section input,.cp-input-section select,.cp-input-section textarea{background:var(--input-bg);color:var(--text);font-size:15px;padding:10px 14px;border:1px solid var(--border);}
 .cp-input-big{display:grid;grid-template-columns:2.5fr 1fr;gap:14px;margin-bottom:14px;}
 @media(max-width:700px){.cp-input-big{grid-template-columns:1fr;}}
 .cp-upload-btn{background:var(--card);border:2px dashed var(--primary);color:var(--primary);padding:18px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;transition:all .2s;}
@@ -534,7 +534,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </span>
     </h4>
     <div class="cp-grid">
-      <div class="cp-field"><label>HS Code</label><input type="text" id="cp-hs" placeholder="프로젝트명 입력 → 자동 추천"></div>
+      <div class="cp-field"><label>HS Code <span id="cp-hs-badge" style="float:right;font-size:10px;font-weight:500;padding:1px 6px;border-radius:8px;background:#fef3c7;color:#92400e;">⚠️ 미확정</span></label><input type="text" id="cp-hs" placeholder="프로젝트명 입력 → 자동 추천"></div>
       <div class="cp-field"><label>품목</label><select id="cp-category">
         <option value="">선택</option><option>의류</option><option>문구펜시</option><option>피규어 및 인형</option><option>모바일 악세사리</option><option>생활잡화</option><option>행사물품</option><option>인쇄물</option><option>광고물</option><option>시공</option><option>기타</option>
       </select></div>
@@ -569,7 +569,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="cp-field"><label>통화</label><select id="cp-cost-currency" onchange="cpRecalc()">
         <option value="KRW">KRW (원)</option><option value="USD">USD ($)</option><option value="CNY">CNY (¥)</option><option value="JPY">JPY (¥)</option><option value="TWD">TWD (NT$)</option><option value="HKD">HKD (HK$)</option><option value="THB">THB (฿)</option>
       </select></div>
-      <div class="cp-field"><label>수량 (로트)</label><input type="number" id="cp-qty" placeholder="1000" oninput="cpRecalc()"></div>
+      <div class="cp-field"><label>수량 (로트)</label><input type="text" id="cp-qty" placeholder="1,000" oninput="cpFmtInput(this);cpRecalc()"></div>
     </div>
 
     <!-- 초도 비용 (샘플비·금형비) -->
@@ -592,7 +592,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
             </select>
           </div>
         </div>
-        <div class="cp-field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="cp-include-initial" checked onchange="cpRecalc()">✅ 원가 포함</label>
+        <div class="cp-field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="cp-include-initial" checked onchange="cpRecalc()">원가 포함</label>
           <div id="cp-initial-sum" style="font-size:12px;color:var(--text-muted);margin-top:4px;">합계: -</div>
         </div>
       </div>
@@ -601,17 +601,18 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <!-- 부대비용 breakdown -->
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:12px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
-        📦 생산 부대비용 breakdown <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 국가 프리셋 기본값, AI 견적서 분석 시 덮어씀</span>
+        📦 생산 부대비용 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 국가 프리셋 기본값, AI 견적서 분석 시 덮어씀</span>
         <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:11px;padding:3px 10px;" onclick="cpApplyCountryPreset()">🔄 원산지 프리셋</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr) 1fr;gap:10px;align-items:end;">
-        <div class="cp-field"><label>원산지</label><select id="cp-origin" onchange="cpApplyCountryPreset()">
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;">
+        <div class="cp-field"><label>원산지</label><select id="cp-origin" onchange="cpApplyCountryPreset(true)">
           <option value="China">🇨🇳 중국</option><option value="Korea">🇰🇷 한국</option><option value="Vietnam">🇻🇳 베트남</option><option value="Other">🌏 기타해외</option>
         </select></div>
-        <div class="cp-field"><label>해외 운송비 (KRW)</label><input type="number" id="cp-sur-shipping" placeholder="0" oninput="cpRecalc()"></div>
+        <div class="cp-field"><label>해외 운송비 (KRW)</label><input type="text" id="cp-sur-shipping" placeholder="0" oninput="cpFmtInput(this);cpRecalc()"></div>
         <div class="cp-field"><label>관세율 %</label><input type="number" id="cp-sur-customs" step="0.1" placeholder="8" oninput="cpRecalc()"></div>
         <div class="cp-field"><label>VAT %</label><input type="number" id="cp-sur-vat" step="0.1" placeholder="10" oninput="cpRecalc()"></div>
-        <div class="cp-field"><label>통관/기타 (KRW)</label><input type="number" id="cp-sur-misc" placeholder="0" oninput="cpRecalc()"></div>
+        <div class="cp-field"><label>📦 포장 비용 (KRW)</label><input type="text" id="cp-sur-packaging" placeholder="0" oninput="cpFmtInput(this);cpRecalc()"></div>
+        <div class="cp-field"><label>통관/기타 (KRW)</label><input type="text" id="cp-sur-misc" placeholder="0" oninput="cpFmtInput(this);cpRecalc()"></div>
       </div>
       <div id="cp-sur-breakdown" style="font-size:12px;color:var(--text-muted);margin-top:10px;padding:8px 12px;background:var(--card);border-radius:6px;">
         생산원가 입력 시 자동 계산됩니다.
@@ -632,7 +633,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
   <div class="cp-auto-section">
     <h4>🌏 국가별 현지 소비자가 <span class="auto-tag">환율·관세 자동</span></h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">타겟가 × 환율 × (1+관세) × (1+VAT) + 배송비. 권장가 옆 <b>↓적용</b>으로 확정가 복사.</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">타겟가 × 환율 × (1+관세) × (1+VAT) + 배송비. 권장가 옆 <b>적용</b>으로 확정가 복사.</p>
     <div class="table-wrap"><table class="cp-country-table">
       <thead><tr>
         <th style="text-align:left;">국가</th>
@@ -1385,6 +1386,17 @@ const cpParseNum = s => {
   const v=String(s).replace(/[^0-9.-]/g,'');
   return v===''?null:Number(v);
 };
+// 숫자 input에 천단위 콤마 — type=text 필드 oninput에서 호출
+function cpFmtInput(el){
+  if(!el)return;
+  const raw = String(el.value).replace(/[^0-9.-]/g,'');
+  if(raw==='' || raw==='-'){ el.value = raw; return; }
+  const n = Number(raw);
+  if(isNaN(n)){ el.value=raw; return; }
+  const parts = raw.split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  el.value = parts.length>1 ? intPart+'.'+parts[1] : intPart;
+}
 
 async function cpInit(){
   try{
@@ -1443,6 +1455,8 @@ function cpNewProject(){
   document.getElementById('cp-name').value='';
   document.getElementById('cp-category').value='';
   document.getElementById('cp-hs').value='';
+  window._cpHSConfirmed = false;
+  if(typeof cpUpdateHSConfirmBadge==='function') cpUpdateHSConfirmBadge();
   document.getElementById('cp-status').value='검토중';
   document.getElementById('cp-target-price').value='';
   document.getElementById('cp-target-vs-avg').value='';
@@ -1458,6 +1472,7 @@ function cpNewProject(){
   document.getElementById('cp-sur-shipping').value='';
   document.getElementById('cp-sur-customs').value='';
   document.getElementById('cp-sur-vat').value='';
+  const pkg = document.getElementById('cp-sur-packaging'); if(pkg) pkg.value='';
   document.getElementById('cp-sur-misc').value='';
   document.getElementById('cp-memo').value='';
   document.getElementById('cp-btn-del').style.display='none';
@@ -1473,6 +1488,8 @@ function cpNewProject(){
   cpAddCompetitor();
   CP_COUNTRIES = CP_PRESETS ? JSON.parse(JSON.stringify(CP_PRESETS.countries)) : [];
   cpRenderCountryTable();
+  // 원산지 디폴트 프리셋 적용 (강제)
+  setTimeout(()=>{ if(typeof cpApplyCountryPreset==='function') cpApplyCountryPreset(true); }, 50);
   cpRecalc();
 }
 
@@ -1485,6 +1502,8 @@ async function cpLoadProject(id){
     document.getElementById('cp-name').value = it.프로젝트명||'';
     document.getElementById('cp-category').value = it.품목||'';
     document.getElementById('cp-hs').value = it.HS코드||'';
+    window._cpHSConfirmed = !!(it.HS코드 && it.HS코드.trim());
+    cpUpdateHSConfirmBadge();
     document.getElementById('cp-status').value = it.상태||'검토중';
     document.getElementById('cp-target-price').value = it.타겟_소비자가_KRW?cpFmtNum(it.타겟_소비자가_KRW):'';
     document.getElementById('cp-cost-price').value = it.생산_단가||'';
@@ -1501,6 +1520,7 @@ async function cpLoadProject(id){
     if(meta.customsPct!=null) document.getElementById('cp-sur-customs').value = meta.customsPct;
     if(meta.vatPct!=null) document.getElementById('cp-sur-vat').value = meta.vatPct;
     if(meta.misc!=null) document.getElementById('cp-sur-misc').value = meta.misc;
+    if(meta.packaging!=null){ const pkg = document.getElementById('cp-sur-packaging'); if(pkg) pkg.value = meta.packaging; }
     if(meta.includeInitial != null) document.getElementById('cp-include-initial').checked = !!meta.includeInitial;
     {
       const raw = it.메모 || '';
@@ -1549,7 +1569,10 @@ function cpRenderCompetitors(){
     <td><input type="text" value="${escapeHtml(c.brand||'')}" oninput="cpCompEdit(${i},'brand',this.value)" placeholder="브랜드명"></td>
     <td><input type="text" value="${escapeHtml(c.product||'')}" oninput="cpCompEdit(${i},'product',this.value)" placeholder="제품명"></td>
     <td><input type="text" value="${c.priceKRW?cpFmtNum(c.priceKRW):''}" oninput="cpCompEditPrice(${i},this)" placeholder="0"></td>
-    <td><input type="text" value="${escapeHtml(c.memo||'')}" oninput="cpCompEdit(${i},'memo',this.value)" placeholder="URL, 색상 등"></td>
+    <td style="display:flex;gap:4px;align-items:center;">
+      <input type="text" value="${escapeHtml(c.memo||'')}" oninput="cpCompEdit(${i},'memo',this.value)" placeholder="URL, 색상 등" style="flex:1;">
+      ${/^https?:\/\//.test(c.memo||'') ? `<button style="padding:4px 8px;font-size:11px;border:1px solid var(--primary);color:var(--primary);background:transparent;border-radius:4px;cursor:pointer;" onclick="window.open('${escapeHtml(c.memo)}','_blank','noopener')" title="새 탭에서 열기">🔗</button>` : ''}
+    </td>
     <td><button class="cp-btn-danger" style="padding:4px 8px;font-size:14px;" onclick="cpRemoveCompetitor(${i})">×</button></td>
   </tr>`).join('');
   cpUpdateCompStats();
@@ -1603,7 +1626,7 @@ function cpUpdateTargetVsAvg(){
 
 // ━━━ 원가·마진 ━━━
 function cpUnitCostKRW(){
-  const price = parseFloat(document.getElementById('cp-cost-price').value)||0;
+  const price = parseFloat(String(document.getElementById('cp-cost-price').value).replace(/,/g,''))||0;
   const cur = document.getElementById('cp-cost-currency').value;
   if(!price)return 0;
   if(cur==='KRW')return price;
@@ -1617,30 +1640,38 @@ function cpCurrencyToKRW(val, cur){
   const rate = CP_PRESETS && CP_PRESETS.fx ? CP_PRESETS.fx[cur] : null;
   return rate ? val*rate : val;
 }
-function cpApplyCountryPreset(){
+function cpApplyCountryPreset(force){
   const origin = document.getElementById('cp-origin').value || 'China';
   const PRESETS = {
-    'China': { customs: 8, vat: 10, shippingPerUnit: 600, misc: 30000 },
-    'Korea': { customs: 0, vat: 10, shippingPerUnit: 0, misc: 0 },
-    'Vietnam': { customs: 8, vat: 10, shippingPerUnit: 700, misc: 30000 },
-    'Other': { customs: 10, vat: 10, shippingPerUnit: 800, misc: 30000 }
+    'China':   { customs: 8,  vat: 10, shippingPerUnit: 600, packagingPerUnit: 300, misc: 30000 },
+    'Korea':   { customs: 0,  vat: 10, shippingPerUnit: 0,   packagingPerUnit: 150, misc: 0 },
+    'Vietnam': { customs: 8,  vat: 10, shippingPerUnit: 700, packagingPerUnit: 300, misc: 30000 },
+    'Other':   { customs: 10, vat: 10, shippingPerUnit: 800, packagingPerUnit: 300, misc: 30000 }
   };
   const p = PRESETS[origin] || PRESETS['China'];
-  const qty = parseFloat(document.getElementById('cp-qty').value)||0;
-  // 사용자가 이미 값을 입력했으면 덮어쓰지 않음 (빈 칸만 채움)
+  const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||0;
   const shipEl = document.getElementById('cp-sur-shipping');
   const custEl = document.getElementById('cp-sur-customs');
   const vatEl = document.getElementById('cp-sur-vat');
   const miscEl = document.getElementById('cp-sur-misc');
-  if(!shipEl.value) shipEl.value = Math.round(p.shippingPerUnit * qty);
-  if(!custEl.value) custEl.value = p.customs;
-  if(!vatEl.value) vatEl.value = p.vat;
-  if(!miscEl.value) miscEl.value = p.misc;
+  const pkgEl = document.getElementById('cp-sur-packaging');
+  const setVal = (el, val) => {
+    if(!el) return;
+    if(force || !el.value){
+      el.value = val;
+      if(el.type === 'text' && val !== '') cpFmtInput(el);
+    }
+  };
+  setVal(shipEl, Math.round(p.shippingPerUnit * qty));
+  setVal(custEl, p.customs);
+  setVal(vatEl, p.vat);
+  setVal(pkgEl, Math.round(p.packagingPerUnit * qty));
+  setVal(miscEl, p.misc);
   cpRecalc();
 }
 function cpRecalc(){
   const unit = cpUnitCostKRW();
-  const qty = parseFloat(document.getElementById('cp-qty').value)||0;
+  const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||0;
   // 초도 비용 (샘플/금형)
   const sampleVal = parseFloat(document.getElementById('cp-sample-fee').value)||0;
   const sampleCur = document.getElementById('cp-sample-cur').value;
@@ -1653,17 +1684,23 @@ function cpRecalc(){
   const initEl = document.getElementById('cp-initial-sum');
   if(initEl) initEl.textContent = initialKRW>0 ? `합계: ₩${Math.round(initialKRW).toLocaleString()}${includeInitial?' (포함)':' (제외)'}` : '합계: -';
   // 부대비용 breakdown
-  const ship = parseFloat(document.getElementById('cp-sur-shipping').value)||0;
-  const customsPct = (parseFloat(document.getElementById('cp-sur-customs').value)||0)/100;
-  const vatPct = (parseFloat(document.getElementById('cp-sur-vat').value)||0)/100;
-  const misc = parseFloat(document.getElementById('cp-sur-misc').value)||0;
+  const parseField = (id)=>{
+    const el = document.getElementById(id);
+    if(!el) return 0;
+    return parseFloat(String(el.value).replace(/,/g,''))||0;
+  };
+  const ship = parseField('cp-sur-shipping');
+  const customsPct = parseField('cp-sur-customs')/100;
+  const vatPct = parseField('cp-sur-vat')/100;
+  const packaging = parseField('cp-sur-packaging');
+  const misc = parseField('cp-sur-misc');
   const prodKRW = unit * qty;
   const customsKRW = (prodKRW + ship) * customsPct;
   const vatKRW = (prodKRW + ship + customsKRW) * vatPct;
-  const surcharge = ship + customsKRW + vatKRW + misc;
+  const surcharge = ship + customsKRW + vatKRW + packaging + misc;
   const sbEl = document.getElementById('cp-sur-breakdown');
   if(sbEl){
-    sbEl.innerHTML = `🚚 운송 ₩${Math.round(ship).toLocaleString()} + 🏛️ 관세 ₩${Math.round(customsKRW).toLocaleString()} (원가×${(customsPct*100).toFixed(1)}%) + 📜 VAT ₩${Math.round(vatKRW).toLocaleString()} (과세가×${(vatPct*100).toFixed(1)}%) + 📋 기타 ₩${Math.round(misc).toLocaleString()} <b style="color:var(--primary);">= ₩${Math.round(surcharge).toLocaleString()}</b>`;
+    sbEl.innerHTML = `🚚 운송 ₩${Math.round(ship).toLocaleString()} + 🏛️ 관세 ₩${Math.round(customsKRW).toLocaleString()} (${(customsPct*100).toFixed(1)}%) + 📜 VAT ₩${Math.round(vatKRW).toLocaleString()} (${(vatPct*100).toFixed(1)}%) + 📦 포장 ₩${Math.round(packaging).toLocaleString()} + 📋 기타 ₩${Math.round(misc).toLocaleString()} <b style="color:var(--primary);">= ₩${Math.round(surcharge).toLocaleString()}</b>`;
   }
   // hidden compat
   const sh = document.getElementById('cp-surcharge'); if(sh) sh.value = Math.round(surcharge);
@@ -1743,7 +1780,7 @@ function cpRenderCountryTable(){
       <td><input type="number" step="0.1" value="${c.tariffPct||0}" onchange="cpCountryEdit(${i},'tariffPct',this.value)"></td>
       <td><input type="number" step="0.1" value="${c.vatPct||0}" onchange="cpCountryEdit(${i},'vatPct',this.value)"></td>
       <td><input type="number" step="100" value="${c.shippingKRW||0}" onchange="cpCountryEdit(${i},'shippingKRW',this.value)"></td>
-      <td title="${escapeHtml(recTitle)}">${recommendLocal!=null?cpFmtLocal(recommendLocal,c.currency):'-'} ${recRound!=null?`<button style="padding:2px 6px;font-size:10px;border:1px solid var(--primary);color:var(--primary);background:transparent;border-radius:4px;cursor:pointer;margin-left:4px;" onclick="cpApplyRec(${i},${recRound})">↓적용</button>`:''}</td>
+      <td title="${escapeHtml(recTitle)}">${recommendLocal!=null?cpFmtLocal(recommendLocal,c.currency):'-'} ${recRound!=null?`<button style="padding:2px 6px;font-size:10px;border:1px solid var(--primary);color:var(--primary);background:transparent;border-radius:4px;cursor:pointer;margin-left:4px;" onclick="cpApplyRec(${i},${recRound})">적용</button>`:''}</td>
       <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${recRound!=null?recRound:''}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
       <td class="cp-final">${finalKRW!=null?cpFmtKRW(finalKRW):'-'}</td>
       <td class="${diffCls}">${diffTxt}</td>
@@ -1764,6 +1801,12 @@ function cpCountryEdit(i,key,val){
 async function cpSave(){
   const name = document.getElementById('cp-name').value.trim();
   if(!name){showToast('프로젝트명을 입력하세요');return;}
+  const hs = document.getElementById('cp-hs').value.trim();
+  if(hs && !window._cpHSConfirmed){
+    if(!confirm('HS Code가 확정되지 않았습니다.\n\n🤖 다른 후보 버튼으로 후보들을 확인하고 "이걸로" 버튼을 눌러 확정하는 것을 권장합니다.\n\n그래도 현재 HS Code로 저장하시겠습니까?')){
+      return;
+    }
+  }
   const target = cpParseNum(document.getElementById('cp-target-price').value);
   const cost = parseFloat(document.getElementById('cp-cost-price').value)||null;
   const qty = parseFloat(document.getElementById('cp-qty').value)||null;
@@ -1788,7 +1831,8 @@ async function cpSave(){
     shipping: parseFloat(document.getElementById('cp-sur-shipping').value)||0,
     customsPct: parseFloat(document.getElementById('cp-sur-customs').value)||0,
     vatPct: parseFloat(document.getElementById('cp-sur-vat').value)||0,
-    misc: parseFloat(document.getElementById('cp-sur-misc').value)||0
+    misc: parseFloat(String(document.getElementById('cp-sur-misc').value).replace(/,/g,''))||0,
+    packaging: (()=>{ const el=document.getElementById('cp-sur-packaging'); return el?(parseFloat(String(el.value).replace(/,/g,''))||0):0; })()
   };
   const memoText = document.getElementById('cp-memo').value;
   const memoWithMeta = memoText + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(breakdownMeta) + '-->';
@@ -1942,7 +1986,10 @@ function cpApplyHS(code, tariffs){
   if(tariffs) cpApplyTariffsToCountries(tariffs);
   const mEl = document.getElementById('cp-hs-match');
   if(mEl) mEl.value = tariffs && tariffs.matchRef ? '✅ 기존 제품과 동일 HS' : (tariffs ? '신규 추정' : '');
-  showToast('HS Code 적용: '+code);
+  // 모달에서 "이걸로" 선택 → 확정
+  window._cpHSConfirmed = true;
+  cpUpdateHSConfirmBadge();
+  showToast('HS Code 확정: '+code);
 }
 function cpApplyTariffsToCountries(t){
   if(!CP_COUNTRIES || !CP_COUNTRIES.length || !t) return;
@@ -1983,8 +2030,10 @@ async function cpAutoHSSoon(){
       cpApplyTariffsToCountries(top);
       const mEl = document.getElementById('cp-hs-match');
       if(mEl) mEl.value = top.matchRef ? '✅ 기존 제품과 동일 HS' : '신규 추정';
-      showToast('🤖 HS 자동: '+top.code+(top.matchRef?' (기존과 동일)':''));
+      showToast('🤖 HS 추천: '+top.code+'. 🤖 다른 후보 버튼으로 확정 필요');
       window._cpHSCache = d.candidates;
+      window._cpHSConfirmed = false;
+      cpUpdateHSConfirmBadge();
     } else {
       hsInput.placeholder = orig;
     }
@@ -2002,7 +2051,15 @@ async function cpScrapeCompetitor(){
       body: JSON.stringify({url})
     });
     const d = await r.json();
-    if(!r.ok||d.error){showToast('실패: '+(d.error||r.status));return;}
+    if(!r.ok||d.error){
+      const msg = d.error || ('HTTP '+r.status);
+      if(/ANTHROPIC_API_KEY/.test(msg)){
+        alert('❌ AI 기능을 사용하려면 Railway Variables에 ANTHROPIC_API_KEY를 등록해야 합니다.');
+      } else {
+        alert('❌ URL 매칭 실패: '+msg);
+      }
+      return;
+    }
     let idx = CP_COMPETITORS.findIndex(c=>!c.brand&&!c.product&&!c.priceKRW);
     if(idx<0){CP_COMPETITORS.push({brand:'',product:'',priceKRW:null,memo:''});idx=CP_COMPETITORS.length-1;}
     CP_COMPETITORS[idx] = {
@@ -2092,8 +2149,8 @@ async function cpSubmitQuote(){
     if(br.customsPct!=null) document.getElementById('cp-sur-customs').value = br.customsPct;
     if(br.vatPct!=null) document.getElementById('cp-sur-vat').value = br.vatPct;
     if(br.misc!=null) document.getElementById('cp-sur-misc').value = Math.round(br.misc);
-    // breakdown 없으면 원산지 프리셋 적용
-    if(!br.shipping && !br.customsPct) cpApplyCountryPreset();
+    // breakdown 없으면 원산지 프리셋 적용 (강제)
+    if(!br.shipping && !br.customsPct) cpApplyCountryPreset(true);
     cpRecalc();
     resEl.style.display='block';
     const qArr = Array.isArray(d.quotes)?d.quotes.filter(q=>q&&q.qty):[];
@@ -2139,7 +2196,8 @@ function cpApplyTier(i){
   // 수량이 바뀌면 운송비 재계산을 위해 필드 리셋
   const shipEl = document.getElementById('cp-sur-shipping');
   if(shipEl) shipEl.value = '';
-  cpApplyCountryPreset();
+  const pkgEl = document.getElementById('cp-sur-packaging'); if(pkgEl) pkgEl.value = '';
+  cpApplyCountryPreset(true);
   cpRenderTiers();
   cpRecalc();
   showToast(q.qty+'개 기준 단가 적용');
@@ -2150,6 +2208,19 @@ function cpToggleCatalogBtn(){
   const btn = document.getElementById('cp-btn-publish');
   if(!btn) return;
   btn.style.display = (st === '승인' && CP_CURRENT && CP_CURRENT.id) ? 'inline-block' : 'none';
+}
+function cpUpdateHSConfirmBadge(){
+  const b = document.getElementById('cp-hs-badge');
+  if(!b)return;
+  if(window._cpHSConfirmed){
+    b.textContent = '✅ 확정';
+    b.style.background = 'rgba(16,185,129,.18)';
+    b.style.color = 'var(--success)';
+  } else {
+    b.textContent = '⚠️ 미확정 — 🤖 다른 후보 확인 필요';
+    b.style.background = 'rgba(245,158,11,.18)';
+    b.style.color = 'var(--warning)';
+  }
 }
 // 탭 전환 훅 — 최초 진입 시 초기화
 document.addEventListener('click',e=>{
