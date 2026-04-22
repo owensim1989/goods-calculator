@@ -1552,19 +1552,31 @@ async function cpExportBuyerExcel(){
 // 📤 일괄 Import 모달 제어
 let _cpBulkBase64 = null;
 let _cpBulkFilename = '';
+let _cpBulkDone = false; // Import 완료 후 중복 실행 차단
+function _cpBulkResetBtn(){
+  const btn = document.getElementById('cp-bulk-go');
+  if(!btn) return;
+  btn.disabled = true;
+  btn.textContent = '🚀 Import 실행';
+  btn.style.background = '';
+  btn.style.cursor = '';
+  _cpBulkDone = false;
+}
 function cpOpenBulkImport(){
   document.getElementById('cp-bulk-import-modal').style.display = 'flex';
   document.getElementById('cp-bulk-filename').textContent = '📁 클릭 또는 드래그해서 엑셀 업로드';
   document.getElementById('cp-bulk-status').style.display = 'none';
-  document.getElementById('cp-bulk-go').disabled = true;
   _cpBulkBase64 = null;
   _cpBulkFilename = '';
+  _cpBulkResetBtn();
 }
 function cpCloseBulkImport(){
   document.getElementById('cp-bulk-import-modal').style.display = 'none';
 }
 function cpHandleBulkFile(file){
   if (!file) return;
+  // 이전 Import가 완료된 상태에서 새 파일을 고르면 버튼 리셋 (재사용 허용)
+  if(_cpBulkDone) _cpBulkResetBtn();
   _cpBulkFilename = file.name;
   document.getElementById('cp-bulk-filename').textContent = '📄 ' + file.name + ' (' + (file.size/1024/1024).toFixed(2) + ' MB)';
   const reader = new FileReader();
@@ -1573,17 +1585,19 @@ function cpHandleBulkFile(file){
     let binary = '';
     for (let i = 0; i < arr.byteLength; i++) binary += String.fromCharCode(arr[i]);
     _cpBulkBase64 = btoa(binary);
-    document.getElementById('cp-bulk-go').disabled = false;
+    if(!_cpBulkDone) document.getElementById('cp-bulk-go').disabled = false;
   };
   reader.readAsArrayBuffer(file);
 }
 async function cpRunBulkImport(){
   if (!_cpBulkBase64) return;
+  if (_cpBulkDone) return; // 이미 완료된 경우 차단
   const btn = document.getElementById('cp-bulk-go');
   const status = document.getElementById('cp-bulk-status');
   status.style.display = 'block';
   status.innerHTML = '⏳ Notion에 등록 중... (수백 건은 30초~2분 걸릴 수 있습니다)';
   btn.disabled = true; btn.textContent = '⏳ 진행 중';
+  let success = false;
   try {
     const r = await fetch('/api/consumer-pricing/catalog/bulk-import', {
       method: 'POST',
@@ -1605,12 +1619,25 @@ async function cpRunBulkImport(){
       if (data.errors.length > 10) html += '<li>... 외 ' + (data.errors.length - 10) + '건</li>';
       html += '</ul></details>';
     }
+    html += '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border,#ddd);color:var(--text-muted,#666);font-size:12px;">💡 다시 Import 하려면 새 파일을 선택하세요.</div>';
     status.innerHTML = html;
     if (typeof showToast === 'function') showToast('📤 Import 완료: ' + data.created + '건 등록', 'success');
+    success = true;
   } catch(e) {
     status.innerHTML = '❌ 실패: ' + e.message;
   } finally {
-    btn.disabled = false; btn.textContent = '🚀 Import 실행';
+    if (success) {
+      // 성공: 버튼을 완료 상태로 고정 (중복 실행 방지)
+      _cpBulkDone = true;
+      btn.disabled = true;
+      btn.textContent = '✅ 완료';
+      btn.style.background = '#10b981';
+      btn.style.cursor = 'not-allowed';
+    } else {
+      // 실패: 재시도 가능하게 복구
+      btn.disabled = false;
+      btn.textContent = '🚀 Import 실행';
+    }
   }
 }
 
