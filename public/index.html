@@ -522,6 +522,26 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <span style="font-size:20px;">📄</span>
       <span>④ 견적서 업로드 (PDF·이미지·엑셀) → AI가 단가·수량·부대비용 자동 추출</span>
     </button>
+
+    <!-- ⑤ 제품 이미지 업로드 -->
+    <div id="cp-product-image-wrap" style="margin-top:10px;display:grid;grid-template-columns:132px 1fr;gap:14px;align-items:center;">
+      <div id="cp-product-image-preview" style="width:132px;height:132px;border:2px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--card);overflow:hidden;cursor:pointer;transition:all .15s;"
+           onclick="if(!CP_PRODUCT_IMAGE) document.getElementById('cp-product-image-input').click()"
+           ondragover="event.preventDefault();event.stopPropagation();this.style.borderColor='var(--primary)';this.style.background='var(--primary-light)';"
+           ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--card)';"
+           ondrop="cpOnProductImageDrop(event)">
+        <span style="color:var(--text-muted);font-size:11px;text-align:center;line-height:1.5;">📷<br>제품 이미지<br>드래그/클릭</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+        <div style="font-weight:600;font-size:13px;">⑤ 📷 제품 이미지 <span style="color:var(--text-muted);font-size:11px;font-weight:400;">— 카탈로그 등록 시 Image_URL 자동 연결</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="cp-btn cp-btn-ghost" style="font-size:11px;padding:4px 12px;" onclick="document.getElementById('cp-product-image-input').click()">📤 파일 선택</button>
+          <button type="button" class="cp-btn cp-btn-ghost" id="cp-product-image-remove" style="font-size:11px;padding:4px 12px;display:none;color:#c0392b;border-color:#c0392b;" onclick="cpRemoveProductImage()">🗑️ 제거</button>
+        </div>
+        <div style="color:var(--text-muted);font-size:11px;line-height:1.4;">JPG · PNG · WebP, 최대 20MB<br>신규 프로젝트는 <b>저장 시 자동 업로드</b>, 기존 프로젝트는 즉시 반영</div>
+        <input type="file" id="cp-product-image-input" accept="image/*" style="display:none;" onchange="cpOnProductImageFile(this.files[0])">
+      </div>
+    </div>
   </div>
 
   <div class="cp-auto-header">
@@ -1570,6 +1590,90 @@ async function cpRunBulkImport(){
   }
 }
 
+// ━━━ 📷 제품 이미지 업로드 ━━━
+let CP_PRODUCT_IMAGE = null; // {dataUrl?, ext, url?, pendingLocal?}
+
+function cpRenderProductImage(url){
+  const prev = document.getElementById('cp-product-image-preview');
+  const rm = document.getElementById('cp-product-image-remove');
+  if(!prev) return;
+  if(url){
+    prev.innerHTML = '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;" alt="product image" onerror="this.onerror=null;this.parentElement.innerHTML=&quot;<span style=\\&quot;color:var(--text-muted);font-size:11px;text-align:center;line-height:1.5;\\&quot;>📷<br>이미지 불러오기 실패<br>다시 업로드</span>&quot;">';
+    if(rm) rm.style.display = 'inline-block';
+  } else {
+    prev.innerHTML = '<span style="color:var(--text-muted);font-size:11px;text-align:center;line-height:1.5;">📷<br>제품 이미지<br>드래그/클릭</span>';
+    if(rm) rm.style.display = 'none';
+  }
+}
+
+async function cpOnProductImageFile(file){
+  if(!file) return;
+  if(!file.type || !file.type.startsWith('image/')){ showToast('이미지 파일만 업로드 가능합니다'); return; }
+  if(file.size > 20*1024*1024){ showToast('이미지가 너무 큽니다 (최대 20MB)'); return; }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    const mExt = (file.name||'').split('.').pop();
+    const ext = ((mExt && mExt.length<=5) ? mExt : 'jpg').toLowerCase();
+    CP_PRODUCT_IMAGE = { dataUrl, ext, pendingLocal: !(CP_CURRENT && CP_CURRENT.id) };
+    cpRenderProductImage(dataUrl);
+    if(CP_CURRENT && CP_CURRENT.id){
+      await cpUploadProductImage();
+    } else {
+      showToast('이미지 준비됨 — 저장 시 업로드됩니다');
+    }
+  };
+  reader.onerror = () => showToast('파일 읽기 실패');
+  reader.readAsDataURL(file);
+}
+
+function cpOnProductImageDrop(e){
+  e.preventDefault(); e.stopPropagation();
+  const target = e.currentTarget;
+  if(target){ target.style.borderColor='var(--border)'; target.style.background='var(--card)'; }
+  const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file) cpOnProductImageFile(file);
+}
+
+async function cpUploadProductImage(){
+  if(!CP_CURRENT || !CP_CURRENT.id) return false;
+  if(!CP_PRODUCT_IMAGE || !CP_PRODUCT_IMAGE.dataUrl) return false;
+  try{
+    const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/upload-image', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dataUrl: CP_PRODUCT_IMAGE.dataUrl, ext: CP_PRODUCT_IMAGE.ext })
+    });
+    const data = await r.json();
+    if(!r.ok || data.error){ showToast('이미지 업로드 실패: '+(data.error||r.status)); return false; }
+    CP_PRODUCT_IMAGE = { url: data.url, ext: data.ext, pendingLocal:false };
+    cpRenderProductImage(data.url);
+    showToast('이미지 저장 완료');
+    return true;
+  }catch(e){ showToast('이미지 업로드 오류: '+e.message); return false; }
+}
+
+async function cpRemoveProductImage(){
+  if(!confirm('제품 이미지를 제거하시겠습니까?')) return;
+  if(CP_CURRENT && CP_CURRENT.id){
+    try{
+      await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/image', {method:'DELETE'});
+    }catch(e){}
+  }
+  CP_PRODUCT_IMAGE = null;
+  cpRenderProductImage(null);
+  const inp = document.getElementById('cp-product-image-input');
+  if(inp) inp.value = '';
+  showToast('이미지 제거됨');
+}
+
+function cpResetProductImage(){
+  CP_PRODUCT_IMAGE = null;
+  cpRenderProductImage(null);
+  const inp = document.getElementById('cp-product-image-input');
+  if(inp) inp.value = '';
+}
+
 function cpNewProject(){
   CP_CURRENT = null;
   document.getElementById('cp-name').value='';
@@ -1610,6 +1714,7 @@ function cpNewProject(){
   cpRenderCountryTable();
   // 원산지 디폴트 프리셋 적용 (강제)
   setTimeout(()=>{ if(typeof cpApplyCountryPreset==='function') cpApplyCountryPreset(true); }, 50);
+  cpResetProductImage();
   cpRecalc();
 }
 
@@ -1679,6 +1784,13 @@ async function cpLoadProject(id){
     }
     cpRenderCountryTable();
     cpRecalc();
+    // 제품 이미지 복원
+    if(it.imageUrl){
+      CP_PRODUCT_IMAGE = { url: it.imageUrl, pendingLocal:false };
+      cpRenderProductImage(it.imageUrl);
+    } else {
+      cpResetProductImage();
+    }
     window.scrollTo({top:document.getElementById('cp-list-section').offsetTop-60,behavior:'smooth'});
     showToast('불러왔습니다');
   }catch(e){console.error(e);showToast('오류: '+e.message);}
@@ -2012,6 +2124,10 @@ async function cpSave(){
     if(pubBtn){
       const st = document.getElementById('cp-status').value;
       pubBtn.style.display = (st === '승인') ? 'inline-block' : 'none';
+    }
+    // 신규 저장 시 대기 중인 제품 이미지 자동 업로드
+    if(CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.pendingLocal && CP_PRODUCT_IMAGE.dataUrl){
+      await cpUploadProductImage();
     }
     await cpLoadList();
   }catch(e){showToast('저장 실패: '+e.message);}

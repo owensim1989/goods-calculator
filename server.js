@@ -113,6 +113,46 @@ function findCatalogImage(barcode) {
   return null;
 }
 
+// 소비자가 산정 페이지 ID → 임시 이미지 ID (cp_{pageIdWithoutHyphens})
+function cpImageId(pageId) {
+  const clean = String(pageId || '').replace(/-/g, '').replace(/[^0-9A-Za-z]/g, '');
+  return clean ? 'cp_' + clean : '';
+}
+
+// dataURL 또는 base64 → { buf, ext }
+function decodeImagePayload(dataUrlOrBase64, hintedExt) {
+  if (!dataUrlOrBase64) return null;
+  let ext = (hintedExt || '').toLowerCase().replace(/^\./, '');
+  let base64 = String(dataUrlOrBase64);
+  const m = base64.match(/^data:image\/([a-z0-9+\-.]+);base64,(.+)$/i);
+  if (m) { ext = ext || m[1].toLowerCase(); base64 = m[2]; }
+  if (ext === 'jpeg') ext = 'jpg';
+  if (!['jpg', 'png', 'webp', 'gif'].includes(ext)) ext = 'jpg';
+  try {
+    const buf = Buffer.from(base64, 'base64');
+    if (!buf || buf.length < 16) return null;
+    return { buf, ext };
+  } catch (e) { return null; }
+}
+
+// 특정 id prefix로 저장된 이미지 파일 모두 삭제 (확장자 교체 시 이전 파일 정리 + 썸네일 캐시)
+function removeCatalogImagesById(id) {
+  const bc = safeBarcode(id);
+  if (!bc) return;
+  for (const ext of ['jpg', 'jpeg', 'png', 'webp', 'gif']) {
+    const p = path.join(CATALOG_IMAGE_DIR, `${bc}.${ext}`);
+    try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) {}
+  }
+  try {
+    const thumbDir = path.join(CATALOG_IMAGE_DIR, 'thumb');
+    if (fs.existsSync(thumbDir)) {
+      for (const f of fs.readdirSync(thumbDir)) {
+        if (f.startsWith(bc + '_')) { try { fs.unlinkSync(path.join(thumbDir, f)); } catch(e){} }
+      }
+    }
+  } catch (e) {}
+}
+
 // ━━━ Notion 클라이언트 ━━━
 const notion = NOTION_TOKEN ? new Client({ auth: NOTION_TOKEN }) : null;
 
@@ -996,9 +1036,18 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
       sheet.getCell(`N${rowNum}`).numFmt = '0%';
 
-      // 이미지 임베드
-      if (barcode) {
-        const found = findCatalogImage(barcode);
+      // 이미지 임베드: 바코드 우선, 없으면 Image_URL의 cp_{id} fallback
+      let imgKey = barcode;
+      let foundImg = barcode ? findCatalogImage(barcode) : null;
+      if (!foundImg) {
+        const imgUrlStr = p.properties?.Image_URL?.url;
+        if (imgUrlStr) {
+          const m = imgUrlStr.match(/\/api\/catalog-image\/([A-Za-z0-9_-]+)/);
+          if (m) { imgKey = m[1]; foundImg = findCatalogImage(m[1]); }
+        }
+      }
+      if (foundImg) {
+        const found = foundImg;
         if (found) {
           try {
             let imgBuf, imgExt;
@@ -1019,8 +1068,8 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
             });
             imagesEmbedded++;
           } catch (e) {
-            imageErrors.push({ barcode, error: e.message });
-            console.warn(`[export 이미지] ${barcode} 실패:`, e.message);
+            imageErrors.push({ key: imgKey, error: e.message });
+            console.warn(`[export 이미지] ${imgKey} 실패:`, e.message);
           }
         }
       }
@@ -1299,6 +1348,13 @@ function pageToConsumerPricing(page) {
     마진율: getNum('마진율'),
     countryPricing,
     메모: getText('메모'),
+    imageUrl: (function(){
+      const imgId = cpImageId(page.id);
+      const found = imgId ? findCatalogImage(imgId) : null;
+      if (!found) return null;
+      const v = Date.parse(page.last_edited_time || '') || Date.now();
+      return PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v;
+    })(),
     createdAt: page.created_time,
     updatedAt: page.last_edited_time
   };
@@ -1650,6 +1706,48 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
 
 // ━━━ 직원 목록 ━━━
 
+// ━━━ 📷 제품 이미지 업로드 (소비자가 산정 페이지) ━━━
+// 저장 경로: CATALOG_IMAGE_DIR/cp_{pageIdWithoutHyphens}.{ext}
+// publish-to-catalog 시 해당 이미지를 Image_URL로 자동 설정
+app.post('/api/consumer-pricing/:id/upload-image', async (req, res) => {
+  try {
+    const imgId = cpImageId(req.params.id);
+    if (!imgId) return res.status(400).json({ error: 'invalid id' });
+    const body = req.body || {};
+    const decoded = decodeImagePayload(body.dataUrl || body.base64, body.ext || body.mime);
+    if (!decoded) return res.status(400).json({ error: 'invalid image payload' });
+    // 20MB 상한
+    if (decoded.buf.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'image too large (max 20MB)' });
+    // 기존 파일·썸네일 제거 (확장자 변경 대응)
+    removeCatalogImagesById(imgId);
+    const savePath = path.join(CATALOG_IMAGE_DIR, imgId + '.' + decoded.ext);
+    fs.writeFileSync(savePath, decoded.buf);
+    const v = Date.now();
+    res.json({
+      success: true,
+      imageId: imgId,
+      ext: decoded.ext,
+      size: decoded.buf.length,
+      url: PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v,
+      thumbUrl: PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '/thumb?v=' + v
+    });
+  } catch (e) {
+    console.error('[이미지 업로드 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/consumer-pricing/:id/image', async (req, res) => {
+  try {
+    const imgId = cpImageId(req.params.id);
+    if (!imgId) return res.status(400).json({ error: 'invalid id' });
+    removeCatalogImagesById(imgId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ━━━ 제품 카탈로그 — 소비자가 산정 → 카탈로그 자동 등록 ━━━
 app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -1693,6 +1791,13 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       '비고': { rich_text: [{ text: { content: item.메모 ? item.메모.replace(/<!--BREAKDOWN_META:[\s\S]*?-->/, '').trim() : '' } }] }
     };
     if (item.작성자) props['작성자'] = { select: { name: item.작성자 } };
+
+    // 제품 이미지가 소비자가 산정 페이지에 업로드되어 있으면 Image_URL 자동 채움
+    const cpImgId = cpImageId(req.params.id);
+    const cpImg = cpImgId ? findCatalogImage(cpImgId) : null;
+    if (cpImg) {
+      props['Image_URL'] = { url: PUBLIC_BASE_URL + '/api/catalog-image/' + cpImgId };
+    }
 
     const created = await notion.pages.create({
       parent: { database_id: PRODUCT_CATALOG_DB_ID },
