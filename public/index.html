@@ -477,7 +477,10 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="guide-box">💡 <b>상단 입력 카드 4가지만 채우세요.</b> HS Code·품목·경쟁사·원가·국가별 가격은 AI가 자동 채웁니다.</div>
 
   <div class="cp-section" id="cp-list-section">
-    <h3>📚 저장된 프로젝트 <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button></h3>
+    <h3>📚 저장된 프로젝트
+      <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
+      <button class="cp-btn cp-btn-primary" style="font-size:12px;margin-left:8px;" onclick="cpExportBuyerExcel()" title="제품 카탈로그 전체를 바이어 공유용 엑셀 포맷으로 다운로드">📥 바이어 공유 엑셀</button>
+    </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
   </div>
@@ -1449,6 +1452,37 @@ async function cpLoadList(){
 }
 
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+async function cpExportBuyerExcel(){
+  const btn = event && event.target;
+  const origLabel = btn ? btn.textContent : '';
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ 생성 중...'; }
+    if (typeof showToast === 'function') showToast('엑셀 생성 중... (카탈로그 전체 조회)', 'info');
+    const r = await fetch('/api/consumer-pricing/catalog/export');
+    if (!r.ok) {
+      const err = await r.json().catch(()=>({error:'서버 오류 (HTTP '+r.status+')'}));
+      throw new Error(err.error || '다운로드 실패');
+    }
+    const blob = await r.blob();
+    const disposition = r.headers.get('Content-Disposition') || '';
+    let filename = 'Mr.Donothing_Product_List.xlsx';
+    const m = disposition.match(/filename\*=UTF-8''([^;]+)/);
+    if (m) filename = decodeURIComponent(m[1]);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    if (typeof showToast === 'function') showToast('📥 '+filename+' 다운로드 완료', 'success');
+  } catch(e) {
+    console.error('[바이어 엑셀] 실패', e);
+    alert('엑셀 내보내기 실패:\n' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origLabel || '📥 바이어 공유 엑셀'; }
+  }
+}
 
 function cpNewProject(){
   CP_CURRENT = null;

@@ -777,6 +777,120 @@ app.get('/api/consumer-pricing/hs-reference', (req, res) => {
   res.json({ items: HS_REFERENCE_DB });
 });
 
+// 📥 바이어 공유용 엑셀 다운로드 (Mr.Donothing Product List 포맷)
+app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
+  try {
+    // 카탈로그 DB 전체 조회 (페이지네이션)
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    // 원산지 코드 → 영문 변환 (엑셀은 영문 사용)
+    const originMap = { 'China': 'China', 'Korea': 'Korea', 'Vietnam': 'Vietnam', 'Other': 'Other' };
+
+    // 제품명 기준 정렬 (일관된 순서)
+    allPages.sort((a, b) => {
+      const na = ((a.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
+      const nb = ((b.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
+      return na.localeCompare(nb);
+    });
+
+    // 1번 엑셀 헤더 (원본 그대로)
+    const headers = [
+      'no.', 'Image', 'Product Name', 'Barcode', 'Packaging',
+      'Retail Price\n(South Korea)', 'Retail Price\n(Taiwan)', 'Retail Price\n(US)',
+      'Retail Price\n(Thailand)', 'Retail Price\n(HK)', 'Retail Price\n(China)',
+      'Retail Price\n(Indonesia)',
+      '원가', '원가(%)', 'HS CODE', '대만 통관 난이도', '포장합무게(g)\n(운송 참고용)',
+      'Size\n(mm)', 'Material', 'Country of\nOrigin', 'Order ', 'Amount', 'Note'
+    ];
+
+    const aoa = [
+      ['Mr.donothing Product List'],
+      headers
+    ];
+
+    allPages.forEach((p, idx) => {
+      const pr = p.properties || {};
+      const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
+      const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+      const getSel = k => pr[k] && pr[k].select ? pr[k].select.name : null;
+
+      const 원가KRW = getNum('원가_KRW');
+      const 발주수량 = getNum('발주수량');
+      const amount = (원가KRW && 발주수량) ? 원가KRW * 발주수량 : null;
+
+      aoa.push([
+        idx + 1,
+        '',
+        getText('Product Name'),
+        getText('Barcode'),
+        '',
+        getNum('Retail_KR_KRW'),
+        getNum('Retail_TW_TWD'),
+        getNum('Retail_US_USD'),
+        getNum('Retail_TH_THB'),
+        getNum('Retail_HK_HKD'),
+        getNum('Retail_CN_CNY'),
+        '',
+        원가KRW,
+        getNum('원가율'),
+        getText('HS_Code'),
+        getSel('대만통관난이도') || '',
+        getNum('포장합무게_g'),
+        getText('Size_mm'),
+        getText('Material'),
+        originMap[getSel('원산지')] || '',
+        발주수량,
+        amount,
+        getText('비고')
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    ws['!cols'] = [
+      { wch: 5 }, { wch: 8 }, { wch: 32 }, { wch: 15 }, { wch: 10 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 18 }, { wch: 10 },
+      { wch: 18 }, { wch: 15 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 25 }
+    ];
+
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 22 } }];
+
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 2; R <= range.e.r; R++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: R, c: 13 })];
+      if (cell && typeof cell.v === 'number') cell.z = '0.0%';
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mr.Donothing Product List_');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const filename = `Mr.Donothing_Product_List_${today}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
+  } catch (e) {
+    console.error('[카탈로그 엑셀 내보내기 실패]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/consumer-pricing/:id', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   try {
