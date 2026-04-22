@@ -2145,8 +2145,10 @@ async function cpDeleteCurrent(){
   }catch(e){showToast('삭제 실패: '+e.message);}
 }
 
-// 📋 제품 카탈로그로 발행
+// 📋 제품 카탈로그로 발행 (중복 클릭 방지: 전역 flag + 버튼 disabled)
+let CP_PUBLISHING = false;
 async function cpPublishToCatalog(){
+  if(CP_PUBLISHING){ showToast('이미 등록 진행 중입니다. 잠시 기다려주세요'); return; }
   if(!CP_CURRENT || !CP_CURRENT.id){
     showToast('먼저 저장해주세요');
     return;
@@ -2157,23 +2159,28 @@ async function cpPublishToCatalog(){
     showToast('작성자를 선택해주세요');
     return;
   }
-  if(!confirm(`"${name}"을(를) 📋 제품 카탈로그에 등록하시겠습니까?\n\n• 등록 후 카탈로그 DB에 새 페이지가 생성됩니다\n• 원본 상태가 "승인"으로 변경됩니다`)) return;
+  if(!confirm(`"${name}"을(를) 📋 제품 카탈로그에 등록하시겠습니까?\n\n• 이미 등록된 경우 기존 페이지를 덮어쓰기합니다 (중복 생성 방지)\n• 원본 상태가 "승인"으로 변경됩니다\n• Notion 처리에 5~10초 소요될 수 있습니다 — 중복 클릭 금지`)) return;
+  CP_PUBLISHING = true;
   const btn = document.getElementById('cp-btn-publish');
-  btn.disabled = true; btn.textContent = '📋 등록 중...';
+  btn.disabled = true; btn.textContent = '📋 등록 중... (5~10초)';
   try{
     // 먼저 현재 상태·작성자 저장 반영
     await cpSave();
     const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/publish-to-catalog',{method:'POST'});
     const d = await r.json();
     if(!r.ok||d.error){showToast('등록 실패: '+(d.error||r.status));return;}
-    showToast('✅ 제품 카탈로그 등록 완료');
+    showToast(d.reused ? '✅ 기존 카탈로그 페이지 업데이트 완료' : '✅ 제품 카탈로그 등록 완료');
     if(d.url){
       setTimeout(()=>{
-        if(confirm('카탈로그 페이지를 Notion에서 열까요?')) window.open(d.url,'_blank','noopener');
+        if(confirm((d.reused?'업데이트된':'등록된')+' 카탈로그 페이지를 Notion에서 열까요?')) window.open(d.url,'_blank','noopener');
       }, 500);
     }
   }catch(e){showToast('등록 실패: '+e.message);}
-  finally{ btn.disabled=false; btn.textContent='📋 제품 카탈로그 등록'; }
+  finally{
+    CP_PUBLISHING = false;
+    btn.disabled=false;
+    btn.textContent='📋 제품 카탈로그 등록';
+  }
 }
 
 // ━━━ HS Code 조회 ━━━

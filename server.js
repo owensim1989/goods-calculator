@@ -1799,12 +1799,35 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       props['Image_URL'] = { url: PUBLIC_BASE_URL + '/api/catalog-image/' + cpImgId };
     }
 
-    const created = await notion.pages.create({
-      parent: { database_id: PRODUCT_CATALOG_DB_ID },
-      properties: props
-    });
+    // 5) 소비자가_산정_ID로 기존 카탈로그 페이지 조회 (중복 클릭·재등록 방지)
+    let existingPageId = null;
+    try {
+      const q = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        filter: { property: '소비자가_산정_ID', rich_text: { equals: req.params.id } },
+        page_size: 5
+      });
+      if (q.results && q.results.length) {
+        // archived 제외
+        const live = q.results.filter(p => !p.archived);
+        if (live.length) existingPageId = live[0].id;
+      }
+    } catch (e) { console.warn('[카탈로그] 기존 페이지 조회 실패 (신규 생성으로 진행):', e.message); }
 
-    // 5) 원본의 상태를 '승인'으로 업데이트
+    let created;
+    let reused = false;
+    if (existingPageId) {
+      created = await notion.pages.update({ page_id: existingPageId, properties: props });
+      reused = true;
+      console.log('[카탈로그] 기존 페이지 재사용 → 업데이트:', existingPageId);
+    } else {
+      created = await notion.pages.create({
+        parent: { database_id: PRODUCT_CATALOG_DB_ID },
+        properties: props
+      });
+    }
+
+    // 6) 원본의 상태를 '승인'으로 업데이트
     try {
       await notion.pages.update({
         page_id: req.params.id,
@@ -1812,7 +1835,7 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       });
     } catch (e) { console.warn('[카탈로그] 상태 승인 업데이트 실패:', e.message); }
 
-    res.json({ success: true, catalogId: created.id, url: `https://www.notion.so/${created.id.replace(/-/g, '')}` });
+    res.json({ success: true, catalogId: created.id, reused, url: `https://www.notion.so/${created.id.replace(/-/g, '')}` });
   } catch (e) {
     console.error('[카탈로그 등록 실패]', e.message);
     res.status(500).json({ error: e.message });
