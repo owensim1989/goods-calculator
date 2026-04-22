@@ -987,35 +987,67 @@ ${ctx}
 });
 
 // ━━━ HS Code AI 추천 ━━━
+// Mr.Donothing 캐릭터 제품 HS Code 참조 DB (엑셀 Product List 기반, 빈도순)
+const HS_REFERENCE_DB = [
+  { code: '3926.90-9000', name: 'PVC 기타 플라스틱 제품', examples: '키링, 피규어, 러기지 태그, 아크릴 악세서리', freq: 33 },
+  { code: '9503.00-3900', name: '기타 완구·인형', examples: '장난감 피규어, 봉제인형 일부', freq: 7 },
+  { code: '9503.00-0000', name: '완구 일반', examples: '스탬프, 캐릭터 장난감', freq: 4 },
+  { code: '9503.00-2110', name: '봉제 장난감', examples: '플러시 인형, 플러시 키링', freq: 3 },
+  { code: '6109.10-1000', name: '면 티셔츠', examples: '티셔츠류', freq: 81 },
+  { code: '4911.91-0000', name: '인쇄 사진·포스터', examples: 'A3 포스터, 아트프린트, 엽서', freq: 30 },
+  { code: '6301.40-0000', name: '합성섬유 담요', examples: '블랭킷', freq: 8 },
+  { code: '6304.93-0000', name: '합성섬유 실내 장식', examples: '쿠션', freq: 2 },
+  { code: '5703.10-0000', name: '양모 러그/카페트', examples: '러그', freq: 2 },
+  { code: '3926.40-0000', name: '플라스틱 장식품', examples: '아크릴 스탠드', freq: 5 },
+  { code: '7009.91-0000', name: '유리 거울', examples: '손거울, 미러', freq: 4 },
+  { code: '6911.10-0000', name: '자기제 식탁·주방용품', examples: '머그, 컵', freq: 4 },
+  { code: '7013.37-0000', name: '기타 유리 식탁용품', examples: '글라스컵', freq: 4 },
+  { code: '4820.10-0000', name: '노트·다이어리', examples: '스프링 노트, 다이어리', freq: 3 },
+  { code: '3924.10-9000', name: '플라스틱 식탁·주방용품', examples: '트레이', freq: 2 }
+];
+
 app.post('/api/consumer-pricing/hs-suggest', async (req, res) => {
   const { productName, category, spec } = req.body || {};
   if (!productName) return res.status(400).json({ error: '제품명 필수' });
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
   try {
-    const prompt = `당신은 한국 관세청 HS Code 분류 전문가입니다. 다음 제품에 해당할 가능성이 높은 HS Code 후보 3개를 JSON으로 반환하세요. 설명 금지, JSON만.
+    const refList = HS_REFERENCE_DB.map(r => `- ${r.code} / ${r.name} / 예시: ${r.examples} (사용 ${r.freq}회)`).join('\n');
+    const prompt = `당신은 한국 관세청 HS Code 분류 전문가입니다. 이 회사는 "Mr.Donothing" 캐릭터 IP를 기반으로 OEM 생산·판매하는 캐릭터 제품 전문 업체입니다. 주로 봉제인형/피규어/키링/티셔츠/머그/노트/포스터 등을 취급합니다.
 
+[이 회사가 과거 실제로 사용한 HS Code 참조 (Product List 기반)]:
+${refList}
+
+[분류 원칙]:
+1. 위 참조 목록에 같은 제품군이 있으면 반드시 같은 코드로 매칭 (일관성 최우선)
+2. 캐릭터 프린트 제품은 원칙적으로 소재 기준 분류 (예: 캐릭터 티셔츠=6109.10, 캐릭터 PVC 키링=3926.90-9000)
+3. 봉제 장난감(플러시)은 9503.00-2110, 기타 완구는 9503.00 계열
+4. 단순 프린트물(포스터·엽서)은 4911.91
+
+[분류 대상]:
 제품명: ${productName}
 카테고리: ${category || '미정'}
 상세 스펙: ${spec || '없음'}
 
-형식:
+JSON만 반환. 설명 금지. 후보 3개 — 첫 번째는 참조 목록에 같은 제품군이 있으면 반드시 그것. 없으면 가장 적합한 추정:
 {
   "candidates": [
-    {"code": "9503.00-3900", "name": "인형·장난감류", "reason": "간단한 근거", "tariffKR": 8, "tariffUS": 0, "tariffCN": 10, "tariffJP": 3}
+    {"code": "3926.90-9000", "name": "PVC 기타 플라스틱 제품", "reason": "참조 목록의 PVC 키링과 동일", "matchRef": true, "tariffKR": 8, "tariffUS": 0, "tariffCN": 10, "tariffJP": 3}
   ]
 }
-
-관세율은 대표값. 확실하지 않으면 0으로.`;
-    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 800 });
+matchRef: 참조 목록과 일치하면 true, 추정이면 false. 관세율은 대표값, 불확실시 0.`;
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 900 });
     const parsed = extractJSON(out);
     if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
-    res.json({ success: true, ...parsed });
+    res.json({ success: true, ...parsed, referenceCount: HS_REFERENCE_DB.length });
   } catch (e) {
     console.error('[HS 추천 실패]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
+app.get('/api/consumer-pricing/hs-reference', (req, res) => {
+  res.json({ items: HS_REFERENCE_DB });
+});
 // ━━━ 견적서 파일 파싱 ━━━
 // body: { kind: 'pdf'|'image'|'excel'|'text', data: base64 or text, mime: 'application/pdf' 등 }
 app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
@@ -1027,19 +1059,29 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
 
 형식:
 {
-  "cost": 숫자 (단가),
-  "currency": "KRW/USD/CNY/JPY/TWD/HKD/THB 중 하나",
-  "qty": 숫자 (수량),
   "vendor": "거래처명",
-  "product": "제품명 (있으면)",
-  "spec": "스펙 요약 (있으면)",
-  "surchargeEstimate_KRW": 숫자 (해외운송·관세·VAT 등 부대비용 예상, 있으면)
+  "product": "제품명 (주력 1개)",
+  "spec": "스펙 요약 (size, material, process 등)",
+  "sampleFee": 숫자 (샘플비 총액),
+  "sampleFeeCurrency": "USD/KRW/CNY 등",
+  "moldFee": 숫자 (금형비 있으면),
+  "quotes": [
+    { "qty": 500, "unitPrice": 1.36, "currency": "USD" },
+    { "qty": 1000, "unitPrice": 1.32, "currency": "USD" }
+  ],
+  "cost": 숫자 (첫 번째 단가, backward-compat),
+  "currency": "통화 (첫 번째 기준)",
+  "qty": 숫자 (첫 번째 수량),
+  "surchargeEstimate_KRW": 숫자 (해외운송·관세·VAT 등 부대비용 예상 KRW)
 }
 
-규칙:
-- 단가가 "총액÷수량"으로만 표시돼 있으면 계산해서 cost에 넣기
-- 부대비용은 국가 기준(국내=0, 중국 약 15% 해외 약 20%)으로 추정하거나 실제 수치 사용
-- 여러 항목이면 첫 번째 또는 주력 항목 기준`;
+중요 규칙:
+- **여러 수량별 단가(tier pricing)가 있으면 반드시 모두 추출** (예: 500pcs $1.36 / 1000pcs $1.32 → quotes 배열에 2개)
+- **Sample Fee / Mold Fee 누락 금지** (견적서에 Sample Fee 행이 있으면 sampleFee에 채움)
+- 견적서에 여러 아이템이 있으면 주력 1개 기준 (대표성 있는 것)
+- 단가는 총액이 아닌 개당 단가 (Unit Price)
+- 부대비용 KRW 추정: 중국 해외운송+관세+VAT ≈ 단가 × 수량 × 0.2 (USD면 환산 후 20%)
+- 통화는 USD/KRW/CNY/JPY 등 정확히 1개만`;
 
     if (kind === 'text' || text) {
       content = [{ type: 'text', text: ask + '\n\n견적 내용:\n' + (text || '') }];
