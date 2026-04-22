@@ -907,7 +907,7 @@ function callClaude(messages, opts = {}) {
     if (!ANTHROPIC_API_KEY) return reject(new Error('ANTHROPIC_API_KEY 미설정'));
     const body = JSON.stringify({
       model: opts.model || 'claude-haiku-4-5-20251001',
-      max_tokens: opts.max_tokens || 1024,
+      max_tokens: opts.max_tokens || 1800,
       messages
     });
     const req = https.request({
@@ -940,13 +940,40 @@ function callClaude(messages, opts = {}) {
 
 function extractJSON(text) {
   if (!text) return null;
-  // ```json ... ``` 블록 or 순수 JSON 모두 대응
-  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
-  const raw = (m[1] || text).trim();
-  // 첫 { ~ 마지막 } 만 추출
-  const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-  if (s < 0 || e < 0) return null;
-  try { return JSON.parse(raw.slice(s, e + 1)); } catch (err) { return null; }
+  // 1) ```json ... ``` 블록 우선
+  const mBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidates = [];
+  if (mBlock && mBlock[1]) candidates.push(mBlock[1]);
+  // 2) 첫 { ~ 마지막 } 전체
+  const i1 = text.indexOf('{'), i2 = text.lastIndexOf('}');
+  if (i1 >= 0 && i2 > i1) candidates.push(text.slice(i1, i2 + 1));
+  // 3) raw
+  candidates.push(text);
+
+  const tryParse = (raw) => {
+    if (!raw) return null;
+    const strategies = [
+      s => s,                                          // as-is
+      s => s.replace(/,\s*([}\]])/g, '$1'),          // trailing commas
+      s => s.replace(/\/\/[^\n]*/g, ''),            // // comments
+      s => s.replace(/\/\*[\s\S]*?\*\//g, ''),   // /* */ comments
+      s => s.replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":').replace(/:\s*'([^']*)'/g, ':"$1"') // single quotes → double
+    ];
+    for (let st of strategies) {
+      try { return JSON.parse(st(raw)); } catch (e) {}
+      // combo: trailing commas + single quotes
+      try {
+        const combined = st(raw).replace(/,\s*([}\]])/g, '$1');
+        return JSON.parse(combined);
+      } catch (e) {}
+    }
+    return null;
+  };
+  for (const c of candidates) {
+    const parsed = tryParse(c.trim());
+    if (parsed) return parsed;
+  }
+  return null;
 }
 
 function fetchHTML(url) {
@@ -1026,9 +1053,12 @@ ${ctx}
 }
 
 페이지 URL: ${url}`;
-    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 512 });
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 800 });
     const parsed = extractJSON(out);
-    if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
+    if (!parsed) {
+      console.error('[scrape-competitor] 파싱 실패. Claude 원문:\n', out.slice(0, 1200));
+      return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 1000) });
+    }
     // 통화 기반 KRW 환산 (priceKRW 없을 때)
     if (parsed.price && parsed.currency && !parsed.priceKRW) {
       const rate = fxCache[parsed.currency === 'CNY' ? 'CNY' : parsed.currency];
@@ -1091,9 +1121,12 @@ JSON만 반환. 설명 금지. 후보 3개 — 첫 번째는 참조 목록에 �
   ]
 }
 matchRef: 참조 목록과 일치하면 true, 추정이면 false. 관세율은 대표값, 불확실시 0.`;
-    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 900 });
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 1200 });
     const parsed = extractJSON(out);
-    if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
+    if (!parsed) {
+      console.error('[hs-suggest] 파싱 실패. Claude 원문:\n', out.slice(0, 1500));
+      return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 1200) });
+    }
     res.json({ success: true, ...parsed, referenceCount: HS_REFERENCE_DB.length });
   } catch (e) {
     console.error('[HS 추천 실패]', e.message);
@@ -1168,9 +1201,12 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
       return res.status(400).json({ error: 'kind 또는 data 누락' });
     }
 
-    const out = await callClaude([{ role: 'user', content }], { max_tokens: 700 });
+    const out = await callClaude([{ role: 'user', content }], { max_tokens: 1800 });
     const parsed = extractJSON(out);
-    if (!parsed) return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 500) });
+    if (!parsed) {
+      console.error('[parse-quote] 파싱 실패. Claude 원문:\n', out.slice(0, 2000));
+      return res.status(500).json({ error: '파싱 실패 — Claude 응답이 JSON이 아님', raw: out.slice(0, 1200) });
+    }
     res.json({ success: true, ...parsed });
   } catch (e) {
     console.error('[견적서 파싱 실패]', e.message);

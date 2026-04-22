@@ -1513,7 +1513,7 @@ async function cpLoadProject(id){
     // 1) 메모에서 BREAKDOWN_META 먼저 파싱 (순서 중요 — 이전 버그 원인)
     {
       const raw = it.메모 || '';
-      const parts = raw.split(/<\!--BREAKDOWN_META:/);
+      const parts = raw.split(/<!--BREAKDOWN_META:/);
       document.getElementById('cp-memo').value = (parts[0] || '').replace(/\n*$/,'');
       if(parts[1]){
         const end = parts[1].indexOf('-->');
@@ -1984,7 +1984,14 @@ async function cpHSSuggest(){
       body: JSON.stringify({ productName: name, category: document.getElementById('cp-category').value, spec: '' })
     });
     const d = await r.json();
-    if(!r.ok||d.error){body.innerHTML=`<div style="color:var(--danger);">오류: ${escapeHtml(d.error||r.status)}</div>`;return;}
+    if(!r.ok||d.error){
+      let msg = `<div style="color:var(--danger);">오류: ${escapeHtml(d.error||r.status)}</div>`;
+      if(d.raw){
+        msg += `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:11px;color:var(--text-muted);">▸ AI 원본 응답</summary><pre style="font-size:10px;white-space:pre-wrap;max-height:240px;overflow:auto;">${escapeHtml(d.raw)}</pre></details>`;
+      }
+      body.innerHTML = msg;
+      return;
+    }
     const cands = d.candidates||[]; window._cpHSCache = cands; window._cpHSCache = cands;
     if(!cands.length){body.innerHTML='<div>추천 결과 없음</div>';return;}
     body.innerHTML = cands.map((c,i)=>`
@@ -2152,7 +2159,16 @@ async function cpSubmitQuote(){
       body: JSON.stringify(body)
     });
     const d = await r.json();
-    if(!r.ok||d.error){resEl.style.display='block';resEl.innerHTML=`<b style="color:var(--danger);">실패:</b> ${escapeHtml(d.error||r.status)}`;return;}
+    if(!r.ok||d.error){
+      resEl.style.display='block';
+      let msg = `<b style="color:var(--danger);">실패:</b> ${escapeHtml(d.error||r.status)}`;
+      if(d.raw){
+        msg += `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:11px;color:var(--text-muted);">▸ AI 원본 응답 (디버깅용)</summary><pre style="font-size:10px;white-space:pre-wrap;background:var(--card);padding:8px;border-radius:4px;margin-top:4px;max-height:240px;overflow:auto;">${escapeHtml(d.raw)}</pre></details>`;
+      }
+      msg += `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);">💡 <b>다음 방법 시도</b>: ① 텍스트 붙여넣기로 재시도 ② 이미지 화질 더 선명하게 ③ 견적서 핵심 부분만 잘라서 업로드</div>`;
+      resEl.innerHTML = msg;
+      return;
+    }
     const quotes = Array.isArray(d.quotes) ? d.quotes.filter(q=>q && q.qty && q.unitPrice) : [];
     if(quotes.length){
       window._cpQuotes = quotes;
