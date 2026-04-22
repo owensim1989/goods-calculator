@@ -1060,28 +1060,32 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
 형식:
 {
   "vendor": "거래처명",
-  "product": "제품명 (주력 1개)",
-  "spec": "스펙 요약 (size, material, process 등)",
-  "sampleFee": 숫자 (샘플비 총액),
+  "product": "제품명",
+  "spec": "스펙 요약",
+  "sampleFee": 숫자,
   "sampleFeeCurrency": "USD/KRW/CNY 등",
-  "moldFee": 숫자 (금형비 있으면),
-  "quotes": [
-    { "qty": 500, "unitPrice": 1.36, "currency": "USD" },
-    { "qty": 1000, "unitPrice": 1.32, "currency": "USD" }
-  ],
-  "cost": 숫자 (첫 번째 단가, backward-compat),
-  "currency": "통화 (첫 번째 기준)",
-  "qty": 숫자 (첫 번째 수량),
-  "surchargeEstimate_KRW": 숫자 (해외운송·관세·VAT 등 부대비용 예상 KRW)
+  "moldFee": 숫자,
+  "quotes": [ { "qty": 500, "unitPrice": 1.36, "currency": "USD" } ],
+  "cost": 숫자, "currency": "통화", "qty": 숫자,
+  "surchargeBreakdown_KRW": {
+    "shipping": 해외운송비 KRW,
+    "customsPct": 관세율 %,
+    "vatPct": VAT율 %,
+    "misc": 통관수수료 등 기타 KRW,
+    "reasoning": "산출 근거 1~2문장 (예: HS 3926 중국 수입 관세 8%, VAT 10%, 500개 배송비 kg당 환산)"
+  },
+  "countryOfOrigin": "China/Korea/...",
+  "surchargeEstimate_KRW": 총 부대비용 예상 KRW
 }
 
 중요 규칙:
-- **여러 수량별 단가(tier pricing)가 있으면 반드시 모두 추출** (예: 500pcs $1.36 / 1000pcs $1.32 → quotes 배열에 2개)
-- **Sample Fee / Mold Fee 누락 금지** (견적서에 Sample Fee 행이 있으면 sampleFee에 채움)
-- 견적서에 여러 아이템이 있으면 주력 1개 기준 (대표성 있는 것)
-- 단가는 총액이 아닌 개당 단가 (Unit Price)
-- 부대비용 KRW 추정: 중국 해외운송+관세+VAT ≈ 단가 × 수량 × 0.2 (USD면 환산 후 20%)
-- 통화는 USD/KRW/CNY/JPY 등 정확히 1개만`;
+- tier pricing 여러 개 있으면 quotes 배열에 모두 (500/$1.36, 1000/$1.32 → 2개)
+- Sample Fee / Mold Fee 누락 금지 (sampleFee, moldFee에 채움)
+- surchargeBreakdown은 shipping + customs + VAT + misc 합계가 surchargeEstimate_KRW와 일치하도록
+- 원산지가 중국이면 관세 약 8~15%, VAT 10%, 운송비 kg당 2~4 USD × 포장합무게 기준
+- 원산지가 한국이면 모두 0
+- 단가는 개당 (Unit Price)
+- 통화는 정확히 1개`;
 
     if (kind === 'text' || text) {
       content = [{ type: 'text', text: ask + '\n\n견적 내용:\n' + (text || '') }];

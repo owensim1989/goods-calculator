@@ -558,14 +558,61 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">📊 견적서의 수량별 단가(tier) — 클릭해서 선택:</div>
       <div class="cp-tier-list" id="cp-tier-list"></div>
     </div>
-    <div class="cp-grid">
+    <div class="cp-grid" style="grid-template-columns:repeat(3,1fr);gap:12px;">
       <div class="cp-field"><label>생산 단가 *</label><input type="number" id="cp-cost-price" step="0.01" placeholder="0" oninput="cpRecalc()"></div>
       <div class="cp-field"><label>통화</label><select id="cp-cost-currency" onchange="cpRecalc()">
         <option value="KRW">KRW (원)</option><option value="USD">USD ($)</option><option value="CNY">CNY (¥)</option><option value="JPY">JPY (¥)</option><option value="TWD">TWD (NT$)</option><option value="HKD">HKD (HK$)</option><option value="THB">THB (฿)</option>
       </select></div>
       <div class="cp-field"><label>수량 (로트)</label><input type="number" id="cp-qty" placeholder="1000" oninput="cpRecalc()"></div>
-      <div class="cp-field"><label>생산 부대비용 (KRW)</label><input type="number" id="cp-surcharge" placeholder="0" oninput="cpRecalc()"></div>
-      <div class="cp-field"><label>샘플비 / 금형비 (참고)</label><input type="text" id="cp-sample-mold" readonly style="background:var(--bg);" placeholder="견적서에서 추출"></div>
+    </div>
+
+    <!-- 초도 비용 (샘플비·금형비) -->
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:12px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;">🧪 초도 비용 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 첫 로트 원가에 포함</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:end;">
+        <div class="cp-field"><label>샘플비</label>
+          <div style="display:flex;gap:4px;">
+            <input type="number" id="cp-sample-fee" step="0.01" placeholder="0" oninput="cpRecalc()" style="flex:1;">
+            <select id="cp-sample-cur" onchange="cpRecalc()" style="width:85px;">
+              <option value="USD">USD</option><option value="KRW">KRW</option><option value="CNY">CNY</option><option value="JPY">JPY</option>
+            </select>
+          </div>
+        </div>
+        <div class="cp-field"><label>금형비</label>
+          <div style="display:flex;gap:4px;">
+            <input type="number" id="cp-mold-fee" step="0.01" placeholder="0" oninput="cpRecalc()" style="flex:1;">
+            <select id="cp-mold-cur" onchange="cpRecalc()" style="width:85px;">
+              <option value="USD">USD</option><option value="KRW">KRW</option><option value="CNY">CNY</option><option value="JPY">JPY</option>
+            </select>
+          </div>
+        </div>
+        <div class="cp-field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="cp-include-initial" checked onchange="cpRecalc()">✅ 원가 포함</label>
+          <div id="cp-initial-sum" style="font-size:12px;color:var(--text-muted);margin-top:4px;">합계: -</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 부대비용 breakdown -->
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:12px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        📦 생산 부대비용 breakdown <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 국가 프리셋 기본값, AI 견적서 분석 시 덮어씀</span>
+        <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:11px;padding:3px 10px;" onclick="cpApplyCountryPreset()">🔄 원산지 프리셋</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr) 1fr;gap:10px;align-items:end;">
+        <div class="cp-field"><label>원산지</label><select id="cp-origin" onchange="cpApplyCountryPreset()">
+          <option value="China">🇨🇳 중국</option><option value="Korea">🇰🇷 한국</option><option value="Vietnam">🇻🇳 베트남</option><option value="Other">🌏 기타해외</option>
+        </select></div>
+        <div class="cp-field"><label>해외 운송비 (KRW)</label><input type="number" id="cp-sur-shipping" placeholder="0" oninput="cpRecalc()"></div>
+        <div class="cp-field"><label>관세율 %</label><input type="number" id="cp-sur-customs" step="0.1" placeholder="8" oninput="cpRecalc()"></div>
+        <div class="cp-field"><label>VAT %</label><input type="number" id="cp-sur-vat" step="0.1" placeholder="10" oninput="cpRecalc()"></div>
+        <div class="cp-field"><label>통관/기타 (KRW)</label><input type="number" id="cp-sur-misc" placeholder="0" oninput="cpRecalc()"></div>
+      </div>
+      <div id="cp-sur-breakdown" style="font-size:12px;color:var(--text-muted);margin-top:10px;padding:8px 12px;background:var(--card);border-radius:6px;">
+        생산원가 입력 시 자동 계산됩니다.
+      </div>
+      <!-- hidden for compat -->
+      <input type="hidden" id="cp-surcharge" value="0">
+      <input type="hidden" id="cp-sample-mold">
     </div>
     <div class="cp-margin-summary">
       <div class="cp-margin-card"><div class="lbl">개당 원가 (KRW)</div><div class="val" id="cp-m-unit">-</div></div>
@@ -1380,7 +1427,16 @@ function cpNewProject(){
   document.getElementById('cp-cost-price').value='';
   document.getElementById('cp-cost-currency').value='KRW';
   document.getElementById('cp-qty').value='';
-  document.getElementById('cp-surcharge').value='';
+  document.getElementById('cp-sample-fee').value='';
+  document.getElementById('cp-mold-fee').value='';
+  document.getElementById('cp-sample-cur').value='USD';
+  document.getElementById('cp-mold-cur').value='USD';
+  document.getElementById('cp-include-initial').checked = true;
+  document.getElementById('cp-origin').value='China';
+  document.getElementById('cp-sur-shipping').value='';
+  document.getElementById('cp-sur-customs').value='';
+  document.getElementById('cp-sur-vat').value='';
+  document.getElementById('cp-sur-misc').value='';
   document.getElementById('cp-memo').value='';
   document.getElementById('cp-btn-del').style.display='none';
   CP_COMPETITORS = [];
@@ -1404,8 +1460,27 @@ async function cpLoadProject(id){
     document.getElementById('cp-cost-price').value = it.생산_단가||'';
     document.getElementById('cp-cost-currency').value = it.생산_통화||'KRW';
     document.getElementById('cp-qty').value = it.생산_수량||'';
-    document.getElementById('cp-surcharge').value = it.부대비용_KRW||'';
-    document.getElementById('cp-memo').value = it.메모||'';
+    // breakdown 복원 (meta JSON in 메모 or surcharge field)
+    const meta = it.부대비용_meta || {};
+    if(meta.sampleFee!=null) document.getElementById('cp-sample-fee').value = meta.sampleFee;
+    if(meta.moldFee!=null) document.getElementById('cp-mold-fee').value = meta.moldFee;
+    if(meta.sampleCur) document.getElementById('cp-sample-cur').value = meta.sampleCur;
+    if(meta.moldCur) document.getElementById('cp-mold-cur').value = meta.moldCur;
+    if(meta.origin) document.getElementById('cp-origin').value = meta.origin;
+    if(meta.shipping!=null) document.getElementById('cp-sur-shipping').value = meta.shipping;
+    if(meta.customsPct!=null) document.getElementById('cp-sur-customs').value = meta.customsPct;
+    if(meta.vatPct!=null) document.getElementById('cp-sur-vat').value = meta.vatPct;
+    if(meta.misc!=null) document.getElementById('cp-sur-misc').value = meta.misc;
+    if(meta.includeInitial != null) document.getElementById('cp-include-initial').checked = !!meta.includeInitial;
+    {
+      const raw = it.메모 || '';
+      const parts = raw.split(/<\!--BREAKDOWN_META:/);
+      document.getElementById('cp-memo').value = (parts[0] || '').replace(/\n*$/,'');
+      if(parts[1]){
+        const end = parts[1].indexOf('-->');
+        if(end>0){ try{ it.부대비용_meta = JSON.parse(parts[1].slice(0,end)); }catch(e){} }
+      }
+    }
     document.getElementById('cp-btn-del').style.display='inline-block';
     CP_COMPETITORS = Array.isArray(it.competitors)?it.competitors.slice():[];
     if(!CP_COMPETITORS.length){CP_COMPETITORS=[{brand:'',product:'',priceKRW:null,memo:''}];}
@@ -1500,12 +1575,64 @@ function cpUnitCostKRW(){
   if(!rate)return price;
   return price*rate;
 }
+function cpCurrencyToKRW(val, cur){
+  if(val==null||isNaN(val))return 0;
+  if(cur==='KRW')return val;
+  const rate = CP_PRESETS && CP_PRESETS.fx ? CP_PRESETS.fx[cur] : null;
+  return rate ? val*rate : val;
+}
+function cpApplyCountryPreset(){
+  const origin = document.getElementById('cp-origin').value || 'China';
+  const PRESETS = {
+    'China': { customs: 8, vat: 10, shippingPerUnit: 600, misc: 30000 },
+    'Korea': { customs: 0, vat: 10, shippingPerUnit: 0, misc: 0 },
+    'Vietnam': { customs: 8, vat: 10, shippingPerUnit: 700, misc: 30000 },
+    'Other': { customs: 10, vat: 10, shippingPerUnit: 800, misc: 30000 }
+  };
+  const p = PRESETS[origin] || PRESETS['China'];
+  const qty = parseFloat(document.getElementById('cp-qty').value)||0;
+  // 사용자가 이미 값을 입력했으면 덮어쓰지 않음 (빈 칸만 채움)
+  const shipEl = document.getElementById('cp-sur-shipping');
+  const custEl = document.getElementById('cp-sur-customs');
+  const vatEl = document.getElementById('cp-sur-vat');
+  const miscEl = document.getElementById('cp-sur-misc');
+  if(!shipEl.value) shipEl.value = Math.round(p.shippingPerUnit * qty);
+  if(!custEl.value) custEl.value = p.customs;
+  if(!vatEl.value) vatEl.value = p.vat;
+  if(!miscEl.value) miscEl.value = p.misc;
+  cpRecalc();
+}
 function cpRecalc(){
   const unit = cpUnitCostKRW();
   const qty = parseFloat(document.getElementById('cp-qty').value)||0;
-  const surcharge = parseFloat(document.getElementById('cp-surcharge').value)||0;
+  // 초도 비용 (샘플/금형)
+  const sampleVal = parseFloat(document.getElementById('cp-sample-fee').value)||0;
+  const sampleCur = document.getElementById('cp-sample-cur').value;
+  const moldVal = parseFloat(document.getElementById('cp-mold-fee').value)||0;
+  const moldCur = document.getElementById('cp-mold-cur').value;
+  const sampleKRW = cpCurrencyToKRW(sampleVal, sampleCur);
+  const moldKRW = cpCurrencyToKRW(moldVal, moldCur);
+  const initialKRW = sampleKRW + moldKRW;
+  const includeInitial = document.getElementById('cp-include-initial').checked;
+  const initEl = document.getElementById('cp-initial-sum');
+  if(initEl) initEl.textContent = initialKRW>0 ? `합계: ₩${Math.round(initialKRW).toLocaleString()}${includeInitial?' (포함)':' (제외)'}` : '합계: -';
+  // 부대비용 breakdown
+  const ship = parseFloat(document.getElementById('cp-sur-shipping').value)||0;
+  const customsPct = (parseFloat(document.getElementById('cp-sur-customs').value)||0)/100;
+  const vatPct = (parseFloat(document.getElementById('cp-sur-vat').value)||0)/100;
+  const misc = parseFloat(document.getElementById('cp-sur-misc').value)||0;
+  const prodKRW = unit * qty;
+  const customsKRW = (prodKRW + ship) * customsPct;
+  const vatKRW = (prodKRW + ship + customsKRW) * vatPct;
+  const surcharge = ship + customsKRW + vatKRW + misc;
+  const sbEl = document.getElementById('cp-sur-breakdown');
+  if(sbEl){
+    sbEl.innerHTML = `🚚 운송 ₩${Math.round(ship).toLocaleString()} + 🏛️ 관세 ₩${Math.round(customsKRW).toLocaleString()} (원가×${(customsPct*100).toFixed(1)}%) + 📜 VAT ₩${Math.round(vatKRW).toLocaleString()} (과세가×${(vatPct*100).toFixed(1)}%) + 📋 기타 ₩${Math.round(misc).toLocaleString()} <b style="color:var(--primary);">= ₩${Math.round(surcharge).toLocaleString()}</b>`;
+  }
+  // hidden compat
+  const sh = document.getElementById('cp-surcharge'); if(sh) sh.value = Math.round(surcharge);
   const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
-  const totalCost = (unit*qty) + surcharge;
+  const totalCost = prodKRW + surcharge + (includeInitial ? initialKRW : 0);
   const revenue = target*qty;
   const profit = revenue - totalCost;
   const rate = revenue>0 ? profit/revenue : 0;
@@ -1615,6 +1742,20 @@ async function cpSave(){
   const compMin = compPrices.length?Math.min(...compPrices):null;
   const compMax = compPrices.length?Math.max(...compPrices):null;
 
+  const breakdownMeta = {
+    sampleFee: parseFloat(document.getElementById('cp-sample-fee').value)||null,
+    sampleCur: document.getElementById('cp-sample-cur').value,
+    moldFee: parseFloat(document.getElementById('cp-mold-fee').value)||null,
+    moldCur: document.getElementById('cp-mold-cur').value,
+    includeInitial: document.getElementById('cp-include-initial').checked,
+    origin: document.getElementById('cp-origin').value,
+    shipping: parseFloat(document.getElementById('cp-sur-shipping').value)||0,
+    customsPct: parseFloat(document.getElementById('cp-sur-customs').value)||0,
+    vatPct: parseFloat(document.getElementById('cp-sur-vat').value)||0,
+    misc: parseFloat(document.getElementById('cp-sur-misc').value)||0
+  };
+  const memoText = document.getElementById('cp-memo').value;
+  const memoWithMeta = memoText + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(breakdownMeta) + '-->';
   const body = {
     프로젝트명: name,
     품목: document.getElementById('cp-category').value || null,
@@ -1634,7 +1775,7 @@ async function cpSave(){
     마진_KRW: revenue>0?profit:null,
     마진율: rate,
     countryPricing: CP_COUNTRIES,
-    메모: document.getElementById('cp-memo').value
+    메모: memoWithMeta
   };
 
   try{
@@ -1858,11 +1999,28 @@ async function cpSubmitQuote(){
       if(d.currency) document.getElementById('cp-cost-currency').value = d.currency;
       if(d.qty!=null) document.getElementById('cp-qty').value = d.qty;
     }
-    if(d.surchargeEstimate_KRW!=null) document.getElementById('cp-surcharge').value = d.surchargeEstimate_KRW;
-    const smParts = [];
-    if(d.sampleFee) smParts.push('샘플 '+d.sampleFee+' '+(d.sampleFeeCurrency||''));
-    if(d.moldFee) smParts.push('금형 '+d.moldFee+' '+(d.sampleFeeCurrency||''));
-    if(smParts.length) document.getElementById('cp-sample-mold').value = smParts.join(' / ');
+    // 샘플비·금형비 자동 입력 (새 UI)
+    if(d.sampleFee!=null){
+      document.getElementById('cp-sample-fee').value = d.sampleFee;
+      if(d.sampleFeeCurrency) document.getElementById('cp-sample-cur').value = d.sampleFeeCurrency;
+    }
+    if(d.moldFee!=null){
+      document.getElementById('cp-mold-fee').value = d.moldFee;
+      if(d.sampleFeeCurrency) document.getElementById('cp-mold-cur').value = d.sampleFeeCurrency;
+    }
+    // 원산지
+    if(d.countryOfOrigin){
+      const origin = /china|中国|cn/i.test(d.countryOfOrigin) ? 'China' : /korea|한국|kr/i.test(d.countryOfOrigin) ? 'Korea' : /vietnam|vn/i.test(d.countryOfOrigin) ? 'Vietnam' : 'Other';
+      document.getElementById('cp-origin').value = origin;
+    }
+    // 부대비용 breakdown AI 값으로 덮어쓰기
+    const br = d.surchargeBreakdown_KRW || {};
+    if(br.shipping!=null) document.getElementById('cp-sur-shipping').value = Math.round(br.shipping);
+    if(br.customsPct!=null) document.getElementById('cp-sur-customs').value = br.customsPct;
+    if(br.vatPct!=null) document.getElementById('cp-sur-vat').value = br.vatPct;
+    if(br.misc!=null) document.getElementById('cp-sur-misc').value = Math.round(br.misc);
+    // breakdown 없으면 원산지 프리셋 적용
+    if(!br.shipping && !br.customsPct) cpApplyCountryPreset();
     cpRecalc();
     resEl.style.display='block';
     const qArr = Array.isArray(d.quotes)?d.quotes.filter(q=>q&&q.qty):[];
@@ -1905,6 +2063,10 @@ function cpApplyTier(i){
   document.getElementById('cp-cost-price').value = q.unitPrice;
   document.getElementById('cp-cost-currency').value = q.currency || 'USD';
   document.getElementById('cp-qty').value = q.qty;
+  // 수량이 바뀌면 운송비 재계산을 위해 필드 리셋
+  const shipEl = document.getElementById('cp-sur-shipping');
+  if(shipEl) shipEl.value = '';
+  cpApplyCountryPreset();
   cpRenderTiers();
   cpRecalc();
   showToast(q.qty+'개 기준 단가 적용');
