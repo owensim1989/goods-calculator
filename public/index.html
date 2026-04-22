@@ -483,14 +483,20 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div class="cp-input-section">
-    <div class="cp-input-big">
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:14px;">
       <div class="cp-field">
         <label>① 프로젝트명 (제품명) *</label>
         <input type="text" id="cp-name" placeholder="예: 네이버 콜라보 키링 2026" oninput="cpOnNameInput()">
       </div>
       <div class="cp-field">
+        <label>작성자 *</label>
+        <select id="cp-author" onchange="cpRememberAuthor()">
+          <option value="">선택</option>
+        </select>
+      </div>
+      <div class="cp-field">
         <label>상태</label>
-        <select id="cp-status">
+        <select id="cp-status" onchange="cpToggleCatalogBtn()">
           <option value="검토중">검토중</option><option value="승인">승인</option><option value="보류">보류</option><option value="거절">거절</option>
         </select>
       </div>
@@ -653,6 +659,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-ghost" id="cp-btn-new" onclick="cpNewProject()">초기화</button>
       <button class="cp-btn cp-btn-danger" id="cp-btn-del" style="display:none;" onclick="cpDeleteCurrent()">삭제</button>
       <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
+      <button class="cp-btn" id="cp-btn-publish" style="background:#f59e0b;display:none;" onclick="cpPublishToCatalog()">📋 제품 카탈로그 등록</button>
     </div>
   </div>
 </div>
@@ -1386,8 +1393,23 @@ async function cpInit(){
     CP_COUNTRIES = JSON.parse(JSON.stringify(CP_PRESETS.countries));
     cpRenderCountryTable();
   }catch(e){console.error('[CP] presets 로드 실패',e);}
+  await cpLoadEmployees();
   await cpLoadList();
   cpNewProject();
+}
+async function cpLoadEmployees(){
+  try{
+    const r = await fetch('/api/consumer-pricing/employees');
+    const d = await r.json();
+    const sel = document.getElementById('cp-author');
+    if(!sel || !d.employees) return;
+    const saved = localStorage.getItem('cp_author') || '';
+    sel.innerHTML = '<option value="">선택</option>' + d.employees.map(e=>`<option value="${escapeHtml(e.name)}" ${e.name===saved?'selected':''}>${escapeHtml(e.name)} · ${escapeHtml(e.team||'')}</option>`).join('');
+  }catch(e){console.warn('[직원 로드 실패]',e);}
+}
+function cpRememberAuthor(){
+  const v = document.getElementById('cp-author').value;
+  if(v) localStorage.setItem('cp_author', v);
 }
 
 async function cpLoadList(){
@@ -1439,6 +1461,14 @@ function cpNewProject(){
   document.getElementById('cp-sur-misc').value='';
   document.getElementById('cp-memo').value='';
   document.getElementById('cp-btn-del').style.display='none';
+  const pubBtn = document.getElementById('cp-btn-publish');
+  if(pubBtn) pubBtn.style.display='none';
+  // 작성자는 localStorage 값 유지
+  const authSel = document.getElementById('cp-author');
+  if(authSel){
+    const saved = localStorage.getItem('cp_author') || '';
+    if(saved && [...authSel.options].some(o=>o.value===saved)) authSel.value = saved;
+  }
   CP_COMPETITORS = [];
   cpAddCompetitor();
   CP_COUNTRIES = CP_PRESETS ? JSON.parse(JSON.stringify(CP_PRESETS.countries)) : [];
@@ -1482,6 +1512,12 @@ async function cpLoadProject(id){
       }
     }
     document.getElementById('cp-btn-del').style.display='inline-block';
+    // 작성자 복원
+    const authSel = document.getElementById('cp-author');
+    if(authSel && it.작성자) authSel.value = it.작성자;
+    // 카탈로그 등록 버튼: 승인 상태일 때만 표시
+    const pubBtn = document.getElementById('cp-btn-publish');
+    if(pubBtn) pubBtn.style.display = (it.상태 === '승인') ? 'inline-block' : 'none';
     CP_COMPETITORS = Array.isArray(it.competitors)?it.competitors.slice():[];
     if(!CP_COMPETITORS.length){CP_COMPETITORS=[{brand:'',product:'',priceKRW:null,memo:''}];}
     cpRenderCompetitors();
@@ -1760,6 +1796,7 @@ async function cpSave(){
     프로젝트명: name,
     품목: document.getElementById('cp-category').value || null,
     상태: document.getElementById('cp-status').value,
+    작성자: document.getElementById('cp-author').value || null,
     HS코드: document.getElementById('cp-hs').value,
     시장조사_평균_KRW: compAvg,
     시장조사_최저_KRW: compMin,
@@ -1787,6 +1824,11 @@ async function cpSave(){
     showToast(CP_CURRENT?'수정 완료':'저장 완료');
     CP_CURRENT = data.item || { id: data.id };
     document.getElementById('cp-btn-del').style.display='inline-block';
+    const pubBtn = document.getElementById('cp-btn-publish');
+    if(pubBtn){
+      const st = document.getElementById('cp-status').value;
+      pubBtn.style.display = (st === '승인') ? 'inline-block' : 'none';
+    }
     await cpLoadList();
   }catch(e){showToast('저장 실패: '+e.message);}
 }
@@ -1801,6 +1843,37 @@ async function cpDeleteCurrent(){
     await cpLoadList();
     cpNewProject();
   }catch(e){showToast('삭제 실패: '+e.message);}
+}
+
+// 📋 제품 카탈로그로 발행
+async function cpPublishToCatalog(){
+  if(!CP_CURRENT || !CP_CURRENT.id){
+    showToast('먼저 저장해주세요');
+    return;
+  }
+  const name = document.getElementById('cp-name').value || '(무제)';
+  const author = document.getElementById('cp-author').value;
+  if(!author){
+    showToast('작성자를 선택해주세요');
+    return;
+  }
+  if(!confirm(`"${name}"을(를) 📋 제품 카탈로그에 등록하시겠습니까?\n\n• 등록 후 카탈로그 DB에 새 페이지가 생성됩니다\n• 원본 상태가 "승인"으로 변경됩니다`)) return;
+  const btn = document.getElementById('cp-btn-publish');
+  btn.disabled = true; btn.textContent = '📋 등록 중...';
+  try{
+    // 먼저 현재 상태·작성자 저장 반영
+    await cpSave();
+    const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/publish-to-catalog',{method:'POST'});
+    const d = await r.json();
+    if(!r.ok||d.error){showToast('등록 실패: '+(d.error||r.status));return;}
+    showToast('✅ 제품 카탈로그 등록 완료');
+    if(d.url){
+      setTimeout(()=>{
+        if(confirm('카탈로그 페이지를 Notion에서 열까요?')) window.open(d.url,'_blank','noopener');
+      }, 500);
+    }
+  }catch(e){showToast('등록 실패: '+e.message);}
+  finally{ btn.disabled=false; btn.textContent='📋 제품 카탈로그 등록'; }
 }
 
 // ━━━ HS Code 조회 ━━━
@@ -2072,6 +2145,12 @@ function cpApplyTier(i){
   showToast(q.qty+'개 기준 단가 적용');
 }
 
+function cpToggleCatalogBtn(){
+  const st = document.getElementById('cp-status').value;
+  const btn = document.getElementById('cp-btn-publish');
+  if(!btn) return;
+  btn.style.display = (st === '승인' && CP_CURRENT && CP_CURRENT.id) ? 'inline-block' : 'none';
+}
 // 탭 전환 훅 — 최초 진입 시 초기화
 document.addEventListener('click',e=>{
   const btn = e.target.closest('.tab-btn[data-tab="consumer"]');
