@@ -481,6 +481,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
       <button class="cp-btn cp-btn-primary" style="font-size:12px;margin-left:8px;" onclick="cpExportBuyerExcel()" title="제품 카탈로그 전체를 바이어 공유용 엑셀 포맷으로 다운로드">📥 바이어 공유 엑셀</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpOpenBulkImport()" title="기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip)">📤 엑셀 일괄 Import</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpAssignCategories()" title="카탈로그 전체 제품의 Category 필드를 HS Code/Product Name 기반으로 자동 분류">🏷️ 카테고리 일괄 분류</button>
     </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
@@ -1493,6 +1494,29 @@ async function cpLoadList(){
 }
 
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+async function cpAssignCategories(){
+  const overwrite = confirm('🏷️ 카테고리 일괄 분류\n\n카탈로그 전체 제품을 HS Code/Product Name 기반으로 자동 분류합니다.\n\n[확인] 이미 Category가 있는 페이지도 재분류 (덮어쓰기)\n[취소] 현재 Category 비어있는 페이지만 분류');
+  // confirm → OK = true (overwrite), Cancel = false (skip existing)
+  // 취소 눌러도 실행은 하되 덮어쓰기 안 하는 걸로
+  if(!confirm('정말 진행하시겠습니까?\n\n예상 소요시간: 180건 기준 약 1~2분\n분류 중에는 중복 클릭하지 마세요')) return;
+
+  const btn = event && event.target;
+  if(btn){ btn.disabled = true; btn.textContent = '🏷️ 분류 중...'; }
+  try{
+    const r = await fetch('/api/consumer-pricing/catalog/assign-categories', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ overwrite })
+    });
+    const d = await r.json();
+    if(!r.ok || d.error){ showToast('분류 실패: '+(d.error||r.status)); return; }
+    const byCat = Object.entries(d.byCategory||{}).map(([k,v])=>`${k}:${v}`).join(', ');
+    alert(`✅ 카테고리 일괄 분류 완료\n\n전체: ${d.total}건\n업데이트: ${d.updated}건\nskip: ${d.skipped}건\n에러: ${d.errors?.length||0}건\n\n분류 결과: ${byCat}`);
+    showToast('✅ 분류 완료 — 엑셀 다시 다운로드해보세요');
+  }catch(e){ showToast('분류 실패: '+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='🏷️ 카테고리 일괄 분류'; } }
+}
 
 async function cpExportBuyerExcel(){
   const btn = event && event.target;

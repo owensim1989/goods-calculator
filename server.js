@@ -153,6 +153,58 @@ function removeCatalogImagesById(id) {
   } catch (e) {}
 }
 
+// ━━━ HS Code + Product Name → Category 자동 분류 ━━━
+// 카탈로그 DB의 Category Select 옵션에 맞춘 분류 규칙
+// 우선순위: HS Code 앞자리 매핑 → Product Name 키워드 fallback → '기타'
+function hsToCategory(hsCode, productName) {
+  const hs = String(hsCode || '').replace(/[^0-9]/g, '');
+  const name = String(productName || '').toLowerCase();
+
+  // 1) HS Code 앞 4자리 매핑
+  if (hs) {
+    const h4 = hs.slice(0, 4);
+    const h2 = hs.slice(0, 2);
+    // 의류 (61, 62장)
+    if (h2 === '61' || h2 === '62') return '의류';
+    // 완구·피규어 (9503)
+    if (h4 === '9503') {
+      if (/(인형|doll|plush|봉제)/i.test(name)) return '인형';
+      return '완구/피규어';
+    }
+    // 프린트·스티커 (4911 인쇄물, 4901 책자)
+    if (h4 === '4911' || h4 === '4901') return '프린트/스티커';
+    // 문구류
+    //  4820 다이어리/노트, 4817 봉투, 4816 먹지, 9608 볼펜, 9609 연필, 9610 석판, 4202 가방(일부 파우치)
+    if (h4 === '4820' || h4 === '4817' || h4 === '4816') return '문구';
+    if (h4 === '9608' || h4 === '9609' || h4 === '9610' || h4 === '9611' || h4 === '9612') return '문구';
+    // 모바일 악세사리 (8517 전화기 악세서리, 8518 헤드폰, 8504 충전기)
+    if (h4 === '8517' || h4 === '8518' || h4 === '8504' || h4 === '8507') return '모바일 악세사리';
+    // 홈리빙 (6912 도자기, 7013 유리 테이블웨어, 7323 주방용품, 3924 플라스틱 테이블웨어, 6302 침구, 9405 조명)
+    if (h4 === '6912' || h4 === '7013' || h4 === '7323' || h4 === '3924' || h4 === '6302' || h4 === '9405') return '홈리빙';
+    // 키링·잡화
+    //  7117 모조주얼리, 4202 가방·파우치·지갑, 3926.40 장식품, 3926.90 기타 플라스틱 (키링 포함)
+    if (h4 === '7117' || h4 === '4202') return '키링/잡화';
+    if (h4 === '3926') {
+      // 3926.90 범용 — 이름으로 세분
+      if (/(키링|keyring|keychain|스트랩|strap|뱃지|badge|pin)/i.test(name)) return '키링/잡화';
+      if (/(스티커|sticker)/i.test(name)) return '프린트/스티커';
+      return '키링/잡화';
+    }
+  }
+
+  // 2) Product Name 키워드 fallback
+  if (/(키링|keyring|keychain|스트랩|strap|뱃지|badge|pin|참)/i.test(name)) return '키링/잡화';
+  if (/(티셔츠|후드|맨투맨|니트|자켓|재킷|apparel|t-?shirt|hoodie)/i.test(name)) return '의류';
+  if (/(인형|doll|plush|봉제)/i.test(name)) return '인형';
+  if (/(피규어|figure|토이|toy|미니어처)/i.test(name)) return '완구/피규어';
+  if (/(스티커|sticker|프린트|print|엽서|postcard|포스터|poster|씰|seal|카드|card)/i.test(name)) return '프린트/스티커';
+  if (/(노트|note|다이어리|diary|플래너|planner|메모|memo|볼펜|연필|pencil|pen|지우개|eraser|문구)/i.test(name)) return '문구';
+  if (/(폰케이스|phone ?case|그립톡|크리너|cleaner|보조배터리|충전기)/i.test(name)) return '모바일 악세사리';
+  if (/(머그|mug|유리컵|글라스|glass|텀블러|tumbler|도자기|접시|plate|쟁반|tray|파우치|pouch|가방|bag|지갑|wallet|손거울|mirror|쿠션|cushion|담요|blanket)/i.test(name)) return '홈리빙';
+
+  return '기타';
+}
+
 // ━━━ Notion 클라이언트 ━━━
 const notion = NOTION_TOKEN ? new Client({ auth: NOTION_TOKEN }) : null;
 
@@ -971,11 +1023,24 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       cursor = resp.has_more ? resp.next_cursor : undefined;
     } while (cursor);
 
-    // Product Name 기준 정렬
+    // 정렬: Category(정의 순서) → 등록일 최신순 → Product Name
+    const CATEGORY_ORDER = ['문구', '의류', '키링/잡화', '완구/피규어', '인형', '프린트/스티커', '홈리빙', '모바일 악세사리', '기타'];
+    const catIdx = (p) => {
+      const c = p.properties?.Category?.select?.name || '기타';
+      const i = CATEGORY_ORDER.indexOf(c);
+      return i === -1 ? CATEGORY_ORDER.length : i;
+    };
+    const regDate = (p) => {
+      const d = p.properties?.등록일?.date?.start || p.created_time || '1970-01-01';
+      return d;
+    };
+    const prodName = (p) => ((p.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
     allPages.sort((a, b) => {
-      const na = ((a.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
-      const nb = ((b.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
-      return na.localeCompare(nb);
+      const ca = catIdx(a), cb = catIdx(b);
+      if (ca !== cb) return ca - cb;
+      const da = regDate(a), db = regDate(b);
+      if (da !== db) return db.localeCompare(da);
+      return prodName(a).localeCompare(prodName(b));
     });
 
     const workbook = new ExcelJS.Workbook();
@@ -985,13 +1050,13 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     });
 
     // 타이틀 (A1 merge A1:V1)
-    sheet.mergeCells('A1:V1');
+    sheet.mergeCells('A1:W1');
     sheet.getCell('A1').value = 'Mr.donothing Product List';
     sheet.getCell('A1').font = { bold: true, size: 14 };
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
 
     const headers = [
-      'no.', 'Image', 'Product Name', 'Barcode', 'Packaging',
+      'no.', 'Image', 'Category', 'Product Name', 'Barcode', 'Packaging',
       'Retail Price\n(South Korea)', 'Retail Price\n(Taiwan)', 'Retail Price\n(US)',
       'Retail Price\n(Thailand)', 'Retail Price\n(HK)', 'Retail Price\n(China)',
       'Retail Price\n(Indonesia)',
@@ -1004,7 +1069,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     sheet.getRow(2).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     sheet.getRow(2).height = 40;
 
-    const widths = [5, 14, 32, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
+    const widths = [5, 14, 14, 32, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
     widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
 
     let imagesEmbedded = 0;
@@ -1024,7 +1089,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
 
       const rowNum = idx + 3;
       sheet.getRow(rowNum).values = [
-        idx + 1, '', getText('Product Name'), barcode, getText('Packaging'),
+        idx + 1, '', getSel('Category') || '기타', getText('Product Name'), barcode, getText('Packaging'),
         getNum('Retail_KR_KRW'), getNum('Retail_TW_TWD'), getNum('Retail_US_USD'),
         getNum('Retail_TH_THB'), getNum('Retail_HK_HKD'), getNum('Retail_CN_CNY'),
         getNum('Retail_ID_IDR'),
@@ -1034,7 +1099,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       ];
       sheet.getRow(rowNum).height = 80;
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
-      sheet.getCell(`N${rowNum}`).numFmt = '0%';
+      sheet.getCell(`O${rowNum}`).numFmt = '0%';
 
       // 이미지 임베드: 바코드 우선, 없으면 Image_URL의 cp_{id} fallback
       let imgKey = barcode;
@@ -1091,6 +1156,54 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
 
 
 // 📤 카탈로그 일괄 Import (엑셀 업로드 → Notion 카탈로그 DB에 create)
+// 🏷️ 기존 카탈로그 페이지에 HS Code/Product Name 기반으로 Category 일괄 분류
+// body.overwrite=true 면 이미 Category 있는 페이지도 재분류. 기본은 비어있는 페이지만
+app.post('/api/consumer-pricing/catalog/assign-categories', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const overwrite = !!(req.body && req.body.overwrite);
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const results = { total: allPages.length, updated: 0, skipped: 0, byCategory: {}, errors: [] };
+    for (let i = 0; i < allPages.length; i++) {
+      const p = allPages[i];
+      const pr = p.properties || {};
+      const currentCat = pr.Category?.select?.name || null;
+      if (currentCat && !overwrite) { results.skipped++; continue; }
+      const hs = (pr.HS_Code?.rich_text || []).map(t => t.plain_text || '').join('');
+      const name = (pr['Product Name']?.title || []).map(t => t.plain_text || '').join('');
+      const cat = hsToCategory(hs, name);
+      try {
+        await notion.pages.update({
+          page_id: p.id,
+          properties: { 'Category': { select: { name: cat } } }
+        });
+        results.updated++;
+        results.byCategory[cat] = (results.byCategory[cat] || 0) + 1;
+      } catch (e) {
+        results.errors.push({ id: p.id, name, error: e.message });
+      }
+      // Notion rate limit: 3req/sec
+      if ((results.updated + results.errors.length) % 3 === 0) await new Promise(r => setTimeout(r, 400));
+    }
+    console.log('[카테고리 일괄 분류]', results);
+    res.json(results);
+  } catch (e) {
+    console.error('[카테고리 일괄 분류 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
@@ -1786,6 +1899,7 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       '원가_USD': { number: costUSD ? +costUSD.toFixed(2) : null },
       '원가율': { number: origRate ? +origRate.toFixed(4) : null },
       '판매상태': { select: { name: '생산예정' } },
+      'Category': { select: { name: hsToCategory(item.HS코드, item.프로젝트명) } },
       '등록일': { date: { start: new Date().toISOString().slice(0, 10) } },
       '소비자가_산정_ID': { rich_text: [{ text: { content: req.params.id } }] },
       '비고': { rich_text: [{ text: { content: item.메모 ? item.메모.replace(/<!--BREAKDOWN_META:[\s\S]*?-->/, '').trim() : '' } }] }
