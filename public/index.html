@@ -1509,28 +1509,39 @@ async function cpLoadProject(id){
     document.getElementById('cp-cost-price').value = it.생산_단가||'';
     document.getElementById('cp-cost-currency').value = it.생산_통화||'KRW';
     document.getElementById('cp-qty').value = it.생산_수량||'';
-    // breakdown 복원 (meta JSON in 메모 or surcharge field)
-    const meta = it.부대비용_meta || {};
-    if(meta.sampleFee!=null) document.getElementById('cp-sample-fee').value = meta.sampleFee;
-    if(meta.moldFee!=null) document.getElementById('cp-mold-fee').value = meta.moldFee;
-    if(meta.sampleCur) document.getElementById('cp-sample-cur').value = meta.sampleCur;
-    if(meta.moldCur) document.getElementById('cp-mold-cur').value = meta.moldCur;
-    if(meta.origin) document.getElementById('cp-origin').value = meta.origin;
-    if(meta.shipping!=null) document.getElementById('cp-sur-shipping').value = meta.shipping;
-    if(meta.customsPct!=null) document.getElementById('cp-sur-customs').value = meta.customsPct;
-    if(meta.vatPct!=null) document.getElementById('cp-sur-vat').value = meta.vatPct;
-    if(meta.misc!=null) document.getElementById('cp-sur-misc').value = meta.misc;
-    if(meta.packaging!=null){ const pkg = document.getElementById('cp-sur-packaging'); if(pkg) pkg.value = meta.packaging; }
-    if(meta.includeInitial != null) document.getElementById('cp-include-initial').checked = !!meta.includeInitial;
+    if(document.getElementById('cp-qty').type === 'text') cpFmtInput(document.getElementById('cp-qty'));
+    // 1) 메모에서 BREAKDOWN_META 먼저 파싱 (순서 중요 — 이전 버그 원인)
     {
       const raw = it.메모 || '';
       const parts = raw.split(/<\!--BREAKDOWN_META:/);
       document.getElementById('cp-memo').value = (parts[0] || '').replace(/\n*$/,'');
       if(parts[1]){
         const end = parts[1].indexOf('-->');
-        if(end>0){ try{ it.부대비용_meta = JSON.parse(parts[1].slice(0,end)); }catch(e){} }
+        if(end>0){ try{ it.부대비용_meta = JSON.parse(parts[1].slice(0,end)); }catch(e){ console.warn('[BREAKDOWN_META 파싱 실패]', e); } }
       }
     }
+    // 2) meta 기반 breakdown 복원
+    const meta = it.부대비용_meta || {};
+    if(meta.sampleFee!=null) document.getElementById('cp-sample-fee').value = meta.sampleFee;
+    if(meta.moldFee!=null) document.getElementById('cp-mold-fee').value = meta.moldFee;
+    if(meta.sampleCur) document.getElementById('cp-sample-cur').value = meta.sampleCur;
+    if(meta.moldCur) document.getElementById('cp-mold-cur').value = meta.moldCur;
+    if(meta.origin) document.getElementById('cp-origin').value = meta.origin;
+    if(meta.shipping!=null){
+      const el=document.getElementById('cp-sur-shipping');
+      if(el){ el.value = meta.shipping; if(el.type==='text') cpFmtInput(el); }
+    }
+    if(meta.customsPct!=null) document.getElementById('cp-sur-customs').value = meta.customsPct;
+    if(meta.vatPct!=null) document.getElementById('cp-sur-vat').value = meta.vatPct;
+    if(meta.misc!=null){
+      const el=document.getElementById('cp-sur-misc');
+      if(el){ el.value = meta.misc; if(el.type==='text') cpFmtInput(el); }
+    }
+    if(meta.packaging!=null){
+      const el = document.getElementById('cp-sur-packaging');
+      if(el){ el.value = meta.packaging; if(el.type==='text') cpFmtInput(el); }
+    }
+    if(meta.includeInitial != null) document.getElementById('cp-include-initial').checked = !!meta.includeInitial;
     document.getElementById('cp-btn-del').style.display='inline-block';
     // 작성자 복원
     const authSel = document.getElementById('cp-author');
@@ -1667,6 +1678,15 @@ function cpApplyCountryPreset(force){
   setVal(vatEl, p.vat);
   setVal(pkgEl, Math.round(p.packagingPerUnit * qty));
   setVal(miscEl, p.misc);
+  // HS Code AI 캐시가 있고 원산지와 매핑되는 관세율이 있으면 덮어씀
+  if(window._cpHSCache && window._cpHSCache[0]){
+    const top = window._cpHSCache[0];
+    const originMap = { 'Korea':'tariffKR', 'China':'tariffCN' };
+    const f = originMap[origin];
+    if(f && top[f] != null && custEl){
+      custEl.value = Number(top[f]) || 0;
+    }
+  }
   cpRecalc();
 }
 function cpRecalc(){
@@ -1992,14 +2012,28 @@ function cpApplyHS(code, tariffs){
   showToast('HS Code 확정: '+code);
 }
 function cpApplyTariffsToCountries(t){
-  if(!CP_COUNTRIES || !CP_COUNTRIES.length || !t) return;
-  const map = { KR:'tariffKR', US:'tariffUS', CN:'tariffCN', JP:'tariffJP' };
-  let changed = 0;
-  for(const c of CP_COUNTRIES){
-    const k = map[c.code];
-    if(k && t[k] != null){ c.tariffPct = Number(t[k]) || 0; changed++; }
+  if(!t) return;
+  // A) 국가별 소비자가 산정 테이블 (TW/HK/TH는 HS AI에 관세 없으니 기존 프리셋 유지)
+  if(CP_COUNTRIES && CP_COUNTRIES.length){
+    const map = { KR:'tariffKR', US:'tariffUS', CN:'tariffCN', JP:'tariffJP' };
+    let changed = 0;
+    for(const c of CP_COUNTRIES){
+      const k = map[c.code];
+      if(k && t[k] != null){ c.tariffPct = Number(t[k]) || 0; changed++; }
+    }
+    if(changed) cpRenderCountryTable();
   }
-  if(changed) cpRenderCountryTable();
+  // B) 생산 부대비용 관세율 — 원산지 기준
+  const origin = document.getElementById('cp-origin')?.value || 'China';
+  const originToField = { 'Korea':'tariffKR', 'China':'tariffCN', 'Vietnam':null, 'Other':null };
+  const field = originToField[origin];
+  if(field && t[field] != null){
+    const custEl = document.getElementById('cp-sur-customs');
+    if(custEl){
+      custEl.value = Number(t[field]) || 0;
+      cpRecalc();
+    }
+  }
 }
 // 자동 HS 추천 — 품명 입력 1.5초 debounce
 let CP_HS_DEBOUNCE = null;
