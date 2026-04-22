@@ -1022,8 +1022,8 @@ app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
       console.log(`[catalog-import] 이미지 추출: ${Object.keys(rowImages).length}개`);
     } catch (e) { console.warn('[catalog-import] 이미지 추출 실패:', e.message); }
 
-    // 기존 카탈로그 바코드 집합 (중복 방지)
-    const existing = new Set();
+    // 기존 카탈로그 바코드 → pageId 매핑 (중복 시 이미지·빈 필드 업데이트용)
+    const existingByBarcode = new Map();
     let cursor = undefined;
     do {
       const resp = await notion.databases.query({
@@ -1033,7 +1033,7 @@ app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
       });
       for (const p of resp.results) {
         const bc = (p.properties?.Barcode?.rich_text || []).map(t => t.plain_text).join('').trim();
-        if (bc) existing.add(bc);
+        if (bc) existingByBarcode.set(bc, { id: p.id, hasImage: !!p.properties?.Image_URL?.url });
       }
       cursor = resp.has_more ? resp.next_cursor : undefined;
     } while (cursor);
@@ -1083,7 +1083,31 @@ app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
       // 템플릿 행 ('제품명(같은 품목끼리...)' 같은 설명) 스킵
       if (name.includes('제품명(같은') || name.includes('첫 제품명 통일')) continue;
       results.total++;
-      if (barcode && existing.has(barcode)) { results.skipped++; continue; }
+      // 중복 체크: 이미지는 없는데 이미지가 제공되면 업데이트, 그 외는 skip
+      const existingPage = barcode ? existingByBarcode.get(barcode) : null;
+      if (existingPage) {
+        // 이미지 업데이트 (엑셀에서 추출된 이미지가 있을 때)
+        if (rowImages[i]) {
+          try {
+            const img = rowImages[i];
+            const savePath = path.join(CATALOG_IMAGE_DIR, `${safeBarcode(barcode)}.${img.ext === 'jpeg' ? 'jpg' : img.ext}`);
+            fs.writeFileSync(savePath, img.buf);
+            const imgUrl = `${PUBLIC_BASE_URL}/api/catalog-image/${safeBarcode(barcode)}`;
+            await notion.pages.update({
+              page_id: existingPage.id,
+              properties: { 'Image_URL': { url: imgUrl } }
+            });
+            if (!results.imagesUpdated) results.imagesUpdated = 0;
+            results.imagesUpdated++;
+          } catch (e) {
+            console.warn(`[이미지 업데이트 실패] ${barcode}:`, e.message);
+          }
+        }
+        results.skipped++;
+        // rate limit
+        if ((results.imagesUpdated || 0) % 3 === 0) await new Promise(r => setTimeout(r, 400));
+        continue;
+      }
 
       const num = v => (v === null || v === undefined || v === '') ? null : (typeof v === 'number' ? v : Number(String(v).replace(/[,\s]/g,'')) || null);
       const txt = v => (v === null || v === undefined) ? '' : String(v);

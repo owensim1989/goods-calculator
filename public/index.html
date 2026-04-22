@@ -1552,6 +1552,8 @@ async function cpRunBulkImport(){
     html += '• 총 대상: <b>' + data.total + '</b>건<br>';
     html += '• 신규 등록: <b style="color:#10b981;">' + data.created + '</b>건<br>';
     html += '• 중복 건너뜀: <b style="color:#f59e0b;">' + data.skipped + '</b>건<br>';
+    if (data.imagesExtracted) html += '• 🖼️ 이미지 추출(신규): <b style="color:#3b82f6;">' + data.imagesExtracted + '</b>건<br>';
+    if (data.imagesUpdated) html += '• 🖼️ 이미지 업데이트(기존): <b style="color:#3b82f6;">' + data.imagesUpdated + '</b>건<br>';
     if (data.errors && data.errors.length) {
       html += '• <b style="color:#ef4444;">에러: ' + data.errors.length + '건</b><br>';
       html += '<details style="margin-top:8px;"><summary style="cursor:pointer;">에러 상세</summary><ul style="margin:8px 0 0 16px;font-size:12px;">';
