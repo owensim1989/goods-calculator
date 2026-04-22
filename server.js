@@ -42,6 +42,76 @@ const EMPLOYEES_LIST = [
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ADMIN_SECRET  = process.env.ADMIN_SECRET   || '';
 let XLSX = null; try { XLSX = require('xlsx'); } catch(e) { console.warn('[xlsx] 패키지 없음, 엑셀 파싱 비활성'); }
+let JSZip = null; try { JSZip = require('jszip'); } catch(e) { console.warn('[jszip] 패키지 없음, 엑셀 내부 이미지 추출 비활성'); }
+let sharp = null; try { sharp = require('sharp'); } catch(e) { console.warn('[sharp] 패키지 없음, 썸네일 리사이즈 비활성'); }
+let ExcelJS = null; try { ExcelJS = require('exceljs'); } catch(e) { console.warn('[exceljs] 패키지 없음, 이미지 임베드 비활성'); }
+
+// ━━━ 카탈로그 이미지 디렉터리 (Railway Volume 또는 로컬) ━━━
+const CATALOG_IMAGE_DIR = process.env.CATALOG_IMAGE_DIR || (process.env.NODE_ENV === 'production' ? '/data/catalog-images' : path.join(__dirname, 'data', 'catalog-images'));
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://goods.jeisha.kr';
+try {
+  fs.mkdirSync(CATALOG_IMAGE_DIR, { recursive: true });
+  fs.mkdirSync(path.join(CATALOG_IMAGE_DIR, 'thumb'), { recursive: true });
+  console.log('[catalog-image] dir:', CATALOG_IMAGE_DIR);
+} catch(e) { console.warn('[catalog-image] dir 생성 실패:', e.message); }
+
+// 엑셀 내부 이미지 추출 헬퍼 — row(0-based) → { buf, ext, path }
+async function extractXlsxImages(buffer, drawingFile = 'xl/drawings/drawing1.xml') {
+  if (!JSZip) return {};
+  const zip = await JSZip.loadAsync(buffer);
+  const drawingXml = await (zip.file(drawingFile)?.async('string'));
+  const relsFile = drawingFile.replace('/drawings/', '/drawings/_rels/') + '.rels';
+  const relsXml = await (zip.file(relsFile)?.async('string'));
+  if (!drawingXml || !relsXml) return {};
+
+  // rId → image path
+  const ridToImage = {};
+  const relsRegex = /<Relationship\s+Id="(rId\d+)"[^>]+Target="([^"]+)"/g;
+  let rm;
+  while ((rm = relsRegex.exec(relsXml)) !== null) {
+    let target = rm[2];
+    if (target.startsWith('../')) target = 'xl/' + target.slice(3);
+    else if (!target.startsWith('xl/')) target = 'xl/drawings/' + target;
+    ridToImage[rm[1]] = target;
+  }
+
+  // anchor → row + rId
+  const result = {};
+  const anchorRegex = /<xdr:twoCellAnchor[^>]*>([\s\S]*?)<\/xdr:twoCellAnchor>/g;
+  let am;
+  while ((am = anchorRegex.exec(drawingXml)) !== null) {
+    const anchor = am[1];
+    const rowMatch = anchor.match(/<xdr:from>[\s\S]*?<xdr:row>(\d+)<\/xdr:row>[\s\S]*?<\/xdr:from>/);
+    const embedMatch = anchor.match(/<a:blip[^>]+r:embed="(rId\d+)"/);
+    if (!rowMatch || !embedMatch) continue;
+    const row = parseInt(rowMatch[1]);
+    const rid = embedMatch[1];
+    const imgPath = ridToImage[rid];
+    if (!imgPath) continue;
+    const f = zip.file(imgPath);
+    if (!f) continue;
+    const buf = await f.async('nodebuffer');
+    const ext = (imgPath.split('.').pop() || 'jpg').toLowerCase();
+    result[row] = { buf, ext, path: imgPath };
+  }
+  return result;
+}
+
+// 바코드 안전성 검사 (경로 조작 방지)
+function safeBarcode(bc) {
+  return String(bc || '').replace(/[^0-9A-Za-z_-]/g, '');
+}
+
+// 바코드로 이미지 파일 경로 찾기 (확장자 자동 탐지)
+function findCatalogImage(barcode) {
+  const bc = safeBarcode(barcode);
+  if (!bc) return null;
+  for (const ext of ['jpg', 'jpeg', 'png', 'webp', 'gif']) {
+    const p = path.join(CATALOG_IMAGE_DIR, `${bc}.${ext}`);
+    if (fs.existsSync(p)) return { path: p, ext };
+  }
+  return null;
+}
 
 // ━━━ Notion 클라이언트 ━━━
 const notion = NOTION_TOKEN ? new Client({ auth: NOTION_TOKEN }) : null;
@@ -778,6 +848,34 @@ app.get('/api/consumer-pricing/hs-reference', (req, res) => {
   res.json({ items: HS_REFERENCE_DB });
 });
 
+// 🖼️ 카탈로그 이미지 서빙 (원본)
+app.get('/api/catalog-image/:barcode', (req, res) => {
+  const found = findCatalogImage(req.params.barcode);
+  if (!found) return res.status(404).send('not found');
+  res.setHeader('Cache-Control', 'public, max-age=604800'); // 1주일 캐시
+  res.sendFile(found.path);
+});
+
+// 🖼️ 카탈로그 이미지 썸네일 (sharp 리사이즈)
+app.get('/api/catalog-image/:barcode/thumb', async (req, res) => {
+  const bc = safeBarcode(req.params.barcode);
+  const size = Math.min(parseInt(req.query.size) || 200, 400);
+  const found = findCatalogImage(bc);
+  if (!found) return res.status(404).send('not found');
+  if (!sharp) return res.sendFile(found.path);
+  const thumbPath = path.join(CATALOG_IMAGE_DIR, 'thumb', `${bc}_${size}.jpg`);
+  try {
+    if (!fs.existsSync(thumbPath)) {
+      await sharp(found.path).resize(size, size, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toFile(thumbPath);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=604800');
+    res.sendFile(thumbPath);
+  } catch (e) {
+    console.warn('[thumb 생성 실패]', bc, e.message);
+    res.sendFile(found.path);
+  }
+});
+
 // 📥 바이어 공유용 엑셀 다운로드 (Mr.Donothing Product List FOB-CIF 포맷, 22열)
 app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -917,6 +1015,13 @@ app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
     const ws = wb.Sheets[targetSheet];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
+    // 엑셀 내부 이미지 추출 (drawing1 = 첫 번째 시트 기준)
+    let rowImages = {};
+    try {
+      rowImages = await extractXlsxImages(buf, 'xl/drawings/drawing1.xml');
+      console.log(`[catalog-import] 이미지 추출: ${Object.keys(rowImages).length}개`);
+    } catch (e) { console.warn('[catalog-import] 이미지 추출 실패:', e.message); }
+
     // 기존 카탈로그 바코드 집합 (중복 방지)
     const existing = new Set();
     let cursor = undefined;
@@ -1011,6 +1116,19 @@ app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
       if (txt(r[idxMap.note]).trim()) props['비고'] = { rich_text: [{ text: { content: txt(r[idxMap.note]) } }] };
       props['판매상태'] = { select: { name: '판매중' } };
       props['등록일'] = { date: { start: new Date().toISOString().slice(0,10) } };
+
+      // 이미지 저장 (row i에 이미지 있으면 barcode로 저장)
+      if (barcode && rowImages[i]) {
+        try {
+          const img = rowImages[i];
+          const savePath = path.join(CATALOG_IMAGE_DIR, `${safeBarcode(barcode)}.${img.ext === 'jpeg' ? 'jpg' : img.ext}`);
+          fs.writeFileSync(savePath, img.buf);
+          const imgUrl = `${PUBLIC_BASE_URL}/api/catalog-image/${safeBarcode(barcode)}`;
+          props['Image_URL'] = { url: imgUrl };
+          if (!results.imagesExtracted) results.imagesExtracted = 0;
+          results.imagesExtracted++;
+        } catch (e) { console.warn(`[이미지 저장 실패] ${barcode}:`, e.message); }
+      }
 
       try {
         await notion.pages.create({ parent: { database_id: PRODUCT_CATALOG_DB_ID }, properties: props });
