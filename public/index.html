@@ -2143,15 +2143,22 @@ async function cpOnQuoteFile(file){
   }
   const b64 = btoa(bin);
   CP_QUOTE_FILE = { kind, data:b64, mime:file.type||'', name:file.name };
-  document.getElementById('cp-quote-filename').textContent = '📎 '+file.name+' ('+(buf.byteLength/1024).toFixed(1)+'KB) — 자동 분석 중...';
-  setTimeout(cpSubmitQuote, 300);
+  document.getElementById('cp-quote-filename').textContent = '📎 '+file.name+' ('+(buf.byteLength/1024).toFixed(1)+'KB) — 곧 AI 분석 시작';
+  // 자동 분석 — 중복 실행 방지
+  setTimeout(()=>{
+    if(!window._cpQuoteInFlight) cpSubmitQuote();
+  }, 300);
 }
 async function cpSubmitQuote(){
   const text = (document.getElementById('cp-quote-text').value||'').trim();
   const btn = document.getElementById('cp-quote-submit');
   const resEl = document.getElementById('cp-quote-result');
   if(!CP_QUOTE_FILE && !text){showToast('파일 또는 텍스트를 입력하세요');return;}
-  btn.disabled=true; btn.textContent='🤖 분석 중...';
+  if(window._cpQuoteInFlight){ showToast('이미 분석 중입니다'); return; }
+  window._cpQuoteInFlight = true;
+  btn.disabled=true; btn.textContent='🤖 분석 중... (최대 30초)';
+  resEl.style.display='block';
+  resEl.innerHTML = '<span style="color:var(--text-muted);">🤖 Claude AI 분석 중... 견적서 크기에 따라 10~30초 소요</span>';
   try{
     const body = CP_QUOTE_FILE ? { ...CP_QUOTE_FILE } : { kind:'text', text };
     const r = await fetch('/api/consumer-pricing/parse-quote',{
@@ -2214,8 +2221,15 @@ async function cpSubmitQuote(){
       <span style="color:var(--text-muted);font-size:11px;">→ 자동 반영됨. 수량 tier는 칩으로 선택 가능.</span>`;
     showToast('✅ 자동 반영 완료');
     setTimeout(cpCloseQuoteUpload, 2500);
-  }catch(e){resEl.style.display='block';resEl.innerHTML=`<b style="color:var(--danger);">오류:</b> ${escapeHtml(e.message)}`;}
-  finally{btn.disabled=false; btn.textContent='🤖 AI 분석';}
+  }catch(e){
+    resEl.style.display='block';
+    resEl.innerHTML=`<b style="color:var(--danger);">오류:</b> ${escapeHtml(e.message||'알 수 없는 오류')}<div style="margin-top:8px;font-size:11px;color:var(--text-muted);">잠시 후 다시 시도하거나, 텍스트 붙여넣기로 전환해보세요.</div>`;
+  }
+  finally{
+    btn.disabled=false;
+    btn.textContent='🤖 AI 분석';
+    window._cpQuoteInFlight = false;
+  }
 }
 document.addEventListener('DOMContentLoaded',()=>{
   const drop = document.getElementById('cp-quote-drop');

@@ -926,10 +926,19 @@ function callClaude(messages, opts = {}) {
       res.on('end', () => {
         try {
           const j = JSON.parse(data);
-          if (j.error) return reject(new Error(j.error.message || 'claude error'));
+          if (j.error) {
+            console.error('[Claude API 에러]', JSON.stringify(j.error).slice(0, 500));
+            return reject(new Error(j.error.message || j.error.type || 'claude error'));
+          }
           const text = (j.content && j.content[0] && j.content[0].text) || '';
+          if (!text) {
+            console.warn('[Claude] 빈 응답. stop_reason=', j.stop_reason, 'usage=', JSON.stringify(j.usage || {}));
+          }
           resolve(text);
-        } catch (e) { reject(e); }
+        } catch (e) {
+          console.error('[Claude 응답 JSON.parse 실패]', data.slice(0, 500));
+          reject(e);
+        }
       });
     });
     req.on('error', reject);
@@ -1141,38 +1150,29 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
   try {
     let content;
-    const ask = `다음 견적서에서 생산 정보를 추출해 JSON만 반환. 설명 금지.
+    const ask = `CRITICAL: Return ONLY valid JSON. No markdown, no explanation, no Korean text outside the JSON.
 
-형식:
+다음 견적서에서 정보를 추출하세요. 없는 필드는 null 또는 생략.
+
 {
-  "vendor": "거래처명",
+  "vendor": "거래처명 (문자열)",
   "product": "제품명",
-  "spec": "스펙 요약",
-  "sampleFee": 숫자,
-  "sampleFeeCurrency": "USD/KRW/CNY 등",
-  "moldFee": 숫자,
-  "quotes": [ { "qty": 500, "unitPrice": 1.36, "currency": "USD" } ],
-  "cost": 숫자, "currency": "통화", "qty": 숫자,
-  "surchargeBreakdown_KRW": {
-    "shipping": 해외운송비 KRW,
-    "customsPct": 관세율 %,
-    "vatPct": VAT율 %,
-    "packaging": 포장·라벨링·패키지 비용 KRW,
-    "misc": 통관수수료 등 기타 KRW,
-    "reasoning": "산출 근거 1~2문장 (예: HS 3926 중국 수입 관세 8%, VAT 10%, 500개 배송비 kg당 환산)"
-  },
-  "countryOfOrigin": "China/Korea/...",
-  "surchargeEstimate_KRW": 총 부대비용 예상 KRW
+  "sampleFee": 숫자 or null,
+  "moldFee": 숫자 or null,
+  "sampleFeeCurrency": "USD|KRW|CNY|JPY",
+  "quotes": [
+    { "qty": 500, "unitPrice": 1.36, "currency": "USD" }
+  ],
+  "countryOfOrigin": "China|Korea|Vietnam|Other",
+  "surchargeEstimate_KRW": 숫자
 }
 
-중요 규칙:
-- tier pricing 여러 개 있으면 quotes 배열에 모두 (500/$1.36, 1000/$1.32 → 2개)
-- Sample Fee / Mold Fee 누락 금지 (sampleFee, moldFee에 채움)
-- surchargeBreakdown은 shipping + customs + VAT + misc 합계가 surchargeEstimate_KRW와 일치하도록
-- 원산지가 중국이면 관세 약 8~15%, VAT 10%, 운송비 kg당 2~4 USD × 포장합무게 기준
-- 원산지가 한국이면 모두 0
-- 단가는 개당 (Unit Price)
-- 통화는 정확히 1개`;
+규칙:
+- 수량별 단가(tier)가 여러 개면 quotes 배열에 모두 포함 (예: 500/\$1.36, 1000/\$1.32 → 2개)
+- 단가는 개당(Unit Price), 총액÷수량 계산 금지 — 반드시 Unit Price 컬럼 그대로
+- Sample Fee / Mold Fee는 견적서 해당 행이 있으면 반드시 추출
+- countryOfOrigin: 공급사 주소가 China면 "China" 등
+- surchargeEstimate_KRW: 중국산이면 (단가×수량×환율) × 0.2 추정, 한국산이면 0`;
 
     if (kind === 'text' || text) {
       content = [{ type: 'text', text: ask + '\n\n견적 내용:\n' + (text || '') }];
@@ -1201,7 +1201,7 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
       return res.status(400).json({ error: 'kind 또는 data 누락' });
     }
 
-    const out = await callClaude([{ role: 'user', content }], { max_tokens: 1800 });
+    const out = await callClaude([{ role: 'user', content }], { max_tokens: 1500 });
     const parsed = extractJSON(out);
     if (!parsed) {
       console.error('[parse-quote] 파싱 실패. Claude 원문:\n', out.slice(0, 2000));
