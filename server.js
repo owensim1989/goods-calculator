@@ -169,7 +169,7 @@ function hsToCategory(hsCode, productName) {
     // 완구·피규어 (9503)
     if (h4 === '9503') {
       if (/(인형|doll|plush|봉제)/i.test(name)) return '인형';
-      return '완구/피규어';
+      return '피규어/토이';
     }
     // 프린트·스티커 (4911 인쇄물, 4901 책자)
     if (h4 === '4911' || h4 === '4901') return '프린트/스티커';
@@ -196,7 +196,7 @@ function hsToCategory(hsCode, productName) {
   if (/(키링|keyring|keychain|스트랩|strap|뱃지|badge|pin|참)/i.test(name)) return '키링/잡화';
   if (/(티셔츠|후드|맨투맨|니트|자켓|재킷|apparel|t-?shirt|hoodie)/i.test(name)) return '의류';
   if (/(인형|doll|plush|봉제)/i.test(name)) return '인형';
-  if (/(피규어|figure|토이|toy|미니어처)/i.test(name)) return '완구/피규어';
+  if (/(피규어|figure|토이|toy|미니어처)/i.test(name)) return '피규어/토이';
   if (/(스티커|sticker|프린트|print|엽서|postcard|포스터|poster|씰|seal|카드|card)/i.test(name)) return '프린트/스티커';
   if (/(노트|note|다이어리|diary|플래너|planner|메모|memo|볼펜|연필|pencil|pen|지우개|eraser|문구)/i.test(name)) return '문구';
   if (/(폰케이스|phone ?case|그립톡|크리너|cleaner|보조배터리|충전기)/i.test(name)) return '모바일 악세사리';
@@ -1032,7 +1032,19 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     } while (cursor);
 
     // 정렬: Category(정의 순서) → 등록일 최신순 → Product Name
-    const CATEGORY_ORDER = ['문구', '의류', '키링/잡화', '완구/피규어', '인형', '프린트/스티커', '홈리빙', '모바일 악세사리', '기타'];
+    const CATEGORY_ORDER = ['피규어/토이', '키링/잡화', '인형', '문구', '홈리빙', '프린트/스티커', '모바일 악세사리', '의류', '기타'];
+    // 바이어 엑셀용 카테고리 영문 매핑 (Notion은 한글, 엑셀 export만 영어)
+    const CATEGORY_EN = {
+      '피규어/토이': 'Figures & Toys',
+      '키링/잡화': 'Keyrings & Accessories',
+      '인형': 'Plush Dolls',
+      '문구': 'Stationery',
+      '홈리빙': 'Home & Living',
+      '프린트/스티커': 'Prints & Stickers',
+      '모바일 악세사리': 'Mobile Accessories',
+      '의류': 'Apparel',
+      '기타': 'Others'
+    };
     const catIdx = (p) => {
       const c = p.properties?.Category?.select?.name || '기타';
       const i = CATEGORY_ORDER.indexOf(c);
@@ -1053,13 +1065,13 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Mr.Donothing';
-    const sheet = workbook.addWorksheet('Mr.Donothing Product List_', {
+    const sheet = workbook.addWorksheet('Mr.Donothing Product List', {
       properties: { defaultRowHeight: 80 }
     });
 
     // 타이틀 (A1 merge A1:V1)
     sheet.mergeCells('A1:W1');
-    sheet.getCell('A1').value = 'Mr.donothing Product List';
+    sheet.getCell('A1').value = 'Mr.Donothing Product List';
     sheet.getCell('A1').font = { bold: true, size: 14 };
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
 
@@ -1070,7 +1082,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       'Retail Price\n(Indonesia)',
       'FOB\n(Won)', 'FOB\n(discount rate)', 'CIF\n(Est, Asia avg)',
       'HS CODE', 'Size\n(mm)', 'Material', 'Country of\nOrigin',
-      'Order ', 'Amount', 'Note'
+      'Order Qty', 'Total (KRW)', 'Note'
     ];
     sheet.getRow(2).values = headers;
     sheet.getRow(2).font = { bold: true };
@@ -1097,7 +1109,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
 
       const rowNum = idx + 3;
       sheet.getRow(rowNum).values = [
-        idx + 1, '', getSel('Category') || '기타', getText('Product Name'), barcode, getText('Packaging'),
+        idx + 1, '', (CATEGORY_EN[getSel('Category')] || 'Others'), getText('Product Name'), barcode, getText('Packaging'),
         getNum('Retail_KR_KRW'), getNum('Retail_TW_TWD'), getNum('Retail_US_USD'),
         getNum('Retail_TH_THB'), getNum('Retail_HK_HKD'), getNum('Retail_CN_CNY'),
         getNum('Retail_ID_IDR'),
