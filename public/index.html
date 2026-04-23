@@ -480,9 +480,15 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <h3>📚 저장된 프로젝트
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
       <button class="cp-btn cp-btn-primary" style="font-size:12px;margin-left:8px;" onclick="cpExportBuyerExcel()" title="제품 카탈로그 전체를 바이어 공유용 엑셀 포맷으로 다운로드">📥 바이어 공유 엑셀</button>
-      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpOpenBulkImport()" title="기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip)">📤 엑셀 일괄 Import</button>
-      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpAssignCategories()" title="카탈로그 전체 제품의 Category 필드를 HS Code/Product Name 기반으로 자동 분류">🏷️ 카테고리 일괄 분류</button>
-      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpMigrateFOB()" title="카탈로그 전체에서 FOB_KRW·CIF_KRW_asia가 비어있는 제품을 KR Retail × (1-0.45) 공식으로 자동 채움">🔄 FOB 일괄 채움</button>
+      <div style="position:relative;display:inline-block;margin-left:6px;">
+        <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpToggleAdminMenu(event)" title="관리 도구 (자주 쓰지 않는 일괄 작업)">⚙️ 관리 <span style="font-size:10px;">▾</span></button>
+        <div id="cp-admin-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);min-width:260px;z-index:200;padding:6px;">
+          <div class="cp-admin-item" onclick="cpAdminRun('cpAssignCategories')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'" title="카탈로그 전체 제품의 Category 필드를 HS Code/Product Name 기반으로 자동 분류">🏷️ 카테고리 일괄 분류</div>
+          <div class="cp-admin-item" onclick="cpAdminRun('cpMigrateFOB')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'" title="FOB_KRW·CIF가 비어있는 제품을 KR Retail × (1-할인율) 공식으로 일괄 채움">🔄 FOB 일괄 채움</div>
+          <div style="height:1px;background:var(--border);margin:4px 0;"></div>
+          <div class="cp-admin-item" onclick="cpAdminRun('cpOpenBulkImport')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'" title="기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip)">📤 엑셀 일괄 Import</div>
+        </div>
+      </div>
     </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
@@ -2408,6 +2414,28 @@ async function cpmpConfirm(){
     btn.disabled=false;
     btn.textContent='📋 제품 카탈로그 등록';
   }
+}
+
+// ⚙️ 관리 드롭다운 — 외부 클릭 시 닫기 + 항목 실행
+function cpToggleAdminMenu(ev){
+  ev && ev.stopPropagation();
+  const m = document.getElementById('cp-admin-menu');
+  if(!m) return;
+  const isOpen = m.style.display === 'block';
+  m.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen){
+    setTimeout(()=>{
+      document.addEventListener('click', cpCloseAdminMenu, { once: true });
+    }, 0);
+  }
+}
+function cpCloseAdminMenu(){
+  const m = document.getElementById('cp-admin-menu');
+  if(m) m.style.display = 'none';
+}
+function cpAdminRun(fnName){
+  cpCloseAdminMenu();
+  if(typeof window[fnName] === 'function') window[fnName]();
 }
 
 // 🔄 FOB 일괄 채움 (카탈로그 DB에서 FOB_KRW 비어있는 항목 자동 계산)
