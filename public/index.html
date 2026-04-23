@@ -1495,14 +1495,72 @@ async function cpLoadList(){
 
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-async function cpAssignCategories(){
-  const overwrite = confirm('🏷️ 카테고리 일괄 분류\n\n카탈로그 전체 제품을 HS Code/Product Name 기반으로 자동 분류합니다.\n\n[확인] 이미 Category가 있는 페이지도 재분류 (덮어쓰기)\n[취소] 현재 Category 비어있는 페이지만 분류');
-  // confirm → OK = true (overwrite), Cancel = false (skip existing)
-  // 취소 눌러도 실행은 하되 덮어쓰기 안 하는 걸로
-  if(!confirm('정말 진행하시겠습니까?\n\n예상 소요시간: 180건 기준 약 1~2분\n분류 중에는 중복 클릭하지 마세요')) return;
+// 🏷️ 카테고리 일괄 분류: 커스텀 모달 (confirm 2번 → 의도 명확한 3버튼)
+function cpAssignCategories(){
+  cpOpenAssignModal();
+}
+function cpOpenAssignModal(){
+  let modal = document.getElementById('cp-assign-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'cp-assign-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:var(--bg,#fff);color:var(--text,#000);border-radius:12px;padding:22px 24px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <h3 style="margin:0 0 6px;">🏷️ 카테고리 일괄 분류</h3>
+        <p style="color:var(--text-muted,#666);font-size:13px;line-height:1.55;margin:0 0 14px;">
+          카탈로그 전체 제품을 HS Code / Product Name 기준으로 자동 분류합니다.<br>
+          아래 두 옵션 중 원하는 방식을 선택하세요.
+        </p>
 
-  const btn = event && event.target;
-  if(btn){ btn.disabled = true; btn.textContent = '🏷️ 분류 중...'; }
+        <button type="button" onclick="cpRunAssign(false)"
+          style="display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px;border:2px solid #3b82f6;background:rgba(59,130,246,0.08);color:var(--text,#000);border-radius:10px;cursor:pointer;font-size:14px;line-height:1.5;">
+          <b style="color:#3b82f6;">📝 빈 항목만 분류 <span style="font-size:11px;font-weight:600;background:#3b82f6;color:#fff;padding:2px 6px;border-radius:4px;margin-left:4px;">추천</span></b><br>
+          <span style="color:var(--text-muted,#666);font-size:12px;">현재 수동 설정한 카테고리는 그대로 유지합니다. (안전)</span>
+        </button>
+
+        <button type="button" onclick="cpRunAssign(true)"
+          style="display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px;border:2px solid #ef4444;background:rgba(239,68,68,0.06);color:var(--text,#000);border-radius:10px;cursor:pointer;font-size:14px;line-height:1.5;">
+          <b style="color:#ef4444;">🔄 전체 재분류 (덮어쓰기) <span style="font-size:11px;font-weight:600;background:#ef4444;color:#fff;padding:2px 6px;border-radius:4px;margin-left:4px;">주의</span></b><br>
+          <span style="color:var(--text-muted,#666);font-size:12px;">수동 설정한 카테고리도 HS Code 기준으로 덮어씁니다.</span>
+        </button>
+
+        <div id="cp-assign-status" style="display:none;font-size:12px;margin-top:8px;padding:10px;background:var(--input-bg,#f5f5f5);border-radius:6px;line-height:1.55;"></div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+          <button class="cp-btn cp-btn-ghost" onclick="cpCloseAssignModal()">닫기</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  } else {
+    // 재오픈 시 상태 초기화
+    const st = modal.querySelector('#cp-assign-status');
+    if(st){ st.style.display='none'; st.innerHTML=''; }
+    modal.querySelectorAll('button[onclick^="cpRunAssign"]').forEach(b=>{ b.disabled=false; b.style.opacity=''; b.style.pointerEvents=''; });
+  }
+  modal.style.display = 'flex';
+}
+function cpCloseAssignModal(){
+  const m = document.getElementById('cp-assign-modal');
+  if(m) m.style.display = 'none';
+}
+async function cpRunAssign(overwrite){
+  const modal = document.getElementById('cp-assign-modal');
+  const status = modal ? modal.querySelector('#cp-assign-status') : null;
+  const actionBtns = modal ? modal.querySelectorAll('button[onclick^="cpRunAssign"]') : [];
+
+  // 덮어쓰기면 한번 더 확인
+  if(overwrite){
+    if(!confirm('⚠️ 전체 재분류 (덮어쓰기)\n\n수동 설정한 카테고리도 HS Code 기준으로 모두 덮어씁니다.\n정말 진행하시겠습니까?')) return;
+  }
+
+  // 두 버튼 모두 잠금
+  actionBtns.forEach(b=>{ b.disabled=true; b.style.opacity='0.55'; b.style.pointerEvents='none'; });
+  if(status){
+    status.style.display = 'block';
+    status.innerHTML = '⏳ 분류 중... (180건 기준 1~2분 소요)';
+  }
+
   try{
     const r = await fetch('/api/consumer-pricing/catalog/assign-categories', {
       method:'POST',
@@ -1510,12 +1568,28 @@ async function cpAssignCategories(){
       body: JSON.stringify({ overwrite })
     });
     const d = await r.json();
-    if(!r.ok || d.error){ showToast('분류 실패: '+(d.error||r.status)); return; }
+    if(!r.ok || d.error){
+      if(status) status.innerHTML = '❌ 실패: ' + (d.error||r.status);
+      showToast('분류 실패: '+(d.error||r.status));
+      actionBtns.forEach(b=>{ b.disabled=false; b.style.opacity=''; b.style.pointerEvents=''; });
+      return;
+    }
     const byCat = Object.entries(d.byCategory||{}).map(([k,v])=>`${k}:${v}`).join(', ');
-    alert(`✅ 카테고리 일괄 분류 완료\n\n전체: ${d.total}건\n업데이트: ${d.updated}건\nskip: ${d.skipped}건\n에러: ${d.errors?.length||0}건\n\n분류 결과: ${byCat}`);
-    showToast('✅ 분류 완료 — 엑셀 다시 다운로드해보세요');
-  }catch(e){ showToast('분류 실패: '+e.message); }
-  finally{ if(btn){ btn.disabled=false; btn.textContent='🏷️ 카테고리 일괄 분류'; } }
+    if(status){
+      status.innerHTML = `<b>✅ 분류 완료</b><br>
+        • 전체: <b>${d.total}</b>건<br>
+        • 업데이트: <b style="color:#10b981;">${d.updated}</b>건<br>
+        • skip: <b style="color:#f59e0b;">${d.skipped}</b>건<br>
+        • 에러: <b style="color:${(d.errors?.length||0)>0?'#ef4444':'inherit'};">${d.errors?.length||0}</b>건<br>
+        <div style="margin-top:6px;">분류 결과: ${byCat}</div>
+        <div style="margin-top:8px;color:var(--text-muted,#666);font-size:11px;">💡 '닫기'를 누르고 📥 바이어 공유 엑셀을 다시 다운로드해보세요.</div>`;
+    }
+    showToast('✅ 분류 완료');
+  }catch(e){
+    if(status) status.innerHTML = '❌ 실패: ' + e.message;
+    showToast('분류 실패: '+e.message);
+    actionBtns.forEach(b=>{ b.disabled=false; b.style.opacity=''; b.style.pointerEvents=''; });
+  }
 }
 
 async function cpExportBuyerExcel(){
