@@ -650,7 +650,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <div class="cp-field">
           <label style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
             <span>해외 운송비 (KRW)</span>
-            <button type="button" class="cp-btn cp-btn-ghost" style="font-size:11px;padding:1px 6px;line-height:1;border-radius:4px;" onclick="cpEstimateShipping()" title="AI로 운송비 다시 추정">🔄</button>
+            <button type="button" style="background:transparent;border:none;padding:0;cursor:pointer;font-size:13px;line-height:1;color:var(--text-muted);opacity:.75;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.75'" onclick="cpEstimateShipping()" title="AI로 운송비 다시 추정">🔄</button>
           </label>
           <input type="text" id="cp-sur-shipping" placeholder="🤖 자동 추정 중…" oninput="cpFmtInput(this);cpRecalc()">
         </div>
@@ -2292,7 +2292,7 @@ async function cpSave(){
   if(!name){showToast('프로젝트명을 입력하세요');return;}
   const hs = document.getElementById('cp-hs').value.trim();
   if(hs && !window._cpHSConfirmed){
-    if(!confirm('HS Code가 확정되지 않았습니다.\n\n🤖 다른 후보 버튼으로 후보들을 확인하고 "이걸로" 버튼을 눌러 확정하는 것을 권장합니다.\n\n그래도 현재 HS Code로 저장하시겠습니까?')){
+    if(!confirm('HS Code가 확정되지 않았습니다.\n\n🤖 다른 후보 버튼으로 후보들을 확인하고 "선택" 버튼을 눌러 확정하는 것을 권장합니다.\n\n그래도 현재 HS Code로 저장하시겠습니까?')){
       return;
     }
   }
@@ -2577,7 +2577,7 @@ async function cpHSSuggest(){
       <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <b style="font-size:15px;color:var(--primary);">${escapeHtml(c.code||'')}</b>
-          <button class="cp-btn" style="padding:4px 12px;font-size:12px;" onclick="cpApplyHSFromCache(${i})">✓ 이걸로</button>
+          <button class="cp-btn" style="padding:4px 12px;font-size:12px;" onclick="cpApplyHSFromCache(${i})">✓ 선택</button>
         </div>
         <div style="font-size:13px;">${escapeHtml(c.name||'')}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escapeHtml(c.reason||'')}</div>
@@ -2605,7 +2605,7 @@ async function cpHSSuggest(){
       <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <b style="font-size:15px;color:var(--primary);">${escapeHtml(c.code||'')}</b>
-          <button class="cp-btn" style="padding:4px 12px;font-size:12px;" onclick="cpApplyHSFromCache(${i})">✓ 이걸로</button>
+          <button class="cp-btn" style="padding:4px 12px;font-size:12px;" onclick="cpApplyHSFromCache(${i})">✓ 선택</button>
         </div>
         <div style="font-size:13px;">${escapeHtml(c.name||'')}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escapeHtml(c.reason||'')}</div>
