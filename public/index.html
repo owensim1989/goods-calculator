@@ -640,7 +640,14 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <div class="cp-field"><label>원산지</label><select id="cp-origin" onchange="cpApplyCountryPreset(true)">
           <option value="China">🇨🇳 중국</option><option value="Korea">🇰🇷 한국</option><option value="Vietnam">🇻🇳 베트남</option><option value="Other">🌏 기타해외</option>
         </select></div>
-        <div class="cp-field"><label>해외 운송비 (KRW)</label><input type="text" id="cp-sur-shipping" placeholder="0" oninput="cpFmtInput(this);cpRecalc()"></div>
+        <div class="cp-field">
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>해외 운송비 (KRW)</span>
+            <button type="button" class="cp-btn cp-btn-ghost" style="font-size:10px;padding:2px 8px;line-height:1.2;" onclick="cpEstimateShipping()" title="원산지·수량·HS·사이즈·소재 기반 AI 추정">🤖 AI 추정</button>
+          </label>
+          <input type="text" id="cp-sur-shipping" placeholder="0" oninput="cpFmtInput(this);cpRecalc()">
+          <div id="cp-sur-shipping-hint" style="font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.4;min-height:14px;"></div>
+        </div>
         <div class="cp-field"><label>관세율 %</label><input type="number" id="cp-sur-customs" step="0.1" placeholder="8" oninput="cpRecalc()"></div>
         <div class="cp-field"><label>VAT %</label><input type="number" id="cp-sur-vat" step="0.1" placeholder="10" oninput="cpRecalc()"></div>
         <div class="cp-field"><label>📦 포장 비용 (KRW)</label><input type="text" id="cp-sur-packaging" placeholder="0" oninput="cpFmtInput(this);cpRecalc()"></div>
@@ -2041,11 +2048,13 @@ function cpCurrencyToKRW(val, cur){
 }
 function cpApplyCountryPreset(force){
   const origin = document.getElementById('cp-origin').value || 'China';
+  // shippingMin: 국가별 최소 운송비 (LCL/EMS 최소 단가 기준)
+  // 소량 발주(샘플~소량) 시 비현실적으로 낮은 값(예: 600원) 방지 — MAX(개당×수량, 최소값)
   const PRESETS = {
-    'China':   { customs: 8,  vat: 10, shippingPerUnit: 600, packagingPerUnit: 300, misc: 30000 },
-    'Korea':   { customs: 0,  vat: 10, shippingPerUnit: 0,   packagingPerUnit: 150, misc: 0 },
-    'Vietnam': { customs: 8,  vat: 10, shippingPerUnit: 700, packagingPerUnit: 300, misc: 30000 },
-    'Other':   { customs: 10, vat: 10, shippingPerUnit: 800, packagingPerUnit: 300, misc: 30000 }
+    'China':   { customs: 8,  vat: 10, shippingPerUnit: 600, shippingMin: 300000, packagingPerUnit: 300, misc: 30000 },
+    'Korea':   { customs: 0,  vat: 10, shippingPerUnit: 0,   shippingMin: 0,      packagingPerUnit: 150, misc: 0 },
+    'Vietnam': { customs: 8,  vat: 10, shippingPerUnit: 700, shippingMin: 350000, packagingPerUnit: 300, misc: 30000 },
+    'Other':   { customs: 10, vat: 10, shippingPerUnit: 800, shippingMin: 400000, packagingPerUnit: 300, misc: 30000 }
   };
   const p = PRESETS[origin] || PRESETS['China'];
   const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||0;
@@ -2061,7 +2070,10 @@ function cpApplyCountryPreset(force){
       if(el.type === 'text' && val !== '') cpFmtInput(el);
     }
   };
-  setVal(shipEl, Math.round(p.shippingPerUnit * qty));
+  // 옵션 A: 개당×수량 vs 국가별 최소값 — MAX 적용
+  const shipCalc = Math.round(p.shippingPerUnit * qty);
+  const shipFinal = Math.max(shipCalc, p.shippingMin);
+  setVal(shipEl, shipFinal);
   setVal(custEl, p.customs);
   setVal(vatEl, p.vat);
   setVal(pkgEl, Math.round(p.packagingPerUnit * qty));
@@ -2077,6 +2089,45 @@ function cpApplyCountryPreset(force){
   }
   cpRecalc();
 }
+// 🚚 AI 운송비 추정 (옵션 D) — 원산지·수량·HS·사이즈·소재 기반 Claude 호출
+async function cpEstimateShipping(){
+  const origin = document.getElementById('cp-origin').value || 'China';
+  const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||0;
+  if(!qty){ showToast('수량을 먼저 입력하세요'); return; }
+  const hint = document.getElementById('cp-sur-shipping-hint');
+  if(hint){ hint.innerHTML = '<span style="color:var(--primary);">🤖 AI 추정 중…</span>'; }
+  try{
+    const body = {
+      origin,
+      qty,
+      hsCode: (document.getElementById('cp-hs')?.value||'').trim(),
+      productName: (document.getElementById('cp-name')?.value||'').trim(),
+      category: document.getElementById('cp-category')?.value || '',
+      size: (document.getElementById('cp-size')?.value||'').trim(),
+      material: (document.getElementById('cp-material')?.value||'').trim(),
+      packaging: (document.getElementById('cp-packaging-type')?.value||'').trim()
+    };
+    const r = await fetch('/api/consumer-pricing/estimate-shipping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data = await r.json();
+    if(!r.ok || data.error){
+      if(hint) hint.innerHTML = '<span style="color:#c0392b;">❌ '+(data.error||'추정 실패')+'</span>';
+      return;
+    }
+    const total = Math.round(data.totalKRW||0);
+    const perUnit = Math.round(data.perUnitKRW||(qty?total/qty:0));
+    const shipEl = document.getElementById('cp-sur-shipping');
+    if(shipEl){ shipEl.value = total; if(shipEl.type==='text') cpFmtInput(shipEl); }
+    if(hint){
+      const method = data.method ? `<b>${data.method}</b> · ` : '';
+      const reason = data.reason || '';
+      hint.innerHTML = `🤖 ${method}개당 ₩${perUnit.toLocaleString()} · 총 ₩${total.toLocaleString()}<br><span style="color:var(--text-muted);">${reason}</span>`;
+    }
+    cpRecalc();
+  }catch(e){
+    if(hint) hint.innerHTML = '<span style="color:#c0392b;">❌ '+e.message+'</span>';
+  }
+}
+
 function cpRecalc(){
   const unit = cpUnitCostKRW();
   const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||0;

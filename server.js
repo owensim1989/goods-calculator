@@ -1919,6 +1919,70 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
   }
 });
 
+// ━━━ 🚚 해외운송비 AI 추정 ━━━
+// body: { origin, qty, hsCode, productName, size, material, packaging, weight, category }
+// 응답: { success, totalKRW, perUnitKRW, method, mode, reason, breakdown }
+app.post('/api/consumer-pricing/estimate-shipping', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
+  const { origin, qty, hsCode, productName, size, material, packaging, weight, category } = req.body || {};
+  if (!origin) return res.status(400).json({ error: '원산지(origin) 필수' });
+  if (!qty || qty <= 0) return res.status(400).json({ error: '수량(qty) 필수' });
+  const ORIGIN_LABEL = { China: '중국', Korea: '한국', Vietnam: '베트남', Other: '기타해외' };
+  const originKR = ORIGIN_LABEL[origin] || origin;
+  // 한국은 AI 호출 없이 즉시 0원 반환
+  if (origin === 'Korea') {
+    return res.json({ success: true, totalKRW: 0, perUnitKRW: 0, method: '국내 — 운송비 없음', mode: 'domestic', reason: '한국 내 생산이라 별도 해외 운송비 없음', breakdown: {} });
+  }
+  try {
+    const prompt = `당신은 한국으로 수입하는 OEM 캐릭터 제품 물류 전문가입니다. 아래 조건으로 예상 해외 운송비(KRW)를 산정하세요.
+
+[조건]
+- 출발 국가: ${originKR}
+- 도착 국가: 한국
+- 수량(로트): ${qty}개
+- 제품명: ${productName || '미정'}
+- 카테고리: ${category || '미정'}
+- HS Code: ${hsCode || '미정'}
+- 사이즈(mm): ${size || '미정'}
+- 소재: ${material || '미정'}
+- 포장방법: ${packaging || '미정'}
+- 단위 무게(g): ${weight || '미정 — 사이즈/소재로 추정'}
+
+[산정 원칙]
+1. 중국→한국: 일반적으로 수량 1000개 미만은 EMS/택배(소량 빠른 배송), 1000개 이상은 LCL/FCL 컨테이너(저렴) 권장
+2. 중국 LCL 최소: 약 30~50만원, EMS 약 1~3만원/kg, FCL 20ft 약 200~300만원
+3. 베트남/기타해외: 항공·해상 운송, 중국 대비 +20~50% 가산
+4. PVC키링/소형 잡화 가벼움(개당 30g~), 봉제인형 부피 큼(개당 100~300g), 의류 중간(개당 200g~)
+5. 부피화물(CBM 0.5 미만)은 무게 기준, 큰 부피는 CBM 기준 운임
+6. 통관·내륙운송·잡비 포함 총액 산정
+7. 합리적인 중간값을 제시하되, 추정의 불확실성을 reason에 명시
+
+JSON만 반환. 설명 금지:
+{
+  "totalKRW": 580000,
+  "perUnitKRW": 580,
+  "method": "LCL 해상 / EMS / FCL / 항공 등 권장 운송방식",
+  "mode": "LCL|EMS|FCL|air|courier",
+  "reason": "수량 1000개, 총 무게 약 30kg, CBM 0.3 추정 → LCL 해상 권장. 중국 청도→부산 기준 약 58만원 (관세·통관비용 별도). 부피·무게 추정 기반이므로 +-30% 오차 가능",
+  "breakdown": {
+    "기본운임": 400000,
+    "통관/내륙운송": 100000,
+    "기타": 80000
+  }
+}`;
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 800 });
+    const parsed = extractJSON(out);
+    if (!parsed) {
+      console.error('[estimate-shipping] 파싱 실패. Claude 원문:\n', out.slice(0, 1500));
+      return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 1200) });
+    }
+    res.json({ success: true, ...parsed });
+  } catch (e) {
+    console.error('[운송비 추정 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ━━━ 직원 목록 ━━━
 
 // ━━━ 📷 제품 이미지 업로드 (소비자가 산정 페이지) ━━━
