@@ -1231,6 +1231,65 @@ app.post('/api/consumer-pricing/catalog/assign-categories', async (req, res) => 
   }
 });
 
+// 🔄 FOB/CIF 누락 카탈로그 항목 마이그레이션 (04-23 추가)
+// body: { dryRun?: boolean, defaultDiscountRate?: number (default 0.45) }
+app.post('/api/consumer-pricing/catalog/migrate-fob', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const dryRun = !!(req.body && req.body.dryRun);
+    const defaultRate = (req.body && typeof req.body.defaultDiscountRate === 'number')
+      ? req.body.defaultDiscountRate : 0.45;
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const results = { total: allPages.length, updated: 0, skipped: 0, missingKR: 0, errors: [], updatedItems: [] };
+    for (const p of allPages) {
+      const pr = p.properties || {};
+      const kr = pr.Retail_KR_KRW?.number ?? null;
+      const fob = pr.FOB_KRW?.number ?? null;
+      const name = (pr['Product Name']?.title || []).map(t => t.plain_text || '').join('');
+      if (fob != null && fob > 0) { results.skipped++; continue; }
+      if (!kr || kr <= 0) { results.missingKR++; continue; }
+      const fobKRW = Math.round(kr * (1 - defaultRate));
+      const cifKRWasia = Math.round(fobKRW * 1.27);
+      if (dryRun) {
+        results.updatedItems.push({ id: p.id, name, kr, fobKRW, cifKRWasia, rate: defaultRate });
+        results.updated++;
+        continue;
+      }
+      try {
+        await notion.pages.update({
+          page_id: p.id,
+          properties: {
+            'FOB_KRW': { number: fobKRW },
+            'FOB_discount_rate': { number: defaultRate },
+            'CIF_KRW_asia': { number: cifKRWasia }
+          }
+        });
+        results.updated++;
+        results.updatedItems.push({ id: p.id, name, kr, fobKRW, cifKRWasia, rate: defaultRate });
+      } catch (e) {
+        results.errors.push({ id: p.id, name, error: e.message });
+      }
+      if ((results.updated + results.errors.length) % 3 === 0) await new Promise(r => setTimeout(r, 400));
+    }
+    console.log('[FOB 마이그레이션]', { total: results.total, updated: results.updated, skipped: results.skipped, missingKR: results.missingKR, errors: results.errors.length, dryRun });
+    res.json(results);
+  } catch (e) {
+    console.error('[FOB 마이그레이션 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
@@ -1453,6 +1512,14 @@ app.delete('/api/consumer-pricing/:id', async (req, res) => {
 });
 
 // Notion page → 앱 객체
+// 메모 문자열에서 <!--BREAKDOWN_META:{...}--> 추출
+function extractBreakdownMeta(memo) {
+  if (!memo) return {};
+  const m = memo.match(/<!--BREAKDOWN_META:([\s\S]*?)-->/);
+  if (!m) return {};
+  try { return JSON.parse(m[1]) || {}; } catch(e) { return {}; }
+}
+
 function pageToConsumerPricing(page) {
   const p = page.properties || {};
   const getNum = (k) => p[k] && p[k].number != null ? p[k].number : null;
@@ -1466,6 +1533,8 @@ function pageToConsumerPricing(page) {
   let countryPricing = [];
   try { competitors = JSON.parse(getText('경쟁사_데이터_JSON') || '[]'); } catch(e) {}
   try { countryPricing = JSON.parse(getText('국가별_가격_JSON') || '[]'); } catch(e) {}
+  const __rawMemo = getText('메모');
+  const __meta = extractBreakdownMeta(__rawMemo);
   return {
     id: page.id,
     프로젝트명: getText('프로젝트명'),
@@ -1495,6 +1564,12 @@ function pageToConsumerPricing(page) {
       const v = Date.parse(page.last_edited_time || '') || Date.now();
       return PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v;
     })(),
+    // 메타 (메모 JSON 내부)
+    origin: __meta.origin || null,
+    size: __meta.size || '',
+    material: __meta.material || '',
+    packagingType: __meta.packagingType || '',
+    fobDiscountRate: (typeof __meta.fobDiscountRate === 'number' ? __meta.fobDiscountRate : null),
     createdAt: page.created_time,
     updatedAt: page.last_edited_time
   };
@@ -1912,16 +1987,31 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
     const origRate = target > 0 && costKRW > 0 ? (costKRW / target) : null;
 
     // 4) 카탈로그 DB에 페이지 생성
+    // ─── FOB · CIF 자동 계산 (04-23 추가) ───
+    // 우선순위: body 전달값 > Notion 메타 저장값 > 기본값 0.45
+    const fobDiscountRate = (typeof req.body?.fobDiscountRate === 'number' ? req.body.fobDiscountRate
+                            : (typeof item.fobDiscountRate === 'number' ? item.fobDiscountRate : 0.45));
+    const krRetail = byCode.KR != null ? byCode.KR * (countries.find(c=>c.code==='KR')?.rate || 1) : target;
+    const fobKRW = krRetail ? Math.round(krRetail * (1 - fobDiscountRate)) : null;
+    const cifKRWasia = fobKRW ? Math.round(fobKRW * 1.27) : null;  // CIF = FOB + 27% (보험+해상운임, 기존 데이터 평균)
+
+    // 원산지 매핑 (소비자가 산정 메타 → 카탈로그 select 옵션)
+    const originMap = { 'China':'China', 'Korea':'Korea', 'Vietnam':'Vietnam', 'Other':'Other' };
+    const originVal = item.origin && originMap[item.origin] ? originMap[item.origin] : null;
+
     const props = {
       'Product Name': { title: [{ text: { content: item.프로젝트명 } }] },
       'HS_Code': { rich_text: [{ text: { content: item.HS코드 || '' } }] },
-      'Retail_KR_KRW': { number: byCode.KR != null ? byCode.KR * (countries.find(c=>c.code==='KR')?.rate || 1) : target || null },
+      'Retail_KR_KRW': { number: krRetail || null },
       'Retail_TW_TWD': { number: byCode.TW || null },
       'Retail_HK_HKD': { number: byCode.HK || null },
       'Retail_CN_CNY': { number: byCode.CN || null },
       'Retail_TH_THB': { number: byCode.TH || null },
       'Retail_US_USD': { number: byCode.US || null },
       'Retail_JP_JPY': { number: byCode.JP || null },
+      'FOB_KRW': { number: fobKRW },
+      'FOB_discount_rate': { number: fobDiscountRate },
+      'CIF_KRW_asia': { number: cifKRWasia },
       '원가_KRW': { number: Math.round(costKRW) || null },
       '원가_USD': { number: costUSD ? +costUSD.toFixed(2) : null },
       '원가율': { number: origRate ? +origRate.toFixed(4) : null },
@@ -1932,6 +2022,10 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       '비고': { rich_text: [{ text: { content: item.메모 ? item.메모.replace(/<!--BREAKDOWN_META:[\s\S]*?-->/, '').trim() : '' } }] }
     };
     if (item.작성자) props['작성자'] = { select: { name: item.작성자 } };
+    if (item.size) props['Size_mm'] = { rich_text: [{ text: { content: item.size } }] };
+    if (item.material) props['Material'] = { rich_text: [{ text: { content: item.material } }] };
+    if (item.packagingType) props['Packaging'] = { rich_text: [{ text: { content: item.packagingType } }] };
+    if (originVal) props['원산지'] = { select: { name: originVal } };
 
     // 제품 이미지가 소비자가 산정 페이지에 업로드되어 있으면 Image_URL 자동 채움
     const cpImgId = cpImageId(req.params.id);

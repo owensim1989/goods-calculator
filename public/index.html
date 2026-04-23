@@ -482,6 +482,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-primary" style="font-size:12px;margin-left:8px;" onclick="cpExportBuyerExcel()" title="제품 카탈로그 전체를 바이어 공유용 엑셀 포맷으로 다운로드">📥 바이어 공유 엑셀</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpOpenBulkImport()" title="기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip)">📤 엑셀 일괄 Import</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpAssignCategories()" title="카탈로그 전체 제품의 Category 필드를 HS Code/Product Name 기반으로 자동 분류">🏷️ 카테고리 일괄 분류</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="cpMigrateFOB()" title="카탈로그 전체에서 FOB_KRW·CIF_KRW_asia가 비어있는 제품을 KR Retail × (1-0.45) 공식으로 자동 채움">🔄 FOB 일괄 채움</button>
     </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
@@ -646,6 +647,20 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <input type="hidden" id="cp-surcharge" value="0">
       <input type="hidden" id="cp-sample-mold">
     </div>
+
+    <!-- 🏷️ 제품 스펙 (카탈로그 등록용) -->
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:12px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        🏷️ 제품 스펙 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 카탈로그 등록 시 자동 반영</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end;">
+        <div class="cp-field"><label>📏 사이즈 (mm)</label><input type="text" id="cp-size" placeholder="예: 70*70*90 또는 (H) 90"></div>
+        <div class="cp-field"><label>🧵 소재</label><input type="text" id="cp-material" placeholder="예: PVC / ABS / Paper"></div>
+        <div class="cp-field"><label>📦 포장방법</label><input type="text" id="cp-packaging-type" placeholder="예: (1set=8개입) / OPP / 디스플레이박스"></div>
+        <div class="cp-field"><label>💰 FOB 할인율 <span style="color:var(--text-muted);font-size:10px;">(0.45=리테일의 55%가 FOB)</span></label><input type="number" id="cp-fob-discount" step="0.01" placeholder="0.45" value="0.45"></div>
+      </div>
+    </div>
+
     <div class="cp-margin-summary">
       <div class="cp-margin-card"><div class="lbl">개당 원가 (KRW)</div><div class="val" id="cp-m-unit">-</div></div>
       <div class="cp-margin-card"><div class="lbl">총 원가</div><div class="val" id="cp-m-total">-</div></div>
@@ -1823,6 +1838,11 @@ function cpNewProject(){
   document.getElementById('cp-sur-vat').value='';
   const pkg = document.getElementById('cp-sur-packaging'); if(pkg) pkg.value='';
   document.getElementById('cp-sur-misc').value='';
+  // 🏷️ 제품 스펙 리셋 (04-23)
+  { const el=document.getElementById('cp-size'); if(el) el.value=''; }
+  { const el=document.getElementById('cp-material'); if(el) el.value=''; }
+  { const el=document.getElementById('cp-packaging-type'); if(el) el.value=''; }
+  { const el=document.getElementById('cp-fob-discount'); if(el) el.value='0.45'; }
   document.getElementById('cp-memo').value='';
   document.getElementById('cp-btn-del').style.display='none';
   const pubBtn = document.getElementById('cp-btn-publish');
@@ -1892,6 +1912,11 @@ async function cpLoadProject(id){
       if(el){ el.value = meta.packaging; if(el.type==='text') cpFmtInput(el); }
     }
     if(meta.includeInitial != null) document.getElementById('cp-include-initial').checked = !!meta.includeInitial;
+    // 🏷️ 제품 스펙 복원 (04-23)
+    { const el=document.getElementById('cp-size'); if(el) el.value = meta.size || ''; }
+    { const el=document.getElementById('cp-material'); if(el) el.value = meta.material || ''; }
+    { const el=document.getElementById('cp-packaging-type'); if(el) el.value = meta.packagingType || ''; }
+    { const el=document.getElementById('cp-fob-discount'); if(el) el.value = (typeof meta.fobDiscountRate === 'number' ? meta.fobDiscountRate : 0.45); }
     document.getElementById('cp-btn-del').style.display='inline-block';
     // 작성자 복원
     const authSel = document.getElementById('cp-author');
@@ -2209,7 +2234,12 @@ async function cpSave(){
     customsPct: parseFloat(document.getElementById('cp-sur-customs').value)||0,
     vatPct: parseFloat(document.getElementById('cp-sur-vat').value)||0,
     misc: parseFloat(String(document.getElementById('cp-sur-misc').value).replace(/,/g,''))||0,
-    packaging: (()=>{ const el=document.getElementById('cp-sur-packaging'); return el?(parseFloat(String(el.value).replace(/,/g,''))||0):0; })()
+    packaging: (()=>{ const el=document.getElementById('cp-sur-packaging'); return el?(parseFloat(String(el.value).replace(/,/g,''))||0):0; })(),
+    // 🏷️ 제품 스펙 (04-23 추가)
+    size: (document.getElementById('cp-size')?.value||'').trim(),
+    material: (document.getElementById('cp-material')?.value||'').trim(),
+    packagingType: (document.getElementById('cp-packaging-type')?.value||'').trim(),
+    fobDiscountRate: (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })()
   };
   const memoText = document.getElementById('cp-memo').value;
   const memoWithMeta = memoText + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(breakdownMeta) + '-->';
@@ -2270,42 +2300,142 @@ async function cpDeleteCurrent(){
   }catch(e){showToast('삭제 실패: '+e.message);}
 }
 
-// 📋 제품 카탈로그로 발행 (중복 클릭 방지: 전역 flag + 버튼 disabled)
+// 📋 제품 카탈로그로 발행 — 확인 모달 (04-23: FOB 할인율·FOB_KRW·CIF 미리보기 + 편집)
 let CP_PUBLISHING = false;
 async function cpPublishToCatalog(){
   if(CP_PUBLISHING){ showToast('이미 등록 진행 중입니다. 잠시 기다려주세요'); return; }
-  if(!CP_CURRENT || !CP_CURRENT.id){
-    showToast('먼저 저장해주세요');
-    return;
-  }
+  if(!CP_CURRENT || !CP_CURRENT.id){ showToast('먼저 저장해주세요'); return; }
   const name = document.getElementById('cp-name').value || '(무제)';
   const author = document.getElementById('cp-author').value;
-  if(!author){
-    showToast('작성자를 선택해주세요');
+  if(!author){ showToast('작성자를 선택해주세요'); return; }
+
+  // KR retail 금액 추출 (countryPricing에서 KR, 없으면 타겟가)
+  let krRetail = 0;
+  const krRow = (CP_COUNTRIES||[]).find(c=>c.code==='KR');
+  if(krRow && krRow.finalLocal) krRetail = krRow.finalLocal;
+  else krRetail = parseFloat(document.getElementById('cp-target-price').value)||0;
+
+  // 기본 FOB 할인율 (입력 폼 값 or 0.45)
+  const defaultRate = (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })();
+
+  cpOpenPublishModal({ name, krRetail, defaultRate });
+}
+
+function cpOpenPublishModal(ctx){
+  let m = document.getElementById('cp-publish-modal');
+  if(m) m.remove();
+  m = document.createElement('div');
+  m.id = 'cp-publish-modal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  const calc = (rate)=>{
+    const fob = Math.round(ctx.krRetail * (1 - rate));
+    const cif = Math.round(fob * 1.27);
+    return { fob, cif };
+  };
+  const ini = calc(ctx.defaultRate);
+  m.innerHTML = `
+    <div style="background:var(--card);border-radius:12px;padding:24px;max-width:520px;width:92%;box-shadow:0 10px 40px rgba(0,0,0,.5);border:1px solid var(--border);">
+      <h3 style="margin:0 0 6px;">📋 제품 카탈로그 등록 확인</h3>
+      <p style="margin:0 0 14px;color:var(--text-muted);font-size:13px;">"${ctx.name}"</p>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">💰 FOB · CIF 자동 계산</div>
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 12px;align-items:center;font-size:13px;">
+          <div>KR Retail</div><div><b id="cpmp-kr">${ctx.krRetail.toLocaleString()}</b> 원 <span style="color:var(--text-muted);font-size:11px;">(기준가)</span></div>
+          <div>FOB 할인율 <span style="color:var(--text-muted);font-size:11px;">(편집 가능)</span></div>
+          <div><input type="number" id="cpmp-rate" step="0.01" value="${ctx.defaultRate}" style="width:80px;padding:4px 8px;" oninput="cpmpRefresh()"> <span style="color:var(--text-muted);font-size:11px;">기본 0.45 (리테일의 55%가 FOB)</span></div>
+          <div>FOB_KRW</div><div><b id="cpmp-fob" style="color:var(--primary);">${ini.fob.toLocaleString()}</b> 원 <span style="color:var(--text-muted);font-size:11px;">= KR × (1 − 할인율)</span></div>
+          <div>CIF_KRW_asia</div><div><b id="cpmp-cif" style="color:var(--primary);">${ini.cif.toLocaleString()}</b> 원 <span style="color:var(--text-muted);font-size:11px;">= FOB × 1.27</span></div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">
+        • 이미 등록된 경우 기존 페이지를 덮어씁니다 (중복 방지)<br>
+        • 원본 상태가 <b>"승인"</b>으로 변경됩니다<br>
+        • 입력 폼의 🏷️ 제품 스펙 (사이즈/소재/포장방법)도 함께 반영됩니다<br>
+        • Notion 처리에 5~10초 소요될 수 있습니다 — 중복 클릭 금지
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('cp-publish-modal').remove()">취소</button>
+        <button class="cp-btn cp-btn-primary" id="cpmp-confirm" onclick="cpmpConfirm()">✅ 등록 확정</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(m);
+  window._cpmpCtx = ctx;
+}
+
+function cpmpRefresh(){
+  const ctx = window._cpmpCtx || {};
+  const rate = parseFloat(document.getElementById('cpmp-rate').value);
+  if(isNaN(rate)||rate<0||rate>=1){
+    document.getElementById('cpmp-fob').textContent='-';
+    document.getElementById('cpmp-cif').textContent='-';
     return;
   }
-  if(!confirm(`"${name}"을(를) 📋 제품 카탈로그에 등록하시겠습니까?\n\n• 이미 등록된 경우 기존 페이지를 덮어쓰기합니다 (중복 생성 방지)\n• 원본 상태가 "승인"으로 변경됩니다\n• Notion 처리에 5~10초 소요될 수 있습니다 — 중복 클릭 금지`)) return;
+  const fob = Math.round((ctx.krRetail||0) * (1 - rate));
+  const cif = Math.round(fob * 1.27);
+  document.getElementById('cpmp-fob').textContent = fob.toLocaleString();
+  document.getElementById('cpmp-cif').textContent = cif.toLocaleString();
+}
+
+async function cpmpConfirm(){
+  const rate = parseFloat(document.getElementById('cpmp-rate').value);
+  if(isNaN(rate)||rate<0||rate>=1){ showToast('FOB 할인율은 0~1 사이 숫자여야 합니다'); return; }
+  document.getElementById('cp-publish-modal').remove();
+  // 폼 FOB 할인율도 동기화 (다음 저장 시 반영)
+  const el = document.getElementById('cp-fob-discount'); if(el) el.value = rate;
   CP_PUBLISHING = true;
   const btn = document.getElementById('cp-btn-publish');
   btn.disabled = true; btn.textContent = '📋 등록 중... (5~10초)';
   try{
-    // 먼저 현재 상태·작성자 저장 반영
+    // 현재 폼 저장 (size/material/packagingType/fobDiscountRate 메타 포함)
     await cpSave();
-    const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/publish-to-catalog',{method:'POST'});
+    const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/publish-to-catalog',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ fobDiscountRate: rate })
+    });
     const d = await r.json();
-    if(!r.ok||d.error){showToast('등록 실패: '+(d.error||r.status));return;}
+    if(!r.ok||d.error){ showToast('등록 실패: '+(d.error||r.status)); return; }
     showToast(d.reused ? '✅ 기존 카탈로그 페이지 업데이트 완료' : '✅ 제품 카탈로그 등록 완료');
     if(d.url){
       setTimeout(()=>{
         if(confirm((d.reused?'업데이트된':'등록된')+' 카탈로그 페이지를 Notion에서 열까요?')) window.open(d.url,'_blank','noopener');
       }, 500);
     }
-  }catch(e){showToast('등록 실패: '+e.message);}
+  }catch(e){ showToast('등록 실패: '+e.message); }
   finally{
     CP_PUBLISHING = false;
     btn.disabled=false;
     btn.textContent='📋 제품 카탈로그 등록';
   }
+}
+
+// 🔄 FOB 일괄 채움 (카탈로그 DB에서 FOB_KRW 비어있는 항목 자동 계산)
+async function cpMigrateFOB(){
+  // 1차: dry-run으로 대상 확인
+  if(!confirm('FOB_KRW/CIF_KRW_asia가 비어있는 카탈로그 제품을 자동 계산해서 채웁니다.\n\n공식: FOB = KR Retail × (1 − 0.45), CIF = FOB × 1.27\n\n먼저 대상 확인(Dry Run) 진행할까요?')) return;
+  try{
+    const r1 = await fetch('/api/consumer-pricing/catalog/migrate-fob',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dryRun: true, defaultDiscountRate: 0.45 })
+    });
+    const d1 = await r1.json();
+    if(!r1.ok||d1.error){ showToast('Dry Run 실패: '+(d1.error||r1.status)); return; }
+    const preview = (d1.updatedItems||[]).slice(0,5).map(x=>`• ${x.name}: KR ${x.kr.toLocaleString()} → FOB ${x.fobKRW.toLocaleString()} / CIF ${x.cifKRWasia.toLocaleString()}`).join('\n');
+    const more = d1.updatedItems && d1.updatedItems.length>5 ? `\n... 외 ${d1.updatedItems.length-5}건` : '';
+    if(!confirm(`대상 확인 결과:\n\n전체: ${d1.total}건\n업데이트 예정: ${d1.updated}건\n이미 채워짐: ${d1.skipped}건\nKR가격 누락 (처리 불가): ${d1.missingKR}건\n\n미리보기:\n${preview}${more}\n\n실제로 진행할까요?`)) return;
+
+    // 2차: 실제 실행
+    const r2 = await fetch('/api/consumer-pricing/catalog/migrate-fob',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dryRun: false, defaultDiscountRate: 0.45 })
+    });
+    const d2 = await r2.json();
+    if(!r2.ok||d2.error){ showToast('실행 실패: '+(d2.error||r2.status)); return; }
+    alert(`✅ FOB 마이그레이션 완료\n\n전체: ${d2.total}건\n업데이트: ${d2.updated}건\n이미 채워짐: ${d2.skipped}건\nKR가격 누락: ${d2.missingKR}건\n에러: ${d2.errors.length}건`);
+  }catch(e){ alert('실패: '+e.message); }
 }
 
 // ━━━ HS Code 조회 ━━━
