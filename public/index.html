@@ -2618,7 +2618,7 @@ function cpApplyHS(code, tariffs){
   document.getElementById('cp-hs').value = code;
   cpCloseHSModal();
   if(tariffs) cpApplyTariffsToCountries(tariffs);
-  if(tariffs) cpApplyCategoryFromHS(tariffs.category);
+  if(tariffs) cpApplyCategoryFromHS(tariffs.category, true);
   const mEl = document.getElementById('cp-hs-match');
   if(mEl) mEl.value = tariffs && tariffs.matchRef ? '✅ 기존 제품과 동일 HS' : (tariffs ? '신규 추정' : '');
   // 모달에서 "이걸로" 선택 → 확정
@@ -2627,16 +2627,16 @@ function cpApplyHS(code, tariffs){
   showToast('HS Code 확정: '+code);
 }
 // 서버 hs-suggest 응답의 category(피규어/토이 등 9개)를 품목 select에 자동 반영
-// 기존 사용자 선택값이 있으면 덮어쓰지 않음
-function cpApplyCategoryFromHS(category){
+// force=true (사용자가 "선택" 버튼으로 확정) 시 기존 값도 덮어씀
+// force=false (자동 추천) 시 비어있을 때만 적용
+function cpApplyCategoryFromHS(category, force){
   if(!category) return;
   const sel = document.getElementById('cp-category');
   if(!sel) return;
-  // 이미 사용자가 선택한 값이 있으면 유지
-  if(sel.value) return;
-  // 옵션 목록에 있는 경우만 적용
   const opts = Array.from(sel.options).map(o=>o.value);
-  if(opts.includes(category)) sel.value = category;
+  if(!opts.includes(category)) return;        // 옵션 목록에 없는 카테고리는 skip
+  if(!force && sel.value) return;             // 자동 추천 모드이고 이미 값 있으면 유지
+  sel.value = category;
 }
 function cpApplyTariffsToCountries(t){
   if(!t) return;

@@ -160,47 +160,67 @@ function hsToCategory(hsCode, productName) {
   const hs = String(hsCode || '').replace(/[^0-9]/g, '');
   const name = String(productName || '').toLowerCase();
 
-  // 1) HS Code 앞 4자리 매핑
+  // 핵심 의미 키워드 — HS 코드와 결합해 모호 케이스(특히 3926) 해결
+  const isFigure  = /(피규어|figure|figurine|토이|toy|action|미니어처|miniature|스탠드|standee)/i.test(name);
+  const isDoll    = /(인형|doll|plush|플러시|봉제|소프트|soft toy)/i.test(name);
+  const isKeyring = /(키링|keyring|keychain|스트랩|strap|뱃지|badge|pin\b)/i.test(name);
+  const isSticker = /(스티커|sticker)/i.test(name);
+  const isPrint   = /(프린트|print|엽서|postcard|포스터|poster|씰\b|seal|포토카드|photo ?card|카드뉴스|leaflet|리플렛)/i.test(name);
+  const isStat    = /(노트|note|다이어리|diary|플래너|planner|메모|memo|볼펜|연필|pencil|\bpen\b|지우개|eraser|문구|문진|마커|highlighter|샤프|책갈피|bookmark)/i.test(name);
+  const isApparel = /(티셔츠|후드|맨투맨|니트|자켓|재킷|apparel|t-?shirt|hoodie|점퍼|jumper|반팔|긴팔|sweater|sweat|cardigan)/i.test(name);
+  const isMobile  = /(폰케이스|phone ?case|그립톡|크리너|cleaner|보조배터리|충전기|에어팟|airpod|스마트톡)/i.test(name);
+  const isHome    = /(머그|mug|유리컵|글라스|glass|텀블러|tumbler|도자기|접시|plate|쟁반|tray|손거울|mirror|쿠션|cushion|담요|blanket|키친|kitchen|조명|lamp|화병|vase|냅킨|napkin)/i.test(name);
+  const isBag     = /(파우치|pouch|가방|bag|지갑|wallet|에코백|eco ?bag|크로스백|토트백|backpack|백팩)/i.test(name);
+
+  // 1) HS Code 우선 분류
   if (hs) {
     const h4 = hs.slice(0, 4);
     const h2 = hs.slice(0, 2);
     // 의류 (61, 62장)
     if (h2 === '61' || h2 === '62') return '의류';
-    // 완구·피규어 (9503)
+    // 완구·피규어·인형 (9503)
     if (h4 === '9503') {
-      if (/(인형|doll|plush|봉제)/i.test(name)) return '인형';
+      if (isDoll) return '인형';
       return '피규어/토이';
     }
-    // 프린트·스티커 (4911 인쇄물, 4901 책자)
+    // 프린트·스티커·인쇄물
     if (h4 === '4911' || h4 === '4901') return '프린트/스티커';
     // 문구류
-    //  4820 다이어리/노트, 4817 봉투, 4816 먹지, 9608 볼펜, 9609 연필, 9610 석판, 4202 가방(일부 파우치)
     if (h4 === '4820' || h4 === '4817' || h4 === '4816') return '문구';
     if (h4 === '9608' || h4 === '9609' || h4 === '9610' || h4 === '9611' || h4 === '9612') return '문구';
-    // 모바일 악세사리 (8517 전화기 악세서리, 8518 헤드폰, 8504 충전기)
+    // 모바일 악세사리
     if (h4 === '8517' || h4 === '8518' || h4 === '8504' || h4 === '8507') return '모바일 악세사리';
-    // 홈리빙 (6912 도자기, 7013 유리 테이블웨어, 7323 주방용품, 3924 플라스틱 테이블웨어, 6302 침구, 9405 조명)
+    // 홈리빙
     if (h4 === '6912' || h4 === '7013' || h4 === '7323' || h4 === '3924' || h4 === '6302' || h4 === '9405') return '홈리빙';
-    // 키링·잡화
-    //  7117 모조주얼리, 4202 가방·파우치·지갑, 3926.40 장식품, 3926.90 기타 플라스틱 (키링 포함)
+    // 키링·잡화 (확정)
     if (h4 === '7117' || h4 === '4202') return '키링/잡화';
+    // 3926 (PVC·기타 플라스틱) — 가장 모호한 코드, 의미 키워드로 세분
+    // "키링"이 이름에 있으면 형태(form factor)가 최종 제품 카테고리 → 피규어·인형보다 우선
     if (h4 === '3926') {
-      // 3926.90 범용 — 이름으로 세분
-      if (/(키링|keyring|keychain|스트랩|strap|뱃지|badge|pin)/i.test(name)) return '키링/잡화';
-      if (/(스티커|sticker)/i.test(name)) return '프린트/스티커';
-      return '키링/잡화';
+      if (isKeyring) return '키링/잡화';        // 피규어 키링 / 인형 키링 / 플러시 키링 모두 키링
+      if (isDoll) return '인형';
+      if (isFigure) return '피규어/토이';
+      if (isSticker || isPrint) return '프린트/스티커';
+      if (isStat) return '문구';
+      if (isMobile) return '모바일 악세사리';
+      if (isHome) return '홈리빙';
+      if (isApparel) return '의류';
+      if (isBag) return '키링/잡화';
+      return '키링/잡화';                        // 3926 일반 잡화 default
     }
   }
 
-  // 2) Product Name 키워드 fallback
-  if (/(키링|keyring|keychain|스트랩|strap|뱃지|badge|pin|참)/i.test(name)) return '키링/잡화';
-  if (/(티셔츠|후드|맨투맨|니트|자켓|재킷|apparel|t-?shirt|hoodie)/i.test(name)) return '의류';
-  if (/(인형|doll|plush|봉제)/i.test(name)) return '인형';
-  if (/(피규어|figure|토이|toy|미니어처)/i.test(name)) return '피규어/토이';
-  if (/(스티커|sticker|프린트|print|엽서|postcard|포스터|poster|씰|seal|카드|card)/i.test(name)) return '프린트/스티커';
-  if (/(노트|note|다이어리|diary|플래너|planner|메모|memo|볼펜|연필|pencil|pen|지우개|eraser|문구)/i.test(name)) return '문구';
-  if (/(폰케이스|phone ?case|그립톡|크리너|cleaner|보조배터리|충전기)/i.test(name)) return '모바일 악세사리';
-  if (/(머그|mug|유리컵|글라스|glass|텀블러|tumbler|도자기|접시|plate|쟁반|tray|파우치|pouch|가방|bag|지갑|wallet|손거울|mirror|쿠션|cushion|담요|blanket)/i.test(name)) return '홈리빙';
+  // 2) Name 키워드 fallback — 형태(키링/가방) > 의류/모바일 등 명백한 것 > 인형/피규어 design motif
+  // 의류/모바일은 형태 자체가 결정적이라 최우선, 그 다음 키링 form factor, 마지막 인형/피규어
+  if (isApparel) return '의류';
+  if (isMobile) return '모바일 악세사리';
+  if (isKeyring) return '키링/잡화';      // 인형 키링 / 피규어 키링도 모두 키링
+  if (isBag) return '키링/잡화';
+  if (isDoll) return '인형';
+  if (isFigure) return '피규어/토이';
+  if (isSticker || isPrint) return '프린트/스티커';
+  if (isStat) return '문구';
+  if (isHome) return '홈리빙';
 
   return '기타';
 }
