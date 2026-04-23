@@ -996,7 +996,15 @@ app.get('/api/catalog-image/:barcode/thumb', async (req, res) => {
   const thumbPath = path.join(CATALOG_IMAGE_DIR, 'thumb', `${bc}_${size}.jpg`);
   try {
     if (!fs.existsSync(thumbPath)) {
-      await sharp(found.path).resize(size, size, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toFile(thumbPath);
+      await sharp(found.path)
+        .resize(size, size, {
+          fit: 'contain',
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+          withoutEnlargement: true
+        })
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
+        .jpeg({ quality: 85 })
+        .toFile(thumbPath);
     }
     res.setHeader('Cache-Control', 'public, max-age=604800');
     res.sendFile(thumbPath);
@@ -1117,9 +1125,16 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
           try {
             let imgBuf, imgExt;
             if (sharp) {
+              // fit:'contain' + 흰색 배경 flatten → 모든 이미지 110x110 정사각형 고정,
+              // PNG 투명 배경이 검정으로 깨지는 문제 해결
               imgBuf = await sharp(found.path)
-                .resize(110, 110, { fit: 'inside', withoutEnlargement: false })
-                .jpeg({ quality: 82 })
+                .resize(110, 110, {
+                  fit: 'contain',
+                  background: { r: 255, g: 255, b: 255, alpha: 1 },
+                  withoutEnlargement: false
+                })
+                .flatten({ background: { r: 255, g: 255, b: 255 } })
+                .jpeg({ quality: 85 })
                 .toBuffer();
               imgExt = 'jpeg';
             } else {
