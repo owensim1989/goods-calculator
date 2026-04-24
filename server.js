@@ -1312,6 +1312,97 @@ app.post('/api/consumer-pricing/catalog/migrate-fob', async (req, res) => {
   }
 });
 
+// 📝 카탈로그 일괄 필드 채우기 (Packaging/Size_mm/Material/HS_Code/비고 등 text 필드)
+// body: { items: [{ barcode | page_id, fields: {Packaging?, Size_mm?, Material?, HS_Code?, 비고?} }], dryRun?, overwrite? }
+// - 기존 값이 있는 필드는 덮어쓰지 않음 (overwrite:true면 덮어씀)
+// - 빈 문자열/null 필드는 스킵
+app.post('/api/consumer-pricing/catalog/bulk-fill', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const body = req.body || {};
+    const items = Array.isArray(body.items) ? body.items : [];
+    const dryRun = !!body.dryRun;
+    const overwrite = !!body.overwrite;
+    if (items.length === 0) return res.status(400).json({ error: 'items 배열이 비어있습니다' });
+
+    // 바코드 → page map 구축
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const byBarcode = new Map();
+    for (const p of allPages) {
+      const bc = ((p.properties?.Barcode?.rich_text) || []).map(t => t.plain_text || '').join('').trim();
+      if (bc) byBarcode.set(bc, p);
+    }
+
+    const ALLOWED_TEXT = ['Packaging', 'Size_mm', 'Material', 'HS_Code', '비고'];
+    const results = { total: items.length, updated: 0, skipped: 0, notFound: 0, errors: [], log: [] };
+
+    for (const it of items) {
+      const barcode = (it.barcode || '').toString().trim();
+      let page = null;
+      if (it.page_id) {
+        page = allPages.find(p => p.id === it.page_id || p.id.replace(/-/g, '') === String(it.page_id).replace(/-/g, ''));
+      } else if (barcode) {
+        page = byBarcode.get(barcode);
+      }
+      if (!page) { results.notFound++; results.log.push({ barcode, status: 'not_found' }); continue; }
+
+      const pr = page.properties || {};
+      const props = {};
+      const applied = {};
+      const fields = it.fields || {};
+      for (const key of ALLOWED_TEXT) {
+        if (!(key in fields)) continue;
+        const v = fields[key];
+        if (v == null) continue;
+        const s = String(v).trim();
+        if (s === '') continue;
+        const existing = ((pr[key]?.rich_text) || []).map(t => t.plain_text || '').join('');
+        if (!overwrite && existing) continue; // 기존 값 보존
+        props[key] = { rich_text: [{ type: 'text', text: { content: s } }] };
+        applied[key] = s;
+      }
+      if (Object.keys(props).length === 0) {
+        results.skipped++;
+        results.log.push({ barcode, page_id: page.id, status: 'no_fields_to_update' });
+        continue;
+      }
+      if (dryRun) {
+        results.updated++;
+        results.log.push({ barcode, page_id: page.id, status: 'would_update', applied });
+        continue;
+      }
+      try {
+        await notion.pages.update({ page_id: page.id, properties: props });
+        results.updated++;
+        results.log.push({ barcode, page_id: page.id, status: 'updated', applied });
+      } catch (e) {
+        results.errors.push({ barcode, page_id: page.id, error: e.message });
+      }
+      if ((results.updated + results.errors.length) % 3 === 0) await new Promise(r => setTimeout(r, 400));
+    }
+
+    // 캐시 무효화
+    try { if (typeof notionCache !== 'undefined' && notionCache && typeof notionCache.invalidate === 'function') notionCache.invalidate(PRODUCT_CATALOG_DB_ID); } catch(_) {}
+
+    console.log('[카탈로그 일괄 채우기]', { total: results.total, updated: results.updated, skipped: results.skipped, notFound: results.notFound, errors: results.errors.length, dryRun });
+    res.json(results);
+  } catch (e) {
+    console.error('[카탈로그 일괄 채우기 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/consumer-pricing/catalog/bulk-import', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!XLSX) return res.status(503).json({ error: 'xlsx 모듈 미설치' });
