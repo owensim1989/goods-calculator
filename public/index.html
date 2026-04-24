@@ -695,7 +695,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
   <div class="cp-auto-section">
     <h4>🌏 국가별 현지 소비자가 <span class="auto-tag">환율·관세 자동</span></h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">타겟가 × 환율 × (1+관세) × (1+VAT) + 배송비. 권장가 옆 <b>적용</b>으로 확정가 복사. <b style="color:var(--warning);">⚠️ 적자 기준</b> = 한국 개당원가 × 관세·VAT·배송 반영한 <b>최저 판매가</b>. 확정가가 이보다 낮으면 적자.</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">수익률 유지 최저가 = 한국 타겟가 기준 수익률을 수출 후에도 유지하기 위한 최저 현지 판매가. 공식: <code>한국가 × (1+관세)(1+VAT) + 현지배송비</code>. 확정가가 이 값보다 낮으면 <b style="color:var(--danger);">🔴 수익률 미달</b>.</p>
     <div class="table-wrap"><table class="cp-country-table">
       <thead><tr>
         <th style="text-align:left;">국가</th>
@@ -705,8 +705,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <th>관세%</th>
         <th>VAT%</th>
         <th>배송비<br>(개당,KRW)</th>
-        <th>권장 현지가</th>
-        <th style="background:rgba(245,158,11,.08);">⚠️ 적자 기준<br><span style="font-weight:400;font-size:10px;color:var(--text-muted);">이하면 손해</span></th>
+        <th>수익률 유지 최저가</th>
         <th>확정 현지가</th>
         <th>확정가(KRW)</th>
         <th>한국대비</th>
@@ -2266,14 +2265,11 @@ function cpRenderCountryTable(){
     const diffCls = diff==null?'':(diff>=0?'cp-diff-plus':'cp-diff-minus');
     const diffTxt = diff==null?'-':(diff>=0?'+':'')+diff.toFixed(1)+'%';
     const recTitle = recommendLocal!=null ? `계산: (${baseLocal.toFixed(2)} + ${shipLocal.toFixed(2)}) × ${(1+tariff).toFixed(3)} × ${(1+vat).toFixed(3)}` : '';
-    // ⚠️ 수익률 유지 최저가 = 기존 "권장 현지가"와 동일 공식 (target × (1+관세)(1+VAT) + 배송비)
-    // 확정가가 이 값보다 낮으면 한국 타겟가 대비 수익률 하락
+    // 수익률 유지 최저가 = target × (1+관세)(1+VAT) + 배송비
+    // 한국은 관세 없고 VAT 이미 한국가에 포함 → 비교 불필요(-)
+    const isKR = (c.code === 'KR');
     const recKRW = (recommendLocal != null && rate) ? recommendLocal * rate : null;
-    const recVsTarget = (recKRW != null && target) ? ((recKRW / target) - 1) * 100 : null;
-    const recBadge = recVsTarget != null
-      ? `<div style="font-size:10px;color:var(--warning);margin-top:2px;">한국가 ${recVsTarget>=0?'+':''}${recVsTarget.toFixed(1)}%</div>`
-      : '';
-    const isLoss = (finalKRW != null && recKRW != null && finalKRW < recKRW);
+    const isLoss = !isKR && (finalKRW != null && recKRW != null && finalKRW < recKRW);
     return `<tr>
       <td><span class="cp-flag">${CP_FLAGS[c.code]||''}</span><b>${escapeHtml(c.name)}</b>${c.note?`<div style="font-size:10px;color:var(--text-muted);">${escapeHtml(c.note)}</div>`:''}</td>
       <td>${c.currency}</td>
@@ -2282,8 +2278,8 @@ function cpRenderCountryTable(){
       <td><input type="number" step="0.1" value="${c.tariffPct||0}" onchange="cpCountryEdit(${i},'tariffPct',this.value)"></td>
       <td><input type="number" step="0.1" value="${c.vatPct||0}" onchange="cpCountryEdit(${i},'vatPct',this.value)"></td>
       <td><input type="number" step="100" value="${c.shippingKRW||0}" onchange="cpCountryEdit(${i},'shippingKRW',this.value)"></td>
-      <td title="${escapeHtml(recTitle)}" style="background:rgba(245,158,11,.04);">${recommendLocal!=null?`<b style="color:var(--warning);">${cpFmtLocal(recommendLocal,c.currency)}</b>`:'-'}${recBadge}${recRound!=null?`<button style="padding:2px 6px;font-size:10px;border:1px solid var(--warning);color:var(--warning);background:transparent;border-radius:4px;cursor:pointer;margin-top:4px;" onclick="cpApplyRec(${i},${recRound})">적용</button>`:''}</td>
-      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${recRound!=null?recRound:''}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
+      <td title="${escapeHtml(recTitle)}">${(isKR || recommendLocal == null) ? '-' : cpFmtLocal(recommendLocal, c.currency)}</td>
+      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${(isKR||recRound==null)?'':recRound}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
       <td class="cp-final" style="${isLoss?'color:var(--danger);font-weight:700;':''}">${finalKRW!=null?(isLoss?'🔴 ':'')+cpFmtKRW(finalKRW):'-'}${isLoss?'<div style="font-size:10px;color:var(--danger);font-weight:400;">수익률 미달</div>':''}</td>
       <td class="${diffCls}">${diffTxt}</td>
     </tr>`;
