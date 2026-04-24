@@ -708,7 +708,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <th>수익률 유지 최저가</th>
         <th>확정 현지가</th>
         <th>확정가(KRW)</th>
-        <th>한국대비</th>
+        <th>최저가 대비</th>
       </tr></thead>
       <tbody id="cp-country-tbody"></tbody>
     </table></div>
@@ -2261,15 +2261,16 @@ function cpRenderCountryTable(){
     // 자동복사 제거: 사용자가 직접 "↓적용" 버튼을 눌러야 finalLocal 세팅
     const finalLocal = c.finalLocal;
     const finalKRW = (finalLocal!=null && rate) ? finalLocal*rate : null;
-    const diff = (finalKRW!=null && target) ? ((finalKRW/target)-1)*100 : null;
-    const diffCls = diff==null?'':(diff>=0?'cp-diff-plus':'cp-diff-minus');
-    const diffTxt = diff==null?'-':(diff>=0?'+':'')+diff.toFixed(1)+'%';
     const recTitle = recommendLocal!=null ? `계산: (${baseLocal.toFixed(2)} + ${shipLocal.toFixed(2)}) × ${(1+tariff).toFixed(3)} × ${(1+vat).toFixed(3)}` : '';
     // 수익률 유지 최저가 = target × (1+관세)(1+VAT) + 배송비
     // 한국은 관세 없고 VAT 이미 한국가에 포함 → 비교 불필요(-)
     const isKR = (c.code === 'KR');
     const recKRW = (recommendLocal != null && rate) ? recommendLocal * rate : null;
     const isLoss = !isKR && (finalKRW != null && recKRW != null && finalKRW < recKRW);
+    // '최저가 대비' — 확정가가 '수익률 유지 최저가' 대비 몇 % 차이 (음수면 수익률 미달)
+    const diff = (!isKR && finalKRW!=null && recKRW!=null && recKRW>0) ? ((finalKRW/recKRW)-1)*100 : null;
+    const diffCls = diff==null?'':(diff>=0?'cp-diff-plus':'cp-diff-minus');
+    const diffTxt = diff==null?'-':(diff>=0?'+':'')+diff.toFixed(1)+'%';
     return `<tr>
       <td><span class="cp-flag">${CP_FLAGS[c.code]||''}</span><b>${escapeHtml(c.name)}</b>${c.note?`<div style="font-size:10px;color:var(--text-muted);">${escapeHtml(c.note)}</div>`:''}</td>
       <td>${c.currency}</td>
