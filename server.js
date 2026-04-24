@@ -1887,23 +1887,44 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
 
 {
   "vendor": "거래처명 (문자열)",
-  "product": "제품명",
+  "countryOfOrigin": "China|Korea|Vietnam|Other",
+  "surchargeEstimate_KRW": 숫자,
+  "lineItems": [
+    {
+      "type": "product | packaging | one_time | other",
+      "name": "품목명 (예: 2d pvc with mirror 98*67)",
+      "material": "소재(선택)",
+      "size": "사이즈(선택, 예: 98*67*5mm)",
+      "qty": 500,
+      "unitPrice": 1.2,
+      "currency": "USD|KRW|CNY|JPY",
+      "totalAmount": 600,
+      "oneTimeKind": "mold | sample | null (one_time만 채움)",
+      "notes": "설명(선택)"
+    }
+  ],
+  "product": "대표 제품명 (lineItems 중 첫 product)",
   "sampleFee": 숫자 or null,
   "moldFee": 숫자 or null,
   "sampleFeeCurrency": "USD|KRW|CNY|JPY",
   "quotes": [
     { "qty": 500, "unitPrice": 1.36, "currency": "USD" }
-  ],
-  "countryOfOrigin": "China|Korea|Vietnam|Other",
-  "surchargeEstimate_KRW": 숫자
+  ]
 }
 
 규칙:
-- 수량별 단가(tier)가 여러 개면 quotes 배열에 모두 포함 (예: 500/\$1.36, 1000/\$1.32 → 2개)
-- 단가는 개당(Unit Price), 총액÷수량 계산 금지 — 반드시 Unit Price 컬럼 그대로
-- Sample Fee / Mold Fee는 견적서 해당 행이 있으면 반드시 추출
+- lineItems는 견적서의 모든 라인을 한 줄도 빠짐없이 담을 것. 각 라인을 아래 4종 중 하나로 분류:
+  * "product" = 완제품(판매되는 본체). Unit Price × qty 구조
+  * "packaging" = 포장재. "opp bag", "box", "foldable card", "inner card", "hang tag", "pouch" 등. 제품과 별도 라인으로 표기된 포장/박스는 무조건 packaging
+  * "one_time" = 일회성 비용. "Mold fee", "Sample Fee", "Printing plate", "Setup fee" 등. oneTimeKind에 "mold" 또는 "sample" 넣기
+  * "other" = 운송·기타
+- 단가는 개당(Unit Price) 그대로. 총액÷수량 계산 금지
+- lineItems에 Sample Fee 행이 있으면 sampleFee + sampleFeeCurrency에도 중복 채우기(하위호환)
+- lineItems에 Mold fee 행이 있으면 moldFee에도 중복 채우기(하위호환)
+- quotes는 "동일 제품의 수량별 tier" 용도. 서로 다른 제품이면 quotes 비우고 lineItems에만
+- 제품이 하나뿐이면 그 제품의 수량 tier 여러 개를 quotes에 채워도 됨
 - countryOfOrigin: 공급사 주소가 China면 "China" 등
-- surchargeEstimate_KRW: 중국산이면 (단가×수량×환율) × 0.2 추정, 한국산이면 0`;
+- surchargeEstimate_KRW: 중국산이면 (제품합계 × 환율) × 0.2 추정, 한국산이면 0`;
 
     if (kind === 'text' || text) {
       content = [{ type: 'text', text: ask + '\n\n견적 내용:\n' + (text || '') }];
@@ -1932,7 +1953,7 @@ app.post('/api/consumer-pricing/parse-quote', async (req, res) => {
       return res.status(400).json({ error: 'kind 또는 data 누락' });
     }
 
-    const out = await callClaude([{ role: 'user', content }], { max_tokens: 1500 });
+    const out = await callClaude([{ role: 'user', content }], { max_tokens: 3000 });
     const parsed = extractJSON(out);
     if (!parsed) {
       console.error('[parse-quote] 파싱 실패. Claude 원문:\n', out.slice(0, 2000));

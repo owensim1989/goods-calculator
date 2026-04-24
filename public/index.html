@@ -1838,6 +1838,10 @@ function cpResetProductImage(){
 
 function cpNewProject(){
   CP_CURRENT = null;
+  // 복수 제품 견적서 체인 리셋
+  window._cpMultiQuote = null;
+  window._cpPendingQuote = null;
+  if (typeof cpRefreshNextProductBtn === 'function') cpRefreshNextProductBtn();
   document.getElementById('cp-name').value='';
   document.getElementById('cp-category').value='';
   document.getElementById('cp-hs').value='';
@@ -2371,6 +2375,12 @@ async function cpSave(){
     if(CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.pendingLocal && CP_PRODUCT_IMAGE.dataUrl){
       await cpUploadProductImage();
     }
+    // 복수 제품 견적서면: 방금 등록한 제품 기록 + "다음 제품" 버튼 갱신
+    if (window._cpMultiQuote) {
+      window._cpMultiQuote.registered = window._cpMultiQuote.registered || new Set();
+      window._cpMultiQuote.registered.add(window._cpMultiQuote.pickedIdx);
+      cpRefreshNextProductBtn();
+    }
     await cpLoadList();
   }catch(e){showToast('저장 실패: '+e.message);}
 }
@@ -2797,49 +2807,18 @@ async function cpSubmitQuote(){
       resEl.innerHTML = msg;
       return;
     }
-    const quotes = Array.isArray(d.quotes) ? d.quotes.filter(q=>q && q.qty && q.unitPrice) : [];
-    if(quotes.length){
-      window._cpQuotes = quotes;
-      cpRenderTiers();
-      cpApplyTier(0);
-    } else {
-      if(d.cost!=null) document.getElementById('cp-cost-price').value = d.cost;
-      if(d.currency) document.getElementById('cp-cost-currency').value = d.currency;
-      if(d.qty!=null) document.getElementById('cp-qty').value = d.qty;
+    // 복수 제품 감지 → 선택 UI로 분기
+    const lineItems = Array.isArray(d.lineItems) ? d.lineItems : [];
+    const products = lineItems.filter(it => it && it.type === 'product');
+    if (products.length >= 2) {
+      window._cpPendingQuote = d;
+      cpRenderQuotePicker(d, products);
+      return; // 모달 열어둔 채 사용자 선택 대기
     }
-    // 샘플비·금형비 자동 입력 (새 UI)
-    if(d.sampleFee!=null){
-      document.getElementById('cp-sample-fee').value = d.sampleFee;
-      if(d.sampleFeeCurrency) document.getElementById('cp-sample-cur').value = d.sampleFeeCurrency;
-    }
-    if(d.moldFee!=null){
-      document.getElementById('cp-mold-fee').value = d.moldFee;
-      if(d.sampleFeeCurrency) document.getElementById('cp-mold-cur').value = d.sampleFeeCurrency;
-    }
-    // 원산지
-    if(d.countryOfOrigin){
-      const origin = /china|中国|cn/i.test(d.countryOfOrigin) ? 'China' : /korea|한국|kr/i.test(d.countryOfOrigin) ? 'Korea' : /vietnam|vn/i.test(d.countryOfOrigin) ? 'Vietnam' : 'Other';
-      document.getElementById('cp-origin').value = origin;
-    }
-    // 부대비용 breakdown AI 값으로 덮어쓰기
-    const br = d.surchargeBreakdown_KRW || {};
-    if(br.shipping!=null) document.getElementById('cp-sur-shipping').value = Math.round(br.shipping);
-    if(br.customsPct!=null) document.getElementById('cp-sur-customs').value = br.customsPct;
-    if(br.vatPct!=null) document.getElementById('cp-sur-vat').value = br.vatPct;
-    if(br.misc!=null) document.getElementById('cp-sur-misc').value = Math.round(br.misc);
-    // breakdown 없으면 원산지 프리셋 적용 (강제)
-    if(!br.shipping && !br.customsPct) cpApplyCountryPreset(true);
-    cpRecalc();
+    // 단일/제로 제품 → 기존 플로우
+    cpApplyParsedQuote(d, 0);
     resEl.style.display='block';
-    const qArr = Array.isArray(d.quotes)?d.quotes.filter(q=>q&&q.qty):[];
-    resEl.innerHTML = `<b>✅ 추출 완료</b><br>
-      ${qArr.length?qArr.map(q=>'• '+q.qty+'개 → '+q.unitPrice+' '+(q.currency||'')).join('<br>')+'<br>':'단가: '+(d.cost||'-')+' '+(d.currency||'')+'<br>수량: '+(d.qty||'-')+'<br>'}
-      ${d.sampleFee?`샘플비: ${d.sampleFee} ${d.sampleFeeCurrency||''}<br>`:''}
-      ${d.moldFee?`금형비: ${d.moldFee} ${d.sampleFeeCurrency||''}<br>`:''}
-      ${d.vendor?`거래처: ${escapeHtml(d.vendor)}<br>`:''}
-      ${d.product?`제품: ${escapeHtml(d.product)}<br>`:''}
-      ${d.surchargeEstimate_KRW!=null?`부대비용 예상: ₩${Math.round(d.surchargeEstimate_KRW).toLocaleString()}<br>`:''}
-      <span style="color:var(--text-muted);font-size:11px;">→ 자동 반영됨. 수량 tier는 칩으로 선택 가능.</span>`;
+    resEl.innerHTML = cpQuoteSummaryHtml(d);
     showToast('✅ 자동 반영 완료');
     setTimeout(cpCloseQuoteUpload, 2500);
   }catch(e){
@@ -2851,6 +2830,225 @@ async function cpSubmitQuote(){
     btn.textContent='🤖 AI 분석';
     window._cpQuoteInFlight = false;
   }
+}
+
+// ━━━ 견적서 파싱 결과 공통 적용 ━━━
+// d = parse-quote 응답, pickedProductIdx = lineItems 중 type=product들 안에서 몇 번째를 고를지
+function cpApplyParsedQuote(d, pickedProductIdx){
+  pickedProductIdx = pickedProductIdx || 0;
+  const lineItems = Array.isArray(d.lineItems) ? d.lineItems : [];
+  const products = lineItems.filter(it => it && it.type === 'product');
+  const packagings = lineItems.filter(it => it && it.type === 'packaging');
+  const oneTimes = lineItems.filter(it => it && it.type === 'one_time');
+  // 1) 제품 단가/수량 적용
+  if (products.length > 0) {
+    const p = products[pickedProductIdx] || products[0];
+    if (p.unitPrice != null) document.getElementById('cp-cost-price').value = p.unitPrice;
+    if (p.currency) document.getElementById('cp-cost-currency').value = p.currency;
+    if (p.qty != null) document.getElementById('cp-qty').value = p.qty;
+    const nameEl = document.getElementById('cp-name');
+    if (nameEl && !nameEl.value && p.name) nameEl.value = p.name;
+    const sizeEl = document.getElementById('cp-size');
+    if (sizeEl && p.size && !sizeEl.value) sizeEl.value = p.size;
+    const matEl = document.getElementById('cp-material');
+    if (matEl && p.material && !matEl.value) matEl.value = p.material;
+    // 복수 제품이면 수량 tier 칩 비활성화 (quotes는 동일 제품의 tier 개념)
+    window._cpQuotes = [];
+    const tierWrap = document.getElementById('cp-tier-wrap'); if (tierWrap) tierWrap.style.display = 'none';
+  } else if (Array.isArray(d.quotes) && d.quotes.filter(q=>q&&q.qty&&q.unitPrice).length) {
+    // 하위 호환: lineItems 없고 quotes(tier)만 있는 경우
+    window._cpQuotes = d.quotes.filter(q=>q&&q.qty&&q.unitPrice);
+    cpRenderTiers();
+    cpApplyTier(0);
+  } else {
+    if (d.cost != null) document.getElementById('cp-cost-price').value = d.cost;
+    if (d.currency) document.getElementById('cp-cost-currency').value = d.currency;
+    if (d.qty != null) document.getElementById('cp-qty').value = d.qty;
+  }
+  // 2) 일회성 — Mold / Sample
+  const moldItem = oneTimes.find(it => (it.oneTimeKind === 'mold') || /mold/i.test(it.name||''));
+  const sampleItem = oneTimes.find(it => (it.oneTimeKind === 'sample') || /sample/i.test(it.name||''));
+  if (moldItem) {
+    const mv = (moldItem.totalAmount != null) ? moldItem.totalAmount : moldItem.unitPrice;
+    if (mv != null) {
+      document.getElementById('cp-mold-fee').value = mv;
+      document.getElementById('cp-mold-cur').value = moldItem.currency || d.sampleFeeCurrency || 'USD';
+    }
+  } else if (d.moldFee != null) {
+    document.getElementById('cp-mold-fee').value = d.moldFee;
+    if (d.sampleFeeCurrency) document.getElementById('cp-mold-cur').value = d.sampleFeeCurrency;
+  }
+  if (sampleItem) {
+    const sv = (sampleItem.totalAmount != null) ? sampleItem.totalAmount : sampleItem.unitPrice;
+    if (sv != null) {
+      document.getElementById('cp-sample-fee').value = sv;
+      document.getElementById('cp-sample-cur').value = sampleItem.currency || d.sampleFeeCurrency || 'USD';
+    }
+  } else if (d.sampleFee != null) {
+    document.getElementById('cp-sample-fee').value = d.sampleFee;
+    if (d.sampleFeeCurrency) document.getElementById('cp-sample-cur').value = d.sampleFeeCurrency;
+  }
+  // 3) 원산지
+  if (d.countryOfOrigin) {
+    const origin = /china|中国|cn/i.test(d.countryOfOrigin) ? 'China' : /korea|한국|kr/i.test(d.countryOfOrigin) ? 'Korea' : /vietnam|vn/i.test(d.countryOfOrigin) ? 'Vietnam' : 'Other';
+    document.getElementById('cp-origin').value = origin;
+  }
+  // 4) 부대비용 breakdown 먼저 적용 (원산지 프리셋 포함 — 포장비 기본값도 여기서 세팅됨)
+  const br = d.surchargeBreakdown_KRW || {};
+  if (br.shipping != null) document.getElementById('cp-sur-shipping').value = Math.round(br.shipping);
+  if (br.customsPct != null) document.getElementById('cp-sur-customs').value = br.customsPct;
+  if (br.vatPct != null) document.getElementById('cp-sur-vat').value = br.vatPct;
+  if (br.misc != null) document.getElementById('cp-sur-misc').value = Math.round(br.misc);
+  if (!br.shipping && !br.customsPct) cpApplyCountryPreset(true);
+  // 5) 포장비 — AI가 견적서에서 감지한 값으로 맨 마지막에 덮어씀 (프리셋 기본값 무효화)
+  let packagingKRW = 0;
+  const selectedQty = (products[pickedProductIdx] || products[0] || {}).qty || 0;
+  const totalProductQty = products.reduce((s,p)=>s+(p.qty||0), 0) || selectedQty;
+  for (const pk of packagings) {
+    const pkQty = pk.qty || 0;
+    const pkPrice = pk.unitPrice || 0;
+    const pkTotal = pk.totalAmount != null ? pk.totalAmount : (pkPrice * pkQty);
+    const pkCur = pk.currency || 'USD';
+    let allocKRW;
+    if (totalProductQty > 0 && pkQty > 0) {
+      // 포장재 전체 금액을 제품 수량 비율로 분배 (예: 박스 1000개 = 제품 A·B 각 500개에 절반씩)
+      const ratio = selectedQty / totalProductQty;
+      allocKRW = cpCurrencyToKRW(pkTotal, pkCur) * ratio;
+    } else if (pkPrice > 0) {
+      allocKRW = cpCurrencyToKRW(pkPrice, pkCur) * selectedQty;
+    } else {
+      allocKRW = cpCurrencyToKRW(pkTotal, pkCur);
+    }
+    packagingKRW += allocKRW;
+  }
+  if (packagings.length > 0 && packagingKRW > 0) {
+    const pkgEl = document.getElementById('cp-sur-packaging');
+    if (pkgEl) {
+      pkgEl.value = Math.round(packagingKRW);
+      if (pkgEl.type === 'text' && typeof cpFmtInput === 'function') cpFmtInput(pkgEl);
+    }
+  }
+  cpRecalc();
+}
+
+// ━━━ 복수 제품 선택 UI ━━━
+function cpRenderQuotePicker(d, products){
+  const resEl = document.getElementById('cp-quote-result');
+  const pkgs = (d.lineItems||[]).filter(it => it && it.type === 'packaging');
+  const ots = (d.lineItems||[]).filter(it => it && it.type === 'one_time');
+  resEl.style.display = 'block';
+  resEl.innerHTML = `
+    <b>📋 복수 제품 감지 (${products.length}개)</b>
+    <div style="font-size:11px;color:var(--text-muted);margin:4px 0 10px;">한 건씩 선택해서 등록합니다. 공통 비용(포장/금형/샘플)은 선택한 제품에 자동 할당됩니다.</div>
+    <div id="cp-quote-products" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+      ${products.map((p,i)=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+          <input type="radio" name="cp-quote-prod" value="${i}" ${i===0?'checked':''}>
+          <div style="flex:1;">
+            <b>${escapeHtml(p.name||'(이름없음)')}</b>
+            <div style="font-size:11px;color:var(--text-muted);">${p.qty||'-'}개 × ${p.unitPrice||'-'} ${p.currency||''}${p.size?' · '+escapeHtml(p.size):''}${p.material?' · '+escapeHtml(p.material):''}</div>
+          </div>
+        </label>`).join('')}
+    </div>
+    ${pkgs.length?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">📦 공통 포장: ${pkgs.map(pk=>`${escapeHtml(pk.name||'포장')} ${pk.qty||'-'}개 × ${pk.unitPrice||'-'} ${pk.currency||''}`).join(', ')}</div>`:''}
+    ${ots.length?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">🔧 일회성: ${ots.map(ot=>`${escapeHtml(ot.name||'')} ${ot.totalAmount!=null?ot.totalAmount:(ot.unitPrice||'-')} ${ot.currency||''}`).join(', ')}</div>`:''}
+    <button type="button" onclick="cpApplySelectedQuote()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✅ 선택한 제품으로 적용</button>
+    <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">저장 후 다음 제품 계속 등록 버튼이 나타납니다.</span>
+  `;
+}
+
+function cpApplySelectedQuote(){
+  const d = window._cpPendingQuote;
+  if (!d) return;
+  const sel = document.querySelector('input[name="cp-quote-prod"]:checked');
+  const idx = sel ? parseInt(sel.value, 10) : 0;
+  cpApplyParsedQuote(d, idx);
+  const products = (d.lineItems||[]).filter(it => it && it.type === 'product');
+  window._cpMultiQuote = {
+    raw: d,
+    pickedIdx: idx,
+    total: products.length,
+    registered: new Set()
+  };
+  window._cpPendingQuote = null;
+  showToast('✅ ' + (products[idx]?.name||'제품') + ' 적용 — 확인 후 저장');
+  cpCloseQuoteUpload();
+  cpRefreshNextProductBtn();
+}
+
+function cpQuoteSummaryHtml(d){
+  const lineItems = Array.isArray(d.lineItems) ? d.lineItems : [];
+  const products = lineItems.filter(it => it && it.type === 'product');
+  const pkgs = lineItems.filter(it => it && it.type === 'packaging');
+  const ots = lineItems.filter(it => it && it.type === 'one_time');
+  const qArr = Array.isArray(d.quotes)?d.quotes.filter(q=>q&&q.qty):[];
+  const lines = [];
+  if (products.length) lines.push(products.map(p=>`• 제품 ${escapeHtml(p.name||'')}: ${p.qty||'-'}개 × ${p.unitPrice||'-'} ${p.currency||''}`).join('<br>'));
+  if (!products.length && qArr.length) lines.push(qArr.map(q=>'• '+q.qty+'개 → '+q.unitPrice+' '+(q.currency||'')).join('<br>'));
+  if (!products.length && !qArr.length) lines.push('단가: '+(d.cost||'-')+' '+(d.currency||'')+' / 수량: '+(d.qty||'-'));
+  if (pkgs.length) lines.push(pkgs.map(pk=>`📦 ${escapeHtml(pk.name||'포장')}: ${pk.qty||'-'}개 × ${pk.unitPrice||'-'} ${pk.currency||''}`).join('<br>'));
+  if (ots.length) lines.push(ots.map(ot=>`🔧 ${escapeHtml(ot.name||'')}: ${ot.totalAmount!=null?ot.totalAmount:(ot.unitPrice||'-')} ${ot.currency||''}`).join('<br>'));
+  if (d.vendor) lines.push('거래처: ' + escapeHtml(d.vendor));
+  return `<b>✅ 추출 완료</b><br>${lines.join('<br>')}<br><span style="color:var(--text-muted);font-size:11px;">→ 자동 반영됨</span>`;
+}
+
+// ━━━ 다음 제품 계속 등록 ━━━
+function cpRefreshNextProductBtn(){
+  let btn = document.getElementById('cp-btn-next-product');
+  const mq = window._cpMultiQuote;
+  if (!mq || !mq.raw) { if (btn) btn.style.display='none'; return; }
+  const products = (mq.raw.lineItems||[]).filter(it => it && it.type === 'product');
+  const remainingIdx = products.map((_,i)=>i).filter(i => !mq.registered.has(i));
+  if (!remainingIdx.length) {
+    if (btn) btn.style.display = 'none';
+    window._cpMultiQuote = null;
+    return;
+  }
+  if (!btn) {
+    const saveBtn = document.getElementById('cp-btn-save');
+    if (!saveBtn) return;
+    btn = document.createElement('button');
+    btn.id = 'cp-btn-next-product';
+    btn.type = 'button';
+    btn.className = saveBtn.className || '';
+    btn.style.marginLeft = '8px';
+    btn.style.background = 'var(--warning,#f59e0b)';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+    btn.style.padding = '8px 14px';
+    btn.style.borderRadius = '6px';
+    btn.style.cursor = 'pointer';
+    btn.style.fontWeight = '600';
+    btn.onclick = cpRegisterNextProduct;
+    saveBtn.parentNode.insertBefore(btn, saveBtn.nextSibling);
+  }
+  btn.textContent = '➡️ 같은 견적서 다음 제품 (' + remainingIdx.length + '개 남음)';
+  btn.style.display = 'inline-block';
+}
+
+function cpRegisterNextProduct(){
+  const mq = window._cpMultiQuote;
+  if (!mq || !mq.raw) return;
+  const products = (mq.raw.lineItems||[]).filter(it => it && it.type === 'product');
+  const remainingIdx = products.map((_,i)=>i).filter(i => !mq.registered.has(i));
+  if (!remainingIdx.length) return;
+  const nextIdx = remainingIdx[0];
+  // 현재 페이지를 "새 페이지"로 전환 (CP_CURRENT 초기화)
+  CP_CURRENT = null;
+  mq.pickedIdx = nextIdx;
+  // 프로젝트명만 다음 제품명으로 교체 (나머지 HS/카테고리/거래처/원산지 등 유지)
+  const nameEl = document.getElementById('cp-name');
+  if (nameEl) nameEl.value = products[nextIdx].name || '';
+  // 저장/퍼블리시 버튼 상태 리셋
+  const delBtn = document.getElementById('cp-btn-del'); if (delBtn) delBtn.style.display = 'none';
+  const pubBtn = document.getElementById('cp-btn-publish'); if (pubBtn) pubBtn.style.display = 'none';
+  // 제품 단가/수량/사이즈/재질 + 포장비 재환산
+  // (size/material은 이미 채워져 있으면 유지하는 로직이라, 강제 덮어쓰기 위해 임시로 비움)
+  const sizeEl = document.getElementById('cp-size'); if (sizeEl) sizeEl.value = '';
+  const matEl  = document.getElementById('cp-material'); if (matEl) matEl.value = '';
+  cpApplyParsedQuote(mq.raw, nextIdx);
+  showToast('➡️ 다음 제품 "' + (products[nextIdx].name||'') + '" 적용 — 확인 후 저장');
+  cpRefreshNextProductBtn();
 }
 document.addEventListener('DOMContentLoaded',()=>{
   const drop = document.getElementById('cp-quote-drop');
