@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 3100;
 // ━━━ 환경변수 ━━━
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
 const UNIFIED_DB_ID = process.env.UNIFIED_DB_ID || 'be89a5d46bac4ffcbbc2e81e2ed425c3';
-const VENDOR_DB_ID  = process.env.VENDOR_DB_ID  || 'da7e2fc516d74c2aa0c742e7c394ce78';
+const VENDOR_DB_ID  = process.env.VENDOR_DB_ID  || '914f29f7ebbb4d5ba9307621c431ebd1';
 const CONSUMER_PRICING_DB_ID = process.env.CONSUMER_PRICING_DB_ID || '016ec336fe324fc29f6590017ee3f023';
 const PRODUCT_CATALOG_DB_ID = process.env.PRODUCT_CATALOG_DB_ID || '59f797ebdc604186b4dd06781652f9b3';
 const PRODUCT_IMAGE_FOLDER_URL = process.env.PRODUCT_IMAGE_FOLDER_URL || ''; // Google Drive 공유 폴더 URL (바이어 공유 엑셀의 Image 컬럼 fallback)
