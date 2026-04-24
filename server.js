@@ -381,10 +381,12 @@ async function syncFromNotion() {
       const vendorPages = await fetchAllPages(VENDOR_DB_ID);
       vendors = vendorPages.map(p => ({
         id: p.id,
-        name: extractProp(p, '거래처명', 'title') || extractProp(p, 'Name', 'title') || '',
-        국가: extractProp(p, '국가', 'select'),
-        연락처: extractProp(p, '연락처', 'rich_text'),
-        비고: extractProp(p, '비고', 'rich_text'),
+        name: extractProp(p, '업체명', 'title') || '',
+        품목: extractProp(p, '품목', 'multi_select') || [],
+        유형: extractProp(p, '유형', 'multi_select') || [],
+        사이트: extractProp(p, '사이트', 'rich_text') || '',
+        메모: extractProp(p, '메모', 'rich_text') || '',
+        제작기간: extractProp(p, '제작기간', 'rich_text') || '',
       }));
     } catch (e) {
       console.log('[동기화] 거래처 DB 읽기 실패 (무시):', e.message);
