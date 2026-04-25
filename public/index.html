@@ -24,6 +24,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .header .ai-review-btn.idle:hover{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.85);}
 .header .ai-review-btn.idle span{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);font-weight:500;}
 
+/* 햄버거 (모바일만 표시) */
+.hamburger{display:none;background:rgba(255,255,255,0.15);border:none;color:#fff;width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:18px;align-items:center;justify-content:center;}
+.hamburger:hover{background:rgba(255,255,255,0.28);}
+.header-left{display:flex;align-items:center;gap:12px;}
+
+/* 사이드바 + 메인 레이아웃 */
+.layout{display:flex;min-height:calc(100vh - 60px);position:relative;}
+.sidebar{width:200px;background:var(--card);border-right:1px solid var(--border);padding:20px 12px;flex-shrink:0;overflow-y:auto;position:sticky;top:60px;align-self:flex-start;height:calc(100vh - 60px);}
+.sidebar-group{margin-bottom:18px;}
+.sidebar-group-title{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;padding:6px 12px;margin-bottom:4px;font-weight:600;opacity:0.7;}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;font-size:13px;color:var(--text);cursor:pointer;transition:background .15s,color .15s;font-weight:500;border:none;background:transparent;width:100%;text-align:left;font-family:inherit;}
+.sidebar-item:hover{background:var(--bg);}
+.sidebar-item.active{background:rgba(96,165,250,0.15);color:var(--primary);}
+[data-theme="light"] .sidebar-item.active{background:var(--primary-light);color:var(--primary);font-weight:600;}
+.main{flex:1;min-width:0;}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:80;}
+
+@media (max-width:768px){
+  .header{padding:14px 16px;}
+  .header h1{font-size:16px;}
+  .hamburger{display:inline-flex;}
+  .sidebar{position:fixed;top:0;left:0;height:100vh;z-index:90;transform:translateX(-100%);transition:transform .25s ease;padding-top:72px;width:240px;}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-overlay.show{display:block;}
+  .tab-page{padding:16px;}
+}
+
 /* AI 검수 모달 */
 .ai-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;}
 .ai-modal-bg.show{display:flex;}
@@ -534,7 +561,10 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 </head>
 <body>
 <div class="header">
-  <h1>제품원가 계산기</h1>
+  <div class="header-left">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
+    <h1>제품원가 계산기</h1>
+  </div>
   <div class="header-right">
     <button class="ai-review-btn idle" id="aiReviewBtn" onclick="openParsedModal()" title="Drive 인박스 자동 파싱 결과 검수">🤖 AI 검수 <span id="aiReviewBadge">0</span></button>
     <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
@@ -542,12 +572,24 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 </div>
 
-<div class="tabs">
-  <button class="tab-btn active" data-tab="product">제품 → 단가</button>
-  <button class="tab-btn" data-tab="budget">예산 → 제품</button>
-  <button class="tab-btn" data-tab="vendor">거래처 비교</button>
-  <button class="tab-btn" data-tab="consumer">🌏 소비자가 산정</button>
-</div>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">조회</div>
+      <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">단가 조회</button>
+      <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">기획</div>
+      <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 기획</button>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">수출</div>
+      <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">🌏 수출 견적</button>
+    </div>
+  </aside>
+  <main class="main">
 <div class="fx-bar" id="fx-bar">
   <label>💱 환율:</label>
   <label>USD</label><input type="text" id="fx-usd" value="1,380" oninput="onFxChange()"><label>원</label>
@@ -948,6 +990,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
   </div>
 </div>
+  </main>
+</div>
+
 
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
@@ -1209,17 +1254,29 @@ function evalDL(days,it){if(days==null)return{c:'',t:''};const d=it.제작일수
 
 function trustHTML(cnt){const lvl=cnt>=5?5:cnt>=3?4:cnt>=2?3:cnt;const lb=['','낮음','낮음','보통','높음','매우높음'];const dots=Array.from({length:5},(_,i)=>`<div class="trust-dot${i<lvl?' filled':''}"></div>`).join('');return`<div class="trust-bar"><div class="trust-dots">${dots}</div><span class="trust-label">${lb[lvl]||'낮음'}</span></div>`;}
 
-// 탭전환
-document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-page').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('page-'+b.dataset.tab).classList.add('active');}));
+// 사이드바 페이지 전환
+function switchPage(item){
+  document.querySelectorAll('.sidebar-item').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tab-page').forEach(x=>x.classList.remove('active'));
+  item.classList.add('active');
+  document.getElementById('page-'+item.dataset.page).classList.add('active');
+  if(window.innerWidth<=768){
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('show');
+  }
+  // consumer 첫 진입 초기화
+  if(item.dataset.page==='consumer' && !window._cpInited){window._cpInited=true; if(typeof cpInit==='function') cpInit();}
+}
+function toggleSidebar(){
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('show');
+}
 function goToVendorTab(){
-  // 탭1에서 선택된 품명 중 첫 번째를 거래처비교 탭으로 전달
   const sel=getChecked('p-prod');
   const p=sel&&sel.length?sel[0]:null;
   if(p)document.getElementById('v-product').value=p;
-  document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.tab-page').forEach(x=>x.classList.remove('active'));
-  document.querySelector('[data-tab="vendor"]').classList.add('active');
-  document.getElementById('page-vendor').classList.add('active');
+  const target=document.querySelector('.sidebar-item[data-page="vendor"]');
+  if(target) switchPage(target);
   if(p)searchVendorCompare();
 }
 
@@ -3924,11 +3981,7 @@ function cpUpdateHSConfirmBadge(){
     b.style.color = 'var(--warning)';
   }
 }
-// 탭 전환 훅 — 최초 진입 시 초기화
-document.addEventListener('click',e=>{
-  const btn = e.target.closest('.tab-btn[data-tab="consumer"]');
-  if(btn && !window._cpInited){window._cpInited=true;cpInit();}
-});
+// 탭 전환 훅 — switchPage 안으로 이동됨 (legacy 핸들러 제거)
 
 // ━━━ 🤖 AI 검수 (Drive 인박스 자동 파싱) ━━━
 const AI_CATEGORIES = ['피규어 및 인형','의류','문구','홈리빙','프린트/스티커','키링/잡화','모바일악세사리','광고물','시공'];
