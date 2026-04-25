@@ -1396,10 +1396,10 @@ async function _runPricingAudit(jobId, filepath) {
       { code: 'KR', field: 'Retail_KR_KRW', currency: 'KRW', tariff: 0,    vat: 10, ship: 0,    fx: 1,                 round: 100 },
       { code: 'TW', field: 'Retail_TW_TWD', currency: 'TWD', tariff: 3,    vat: 5,  ship: 3000, fx: fxCache.TWD || 43, round: 10 },
       { code: 'HK', field: 'Retail_HK_HKD', currency: 'HKD', tariff: 0,    vat: 0,  ship: 3000, fx: fxCache.HKD || 177, round: 1 },
-      { code: 'CN', field: 'Retail_CN_CNY', currency: 'CNY', tariff: 10,   vat: 13, ship: 3500, fx: fxCache.CNY || 190, round: 1 },
+      { code: 'CN', field: 'Retail_CN_CNY', currency: 'CNY', tariff: 10,   vat: 13, ship: 3500, fx: fxCache.CNY || 190, round: 10 },
       { code: 'TH', field: 'Retail_TH_THB', currency: 'THB', tariff: 20,   vat: 7,  ship: 4000, fx: fxCache.THB || 40, round: 10 },
       { code: 'US', field: 'Retail_US_USD', currency: 'USD', tariff: 5,    vat: 0,  ship: 5000, fx: fxCache.USD || 1380, round: 0.5 },
-      { code: 'JP', field: 'Retail_JP_JPY', currency: 'JPY', tariff: 3,    vat: 10, ship: 3500, fx: fxCache.JPY || 9.2, round: 10 }
+      { code: 'JP', field: 'Retail_JP_JPY', currency: 'JPY', tariff: 3,    vat: 10, ship: 3500, fx: fxCache.JPY || 9.2, round: 100 }
     ];
 
     // 2) 처리 대상 추출
