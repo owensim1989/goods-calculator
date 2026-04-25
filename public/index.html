@@ -438,7 +438,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="grand"><span>견적가 합계</span><span id="grand-total">₩0</span></div>
       <div class="sub"><span>종합 마진율</span><span id="grand-margin-rate">0%</span></div>
     </div>
-    <button class="btn-export" id="btn-export" style="display:none;" onclick="exportToQuote()">📤 견적계산기로 내보내기</button>
+    <button class="btn-export" id="btn-export" style="display:none;" onclick="exportToQuote()">🤖 AI 자동기입 텍스트 생성</button>
   </div>
   <div class="suggested-combos" id="suggested-combos" style="display:none;"><h4>추천 조합</h4><div id="sug-combo-list"></div></div>
   <div id="budget-sort-bar" class="sort-bar" style="display:none;margin-top:16px;">
@@ -1364,22 +1364,64 @@ function renderCombo(){
   document.getElementById('btn-export').style.display='inline-flex';
 }
 
-// ━━━ 견적계산기 내보내기 (클립보드 복사) ━━━
+// ━━━ 견적계산기 AI 자동기입 원클릭 (URL hash prefill) ━━━
+function roundDownQty(qty){
+  if(qty<10)return qty;
+  const digits=String(Math.floor(qty)).length;
+  const finalUnit=digits<=3?Math.pow(10,digits-2):digits===4?100:digits===5?1000:10000;
+  return Math.floor(qty/finalUnit)*finalUnit;
+}
+function buildQuotePrompt(){
+  const items=comboItems.filter(c=>c.name&&(c.manualQty||c.qty)>0);
+  if(!items.length)return '';
+  const dl=document.getElementById('b-deadline')?.value||'';
+  const budget=typeof getBudget==='function'?getBudget():0;
+  let deliveryText='';
+  if(dl){const d=new Date(dl);if(!isNaN(d.getTime()))deliveryText=d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일까지 납품 예정';}
+  const totalQuote=items.reduce((s,c)=>{const qty=c.manualQty||c.qty;return s+Math.round(c.unitPrice*qty/(1-c.margin/100));},0);
+  const itemsBlock=items.map((c,i)=>{
+    const qty=c.manualQty||c.qty;
+    const quote=Math.round(c.unitPrice*qty/(1-c.margin/100));
+    const quoteUnit=Math.round(quote/qty);
+    const recQty=roundDownQty(qty);
+    const rounded=recQty!==qty;
+    return [
+      (i+1)+'. '+c.name,
+      '   - 추천 발주 수량: '+recQty.toLocaleString()+'개 ← 견적서에 이 값을 사용',
+      rounded?'   - 이론 수량: '+qty.toLocaleString()+'개 (예산 맞춤 계산값, 참고용)':'   - (이론 수량과 추천 수량 동일)',
+      '   - 원가: '+c.unitPrice.toLocaleString()+'원/개',
+      '   - 마진: '+c.margin+'%',
+      '   - 판매 단가: '+quoteUnit.toLocaleString()+'원/개'
+    ].join('\n');
+  }).join('\n\n');
+  return [
+    '굿즈 제작 견적 요청드립니다.','',
+    '※ 이 건은 100% 굿즈 제작 의뢰입니다.',
+    '※ 각 품목을 개별 서비스 라인으로 등록해주세요.',
+    '※ 서비스 항목명(services[].name)은 반드시 아래 품목명을 그대로 사용해주세요.',
+    '  예: "연필", "클리어파일" — "굿즈 제작"이나 "인쇄물" 같은 일반 카테고리로 치환하지 말 것.',
+    '※ 수량(services[].quantity)은 반드시 "추천 발주 수량"을 사용해주세요. 이론값은 예산 맞춤 계산이라 현실적인 발주 단위가 아닙니다.',
+    '※ 비고(services[].description)에는 담당자가 최종 수량을 조정할 때 참고할 수 있도록 다음 정보를 남겨주세요:',
+    '  "[조정 필요] 이론 수량 ○○개 / 원가 ○○원 / 마진 ○○% / 판매 단가 ○○원. 실제 발주 단위에 맞게 확인 후 조정하세요."','',
+    deliveryText?'납기: '+deliveryText:null,
+    budget?'예산: '+budget.toLocaleString()+'원':null,'',
+    '━━━ 제작 품목 ━━━',itemsBlock,'',
+    '이론 총 견적가: '+totalQuote.toLocaleString()+'원 (VAT 별도, 수량 조정 시 재계산 필요)','',
+    '※ 담당자 안내: 견적서 생성 후 각 품목의 "추천 발주 수량"이 실제 발주 단위(예: 100·500·1,000개)와 맞는지 확인하고, 필요 시 수량을 조정해주세요.',
+    '※ 수량 축소 시에는 판매 단가 재조정도 함께 검토해주세요 (수량이 줄면 총액이 줄어 예산·마진 목표에 미달할 수 있습니다).',
+    '※ 비고에 이론 수량과 단가 정보가 남겨져 있어 조정에 참고할 수 있습니다.'
+  ].filter(l=>l!==null).join('\n');
+}
 function exportToQuote(){
-  const data=comboItems.map(c=>{const qty=c.manualQty||c.qty;const cost=c.unitPrice*qty;const quote=Math.round(cost/(1-c.margin/100));return{품명:c.name,수량:qty,단가:c.unitPrice,원가:cost,마진율:c.margin,견적가:quote};});
-  const grandQuote=data.reduce((s,d)=>s+d.견적가,0),grandCost=data.reduce((s,d)=>s+d.원가,0);
-
-  // 탭 구분 텍스트 (스프레드시트 붙여넣기 가능)
-  let tsv='품명\t수량\t단가\t원가\t마진율\t견적가\n';
-  data.forEach(d=>{tsv+=`${d.품명}\t${d.수량}\t${d.단가}\t${d.원가}\t${d.마진율}%\t${d.견적가}\n`;});
-  tsv+=`\t\t\t${grandCost}\t${Math.round((grandQuote-grandCost)/grandQuote*100)}%\t${grandQuote}\n`;
-
-  navigator.clipboard.writeText(tsv).then(()=>{
-    showToast('클립보드에 복사되었습니다. 견적계산기에 붙여넣기 하세요!');
-  }).catch(()=>{
-    // 복사 실패 시 alert 폴백
-    alert('복사 실패 — 아래 내용을 직접 복사하세요:\n\n'+tsv);
-  });
+  const txt=buildQuotePrompt();
+  if(!txt){showToast('제품 조합을 먼저 추가하세요');return;}
+  try{navigator.clipboard&&navigator.clipboard.writeText(txt);}catch(e){}
+  // URL 해시 prefill — 한글 대응 base64
+  const encoded=btoa(unescape(encodeURIComponent(txt)));
+  const user=encodeURIComponent(localStorage.getItem('cp-current-employee')||'');
+  const url='https://jeisha-quote.owen-f8e.workers.dev/?user='+user+'&_cb='+Date.now()+'#ai_prefill='+encoded;
+  window.open(url,'_blank');
+  showToast('✨ 새 탭에서 AI 자동 분석이 시작됩니다');
 }
 
 // 추천조합
