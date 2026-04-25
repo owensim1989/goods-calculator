@@ -1231,6 +1231,119 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ━━━ 가격 일괄 점검 Phase 1 (매칭·빈칸 스캔, AI 호출 없음, 읽기 전용) ━━━━━━━━━━━━━━
+// 사용: GET /api/admin/pricing-audit/scan?password=XXX
+// 결과: 카탈로그 전체 read → 단종 제외 → 7개국(KR/TW/HK/CN/TH/US/JP) 빈칸/충진/barcode 분포
+// ※ Phase 1은 Notion·DB 쓰기 0건, 읽기만. 안전.
+app.get('/api/admin/pricing-audit/scan', async (req, res) => {
+  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const _gNum = (pr, k) => pr[k] && pr[k].number != null ? pr[k].number : null;
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+    const _gSel = (pr, k) => pr[k] && pr[k].select ? pr[k].select.name : null;
+
+    const COUNTRIES = [
+      { code: 'KR', field: 'Retail_KR_KRW' },
+      { code: 'TW', field: 'Retail_TW_TWD' },
+      { code: 'HK', field: 'Retail_HK_HKD' },
+      { code: 'CN', field: 'Retail_CN_CNY' },
+      { code: 'TH', field: 'Retail_TH_THB' },
+      { code: 'US', field: 'Retail_US_USD' },
+      { code: 'JP', field: 'Retail_JP_JPY' }
+    ];
+
+    const all = allPages.map(p => {
+      const pr = p.properties || {};
+      const prices = {};
+      const missing = [];
+      const filled = [];
+      for (const { code, field } of COUNTRIES) {
+        const v = _gNum(pr, field);
+        prices[code] = v;
+        if (v == null) missing.push(code); else filled.push(code);
+      }
+      return {
+        id: p.id,
+        name: _gText(pr, 'Product Name'),
+        category: _gSel(pr, 'Category'),
+        barcode: (_gText(pr, 'Barcode') || '').trim(),
+        status: _gSel(pr, '판매상태'),
+        prices, missing, filled
+      };
+    });
+
+    const target = all.filter(x => x.status !== '단종');
+    const skipped = all.filter(x => x.status === '단종');
+
+    const summary = {
+      catalog_total: all.length,
+      target_count: target.length,
+      skipped_discontinued: skipped.length,
+      barcode_present: target.filter(x => x.barcode).length,
+      barcode_missing: target.filter(x => !x.barcode).length,
+      status_breakdown: {},
+      country_fill: {},
+      missing_count_distribution: { '0_all_filled': 0, '1-2': 0, '3-4': 0, '5-6': 0, '7_all_missing': 0 },
+      barcode_missing_samples: [],
+      discontinued: {}
+    };
+
+    for (const t of target) {
+      const s = t.status || '(미설정)';
+      summary.status_breakdown[s] = (summary.status_breakdown[s] || 0) + 1;
+    }
+    for (const { code } of COUNTRIES) {
+      const filled = target.filter(x => x.prices[code] != null).length;
+      summary.country_fill[code] = {
+        filled,
+        missing: target.length - filled,
+        fill_rate_pct: target.length ? Math.round(filled / target.length * 1000) / 10 : 0
+      };
+    }
+    for (const t of target) {
+      const m = t.missing.length;
+      if (m === 0) summary.missing_count_distribution['0_all_filled']++;
+      else if (m <= 2) summary.missing_count_distribution['1-2']++;
+      else if (m <= 4) summary.missing_count_distribution['3-4']++;
+      else if (m <= 6) summary.missing_count_distribution['5-6']++;
+      else summary.missing_count_distribution['7_all_missing']++;
+    }
+    summary.barcode_missing_samples = target
+      .filter(x => !x.barcode)
+      .slice(0, 20)
+      .map(x => ({ name: x.name, status: x.status, category: x.category }));
+    summary.discontinued = {
+      count: skipped.length,
+      samples: skipped.slice(0, 10).map(x => ({ name: x.name, category: x.category }))
+    };
+
+    res.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      countries: COUNTRIES.map(c => c.code),
+      summary
+    });
+  } catch (e) {
+    console.error('[pricing-audit/scan]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/consumer-pricing/hs-reference', (req, res) => {
   res.json({ items: HS_REFERENCE_DB });
 });
