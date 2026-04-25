@@ -38,6 +38,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sidebar-item:hover{background:var(--bg);}
 .sidebar-item.active{background:rgba(96,165,250,0.15);color:var(--primary);}
 [data-theme="light"] .sidebar-item.active{background:var(--primary-light);color:var(--primary);font-weight:600;}
+.sidebar-item.soon{opacity:0.42;cursor:not-allowed;font-style:normal;color:var(--text-muted);}
+.sidebar-item.soon:hover{background:rgba(148,163,184,0.08);opacity:0.6;}
+.sidebar-group-soon{margin-top:24px;padding-top:14px;border-top:1px dashed var(--border);}
+.sidebar-badge{margin-left:auto;background:#dc2626;color:#fff;font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px;line-height:1.4;min-width:18px;text-align:center;}
 .main{flex:1;min-width:0;}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:80;}
 
@@ -585,8 +589,17 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 기획</button>
     </div>
     <div class="sidebar-group">
-      <div class="sidebar-group-title">수출</div>
+      <div class="sidebar-group-title">수출 · 카탈로그</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">🌏 수출 견적</button>
+      <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">📋 카탈로그</button>
+      <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">🤖 AI 검수 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
+    </div>
+    <div class="sidebar-group sidebar-group-soon">
+      <div class="sidebar-group-title">Phase 3 (예정)</div>
+      <button class="sidebar-item soon" onclick="comingSoon('데이터 건강도')" title="통합DB 누락·이상치·공백률 대시보드">📊 데이터 건강도</button>
+      <button class="sidebar-item soon" onclick="comingSoon('거래처 DB 관리')" title="Notion 거래처 DB CRUD UI">🏢 거래처 DB 관리</button>
+      <button class="sidebar-item soon" onclick="comingSoon('결재 룰 SOP')" title="🟢🟡🔴 사업화팀 결재 룰 + 점검센터 알림">✅ 결재 룰</button>
+      <button class="sidebar-item soon" onclick="comingSoon('MyDesk 양방향')" title="MyDesk → goods 자동 push 파이프라인">🔄 MyDesk 양방향</button>
     </div>
   </aside>
   <main class="main">
@@ -595,29 +608,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <label>USD</label><input type="text" id="fx-usd" value="1,380" oninput="onFxChange()"><label>원</label>
   <label style="margin-left:8px;">RMB</label><input type="text" id="fx-rmb" value="190" oninput="onFxChange()"><label>원</label>
   <span class="fx-hint" id="fx-hint">환율 로딩 중...</span>
-</div>
-
-<!-- 🤖 AI 검수 모달 -->
-<div class="ai-modal-bg" id="aiModal">
-  <div class="ai-modal">
-    <div class="ai-modal-head">
-      <h2>🤖 Drive 인박스 자동 파싱 — 검수</h2>
-      <button class="close" onclick="closeParsedModal()">✕</button>
-    </div>
-    <div class="ai-modal-tabs">
-      <button class="active" data-status="pending" onclick="switchParsedTab('pending')">미검수</button>
-      <button data-status="approved" onclick="switchParsedTab('approved')">검수완료</button>
-      <button data-status="rejected" onclick="switchParsedTab('rejected')">반려</button>
-    </div>
-    <div class="ai-modal-actions">
-      <button class="primary" id="runInboxBtn" onclick="runInboxNow(false)">▶ 지금 인박스 확인</button>
-      <button onclick="runInboxNow(true)">🧪 DRY-RUN</button>
-      <span class="hint">30분마다 자동 실행 · 사업화/디자인팀이 Drive 인박스에 견적서 드롭하면 자동 파싱</span>
-    </div>
-    <div class="ai-modal-body" id="aiModalBody">
-      <div class="ai-empty">불러오는 중...</div>
-    </div>
-  </div>
 </div>
 
 <!-- 탭1: 제품→단가 -->
@@ -741,16 +731,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="cp-section" id="cp-list-section">
     <h3>📚 저장된 프로젝트
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
-      <button class="cp-btn cp-btn-primary" style="font-size:12px;margin-left:8px;" onclick="cpExportBuyerExcel()" title="제품 카탈로그 전체를 바이어 공유용 엑셀 포맷으로 다운로드">📥 바이어 공유 엑셀</button>
-      <div style="position:relative;display:inline-block;margin-left:6px;">
-        <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpToggleAdminMenu(event)" title="관리 도구 (자주 쓰지 않는 일괄 작업)">⚙️ 관리 <span style="font-size:10px;">▾</span></button>
-        <div id="cp-admin-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);min-width:260px;z-index:200;padding:6px;">
-          <div class="cp-admin-item" onclick="cpAdminRun('cpAssignCategories')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'" title="카탈로그 전체 제품의 Category 필드를 HS Code/Product Name 기반으로 자동 분류">🏷️ 카테고리 일괄 분류</div>
-          <div class="cp-admin-item" onclick="cpAdminRun('cpMigrateFOB')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'" title="FOB_KRW·CIF가 비어있는 제품을 KR Retail × (1-할인율) 공식으로 일괄 채움">🔄 FOB 일괄 채움</div>
-          <div style="height:1px;background:var(--border);margin:4px 0;"></div>
-          <div class="cp-admin-item" onclick="cpAdminRun('cpOpenBulkImport')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'" title="기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip)">📤 엑셀 일괄 Import</div>
-        </div>
-      </div>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="goToCatalogPage()" title="제품 카탈로그·바이어 엑셀·관리 도구는 사이드바 📋 카탈로그 메뉴로 이동했습니다">📋 카탈로그로 이동 →</button>
     </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
@@ -990,6 +971,75 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
   </div>
 </div>
+
+<!-- 탭5: 📋 카탈로그 (바이어 엑셀 + 관리 도구) -->
+<div class="tab-page" id="page-catalog">
+  <div class="cp-section">
+    <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      📋 제품 카탈로그
+      <span style="font-size:11px;color:var(--text-muted);font-weight:400;margin-left:auto;">Notion 카탈로그 DB · 179제품</span>
+    </h3>
+    <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin:6px 0 14px;">
+      🌏 수출 견적에서 <b>승인</b>된 프로젝트가 자동 등록됩니다. 이 화면에서는 카탈로그 전체에 대한 일괄 도구를 사용할 수 있습니다.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:6px;">📥 바이어 공유 엑셀</div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">FOB·CIF 22열 포맷 + 이미지 임베드. 해외 바이어에게 보내는 표준 카탈로그 엑셀.</div>
+        <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()">📥 다운로드</button>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:6px;">📤 엑셀 일괄 Import</div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip).</div>
+        <button class="cp-btn cp-btn-ghost" onclick="cpOpenBulkImport()">📤 엑셀 업로드</button>
+      </div>
+    </div>
+
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;">⚙️ 일괄 보정 도구 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 자주 쓰지 않음</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <button class="cp-btn cp-btn-ghost" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;" onclick="cpAssignCategories()" title="HS Code/Product Name 기반 자동 분류">
+          🏷️ <b>카테고리 일괄 분류</b><br>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">Category 필드를 HS Code/Product Name 기반으로 자동 분류</span>
+        </button>
+        <button class="cp-btn cp-btn-ghost" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;" onclick="cpMigrateFOB()" title="FOB·CIF 일괄 채움">
+          🔄 <b>FOB 일괄 채움</b><br>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">FOB_KRW·CIF_KRW_asia가 비어있는 제품을 KR Retail × (1−할인율) 공식으로 일괄</span>
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:14px 16px;background:var(--card);border:1px dashed var(--border);border-radius:10px;font-size:12px;color:var(--text-muted);line-height:1.6;">
+      💡 <b>향후 추가 예정</b>: 카탈로그 검색·인라인 편집 · 이미지 일괄 업로드 · 카테고리별 그룹 보기 · 누락 필드 점검센터
+    </div>
+  </div>
+</div>
+
+<!-- 탭6: 🤖 AI 검수 (Drive 인박스 자동 파싱) -->
+<div class="tab-page" id="page-ai-review">
+  <div class="cp-section" style="padding:0;overflow:hidden;border:1px solid var(--border);border-radius:14px;">
+    <div style="background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h2 style="margin:0;font-size:17px;font-weight:600;">🤖 Drive 인박스 자동 파싱 — 검수</h2>
+        <div style="font-size:11px;opacity:0.9;margin-top:4px;">30분마다 자동 실행 · 사업화/디자인팀이 Drive 인박스에 견적서 드롭하면 자동 파싱 → 사람 검수 후 통합DB 반영</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="cp-btn cp-btn-ghost" id="runInboxBtn" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4);" onclick="runInboxNow(false)">▶ 지금 인박스 확인</button>
+        <button class="cp-btn cp-btn-ghost" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.3);" onclick="runInboxNow(true)">🧪 DRY-RUN</button>
+      </div>
+    </div>
+    <div class="ai-modal-tabs" style="background:var(--card);">
+      <button class="active" data-status="pending" onclick="switchParsedTab('pending')">미검수</button>
+      <button data-status="approved" onclick="switchParsedTab('approved')">검수완료</button>
+      <button data-status="rejected" onclick="switchParsedTab('rejected')">반려</button>
+    </div>
+    <div class="ai-modal-body" id="aiModalBody" style="max-height:none;">
+      <div class="ai-empty">불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
   </main>
 </div>
 
@@ -1259,13 +1309,22 @@ function switchPage(item){
   document.querySelectorAll('.sidebar-item').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.tab-page').forEach(x=>x.classList.remove('active'));
   item.classList.add('active');
-  document.getElementById('page-'+item.dataset.page).classList.add('active');
+  const page = document.getElementById('page-'+item.dataset.page);
+  if(page) page.classList.add('active');
   if(window.innerWidth<=768){
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebarOverlay').classList.remove('show');
   }
   // consumer 첫 진입 초기화
   if(item.dataset.page==='consumer' && !window._cpInited){window._cpInited=true; if(typeof cpInit==='function') cpInit();}
+  // ai-review 진입 시 미검수 목록 자동 로드
+  if(item.dataset.page==='ai-review'){
+    if(typeof switchParsedTab==='function'){
+      // 활성 탭 마커를 미검수로 리셋
+      document.querySelectorAll('#page-ai-review .ai-modal-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.status==='pending'));
+      switchParsedTab('pending');
+    }
+  }
 }
 function toggleSidebar(){
   document.getElementById('sidebar').classList.toggle('open');
@@ -1278,6 +1337,18 @@ function goToVendorTab(){
   const target=document.querySelector('.sidebar-item[data-page="vendor"]');
   if(target) switchPage(target);
   if(p)searchVendorCompare();
+}
+function goToCatalogPage(){
+  const target=document.querySelector('.sidebar-item[data-page="catalog"]');
+  if(target) switchPage(target);
+}
+function goToAiReviewPage(){
+  const target=document.querySelector('.sidebar-item[data-page="ai-review"]');
+  if(target) switchPage(target);
+}
+function comingSoon(label){
+  if(typeof showToast==='function') showToast('🚧 '+label+' — Phase 3에서 작업 예정', 'info');
+  else alert('🚧 '+label+' — Phase 3에서 작업 예정');
 }
 
 // ━━━ 복수선택 비교 ━━━
@@ -3991,27 +4062,33 @@ async function loadParsedSummary(){
   try{
     const btn = document.getElementById('aiReviewBtn');
     const badge = document.getElementById('aiReviewBadge');
-    if(!btn || !badge) return;
+    const sideBadge = document.getElementById('aiReviewSidebarBadge');
     const r = await fetch('/api/parsed-quotes/summary');
-    if(!r.ok){ btn.classList.add('idle'); badge.textContent = '0'; return; }
+    if(!r.ok){
+      if(btn){btn.classList.add('idle');}
+      if(badge) badge.textContent = '0';
+      if(sideBadge){ sideBadge.style.display='none'; sideBadge.textContent='0'; }
+      return;
+    }
     const j = await r.json();
     const n = Number(j.pending) || 0;
-    badge.textContent = n;
-    btn.classList.toggle('idle', n === 0);
-    btn.title = n === 0
-      ? 'Drive 인박스 자동 파싱 결과 검수 (대기 0건 — 클릭해서 즉시 실행 가능)'
-      : '검수 대기 ' + n + '건';
+    if(badge) badge.textContent = n;
+    if(btn){
+      btn.classList.toggle('idle', n === 0);
+      btn.title = n === 0
+        ? 'Drive 인박스 자동 파싱 결과 검수 (대기 0건 — 클릭해서 즉시 실행 가능)'
+        : '검수 대기 ' + n + '건';
+    }
+    if(sideBadge){
+      sideBadge.textContent = n;
+      sideBadge.style.display = n > 0 ? 'inline-block' : 'none';
+    }
   }catch(e){ /* 무시 */ }
 }
 
-function openParsedModal(){
-  document.getElementById('aiModal').classList.add('show');
-  switchParsedTab('pending');
-}
-function closeParsedModal(){
-  document.getElementById('aiModal').classList.remove('show');
-  loadParsedSummary();
-}
+// 풀페이지 진입으로 변경 (구 모달 호환용 함수명 유지)
+function openParsedModal(){ goToAiReviewPage(); }
+function closeParsedModal(){ /* 페이지 전환식이라 닫기 동작 없음 */ loadParsedSummary(); }
 function switchParsedTab(status){
   document.querySelectorAll('.ai-modal-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.status===status));
   loadParsedList(status);
@@ -4164,7 +4241,7 @@ async function runInboxNow(dryRun){
 loadParsedSummary();
 setInterval(loadParsedSummary, 60 * 1000);
 </script>
-</body>
+
 <!-- 견적서 업로드 모달 -->
 <div id="cp-quote-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--card);border-radius:12px;padding:24px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;">
@@ -4200,4 +4277,5 @@ setInterval(loadParsedSummary, 60 * 1000);
   </div>
 </div>
 
+</body>
 </html>

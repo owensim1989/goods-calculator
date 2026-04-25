@@ -1344,6 +1344,399 @@ app.get('/api/admin/pricing-audit/scan', async (req, res) => {
   }
 });
 
+// ━━━ 가격 일괄 점검 Phase 2 (AI 산정 + 엑셀 생성) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 사용 패턴:
+//   1) GET /api/admin/pricing-audit/run        → 즉시 jobId 응답, 백그라운드에서 처리
+//   2) GET /api/admin/pricing-audit/status/:jobId → 완료 여부 polling
+//   3) GET /api/admin/pricing-audit/download/:filename → 엑셀 다운로드
+// ※ 산정 공식: localPrice = (krwPrice + shippingKRW) × (1+관세) × (1+VAT) ÷ 환율
+// ※ AI: claude-haiku-4-5, 제품당 1회로 7개국 동시 추정 (토큰 절약)
+// ※ 결과: 5시트 엑셀, /data/audits/ 에 저장 (Railway Persistent Volume)
+// ※ 완료 후 결과는 멱등 — 재실행 시 새 timestamp로 별도 파일
+
+const PRICING_AUDIT_DIR = path.join(
+  process.env.NODE_ENV === 'production' ? '/data' : path.join(__dirname, 'data'),
+  'audits'
+);
+try { fs.mkdirSync(PRICING_AUDIT_DIR, { recursive: true }); } catch(_) {}
+
+// 진행 중 작업 추적 (메모리)
+const _pricingAuditJobs = {};
+
+async function _runPricingAudit(jobId, filepath) {
+  const job = _pricingAuditJobs[jobId];
+  job.status = 'running';
+  job.progress = 0;
+  job.total = 0;
+  try {
+    // 1) 카탈로그 fetch
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const _gNum = (pr, k) => pr[k] && pr[k].number != null ? pr[k].number : null;
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+    const _gSel = (pr, k) => pr[k] && pr[k].select ? pr[k].select.name : null;
+
+    const COUNTRIES = [
+      { code: 'KR', field: 'Retail_KR_KRW', currency: 'KRW', tariff: 0,    vat: 10, ship: 0,    fx: 1,                 round: 100 },
+      { code: 'TW', field: 'Retail_TW_TWD', currency: 'TWD', tariff: 3,    vat: 5,  ship: 3000, fx: fxCache.TWD || 43, round: 10 },
+      { code: 'HK', field: 'Retail_HK_HKD', currency: 'HKD', tariff: 0,    vat: 0,  ship: 3000, fx: fxCache.HKD || 177, round: 1 },
+      { code: 'CN', field: 'Retail_CN_CNY', currency: 'CNY', tariff: 10,   vat: 13, ship: 3500, fx: fxCache.CNY || 190, round: 1 },
+      { code: 'TH', field: 'Retail_TH_THB', currency: 'THB', tariff: 20,   vat: 7,  ship: 4000, fx: fxCache.THB || 40, round: 10 },
+      { code: 'US', field: 'Retail_US_USD', currency: 'USD', tariff: 5,    vat: 0,  ship: 5000, fx: fxCache.USD || 1380, round: 0.5 },
+      { code: 'JP', field: 'Retail_JP_JPY', currency: 'JPY', tariff: 3,    vat: 10, ship: 3500, fx: fxCache.JPY || 9.2, round: 10 }
+    ];
+
+    // 2) 처리 대상 추출
+    const products = [];
+    for (const p of allPages) {
+      const pr = p.properties || {};
+      const status = _gSel(pr, '판매상태');
+      if (status === '단종') continue;
+      const name = _gText(pr, 'Product Name');
+      if (!name || !name.trim()) continue;
+      const item = {
+        id: p.id,
+        name: name.trim(),
+        barcode: (_gText(pr, 'Barcode') || '').trim(),
+        category: _gSel(pr, 'Category') || '(미분류)',
+        size: _gText(pr, 'Size_mm'),
+        material: _gText(pr, 'Material'),
+        packaging: _gText(pr, 'Packaging'),
+        origin: _gSel(pr, '원산지'),
+        status,
+        krwPrice: _gNum(pr, 'Retail_KR_KRW'),
+        current: {}
+      };
+      for (const c of COUNTRIES) item.current[c.code] = _gNum(pr, c.field);
+      products.push(item);
+    }
+    job.total = products.length;
+    console.log(`[audit ${jobId}] processing ${products.length} products`);
+
+    // 3) 헬퍼
+    const calcMinSafe = (c, krw) => {
+      if (c.code === 'KR') return krw;
+      const totalKRW = (krw + c.ship) * (1 + c.tariff/100) * (1 + c.vat/100);
+      return totalKRW / c.fx;
+    };
+    const roundLocal = (round, value) => Math.round(value / round) * round;
+    const classify = (cur, ms, ai) => {
+      if (cur == null) return 'EMPTY';
+      if (ms != null && cur < ms) return 'LOSS';
+      if (ai != null && cur < ai * 0.85) return 'UNDER';
+      if (ai != null && cur > ai * 1.15) return 'OVER';
+      return 'OK';
+    };
+    const recommend = (c, krw, ms, ai) => {
+      if (krw == null || ms == null) return null;
+      const target = ai != null ? Math.max(ms, ai) : ms;
+      return roundLocal(c.round, target);
+    };
+
+    // 4) 각 제품 처리
+    const aiFails = [];
+    const krMissing = [];
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      job.progress = i;
+
+      if (p.krwPrice == null) {
+        krMissing.push(p);
+        p.aiPrices = null;
+        p.minSafe = {}; p.classified = {}; p.recommended = {};
+        for (const c of COUNTRIES) {
+          p.minSafe[c.code] = null;
+          p.classified[c.code] = p.current[c.code] == null ? 'EMPTY' : 'OK';
+          p.recommended[c.code] = null;
+        }
+        continue;
+      }
+
+      // 수익률 최저가
+      p.minSafe = {};
+      for (const c of COUNTRIES) p.minSafe[c.code] = calcMinSafe(c, p.krwPrice);
+
+      // AI 호출
+      try {
+        const prompt = `Mr.Donothing is a Korean character IP brand selling licensed character goods (figures, plush, keyrings, apparel, stationery, home & living, prints) globally. Reference brands: Line Friends, Kakao Friends, Sanrio, Pop Mart, MINISO.
+
+Product:
+- Name: ${p.name}
+- Category: ${p.category}
+- Korea retail (anchor): ${p.krwPrice} KRW
+- Size: ${p.size || 'n/a'}
+- Material: ${p.material || 'n/a'}
+- Origin: ${p.origin || 'n/a'}
+
+Estimate typical local consumer retail price in 7 markets for this product, considering local character-goods pricing norms and purchasing power.
+
+Output strict JSON only, exact keys (local currency, integer or decimal):
+{"KR": 12000, "TW": 280, "HK": 78, "CN": 70, "TH": 320, "US": 8.5, "JP": 1100}
+
+Rounding hint: KR multiples of 100; JP/TH/TW multiples of 10; HK/CN integer; US 0.5 step.`;
+
+        const resp = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 400 });
+        const ai = extractJSON(resp);
+        if (!ai || typeof ai !== 'object') throw new Error('JSON parse fail');
+        p.aiPrices = ai;
+      } catch (e) {
+        aiFails.push({ name: p.name, error: e.message });
+        p.aiPrices = null;
+      }
+
+      // 분류 + 추천
+      p.classified = {};
+      p.recommended = {};
+      for (const c of COUNTRIES) {
+        const cur = p.current[c.code];
+        const ms = p.minSafe[c.code];
+        const ai = p.aiPrices ? p.aiPrices[c.code] : null;
+        p.classified[c.code] = classify(cur, ms, ai);
+        p.recommended[c.code] = recommend(c, p.krwPrice, ms, ai);
+      }
+
+      if (i < products.length - 1) await new Promise(r => setTimeout(r, 150));
+      if ((i+1) % 20 === 0) console.log(`[audit ${jobId}] ${i+1}/${products.length}`);
+    }
+
+    // 5) 엑셀 생성
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Mr.Donothing pricing audit';
+
+    const countByStatus = (status, label) => {
+      const row = { k: label };
+      for (const c of COUNTRIES) {
+        row[c.code] = products.filter(p => p.classified[c.code] === status).length;
+      }
+      return row;
+    };
+
+    // 시트 1: Summary
+    const s1 = wb.addWorksheet('1. Summary');
+    s1.columns = [
+      { header: '구분', key: 'k', width: 36 },
+      ...COUNTRIES.map(c => ({ header: c.code, key: c.code, width: 10 }))
+    ];
+    s1.getRow(1).font = { bold: true };
+    s1.addRow(countByStatus('LOSS', '🔴 LOSS (현재가 < 수익률최저가)'));
+    s1.addRow(countByStatus('UNDER', '🟡 UNDER (시세 대비 저평가)'));
+    s1.addRow(countByStatus('OK', '🟢 OK (적정 구간)'));
+    s1.addRow(countByStatus('OVER', '🟠 OVER (시세 대비 고평가)'));
+    s1.addRow(countByStatus('EMPTY', '⬜ EMPTY (빈칸)'));
+    s1.addRow({});
+    const meta = [
+      ['카탈로그 총수', allPages.length],
+      ['점검 대상 (단종/이름빈칸 제외)', products.length],
+      ['KR 가격 누락 (AI 추정 불가)', krMissing.length],
+      ['AI 호출 실패', aiFails.length],
+      ['환율 갱신 시각', fxCache.updatedAt || '(기본값 사용)']
+    ];
+    for (const [k, v] of meta) {
+      const r = s1.addRow({ k }); r.getCell(2).value = v;
+    }
+    s1.addRow({});
+    const fxRow = s1.addRow({ k: '환율 (KRW per 1 unit)' });
+    for (let i = 0; i < COUNTRIES.length; i++) fxRow.getCell(i+2).value = COUNTRIES[i].fx;
+
+    // 시트 2: 🔴 손실 위험
+    const s2 = wb.addWorksheet('2. 🔴 손실 위험');
+    s2.columns = [
+      { header: 'no', key: 'n', width: 5 },
+      { header: '카테고리', key: 'cat', width: 14 },
+      { header: '제품명', key: 'name', width: 36 },
+      { header: 'barcode', key: 'b', width: 14 },
+      { header: '국가', key: 'cc', width: 6 },
+      { header: '현재가', key: 'cur', width: 12 },
+      { header: '수익률최저가', key: 'ms', width: 14 },
+      { header: '손실폭', key: 'loss', width: 12 },
+      { header: 'AI추천가', key: 'ai', width: 12 },
+      { header: '추천 신규가', key: 'rec', width: 14 }
+    ];
+    s2.getRow(1).font = { bold: true };
+    let n2 = 0;
+    for (const p of products) {
+      for (const c of COUNTRIES) {
+        if (p.classified[c.code] === 'LOSS') {
+          n2++;
+          const cur = p.current[c.code];
+          const ms = p.minSafe[c.code];
+          s2.addRow({
+            n: n2, cat: p.category, name: p.name, b: p.barcode, cc: c.code,
+            cur, ms: Math.round(ms*100)/100,
+            loss: Math.round((cur - ms)*100)/100,
+            ai: p.aiPrices ? p.aiPrices[c.code] : null,
+            rec: p.recommended[c.code]
+          });
+        }
+      }
+    }
+
+    // 시트 3: 빈칸 추천
+    const s3 = wb.addWorksheet('3. 빈칸 추천');
+    s3.columns = [
+      { header: 'no', key: 'n', width: 5 },
+      { header: '카테고리', key: 'cat', width: 14 },
+      { header: '제품명', key: 'name', width: 36 },
+      { header: 'barcode', key: 'b', width: 14 },
+      { header: '국가', key: 'cc', width: 6 },
+      { header: 'KR기준가', key: 'kr', width: 12 },
+      { header: '수익률최저가', key: 'ms', width: 14 },
+      { header: 'AI추천가', key: 'ai', width: 12 },
+      { header: '추천 신규가', key: 'rec', width: 14 }
+    ];
+    s3.getRow(1).font = { bold: true };
+    let n3 = 0;
+    for (const p of products) {
+      for (const c of COUNTRIES) {
+        if (p.classified[c.code] === 'EMPTY' && p.recommended[c.code] != null) {
+          n3++;
+          s3.addRow({
+            n: n3, cat: p.category, name: p.name, b: p.barcode, cc: c.code,
+            kr: p.krwPrice,
+            ms: p.minSafe[c.code] != null ? Math.round(p.minSafe[c.code]*100)/100 : null,
+            ai: p.aiPrices ? p.aiPrices[c.code] : null,
+            rec: p.recommended[c.code]
+          });
+        }
+      }
+    }
+
+    // 시트 4: 전체 점검표
+    const s4 = wb.addWorksheet('4. 전체 점검표');
+    const s4cols = [
+      { header: 'no', key: 'n', width: 5 },
+      { header: '카테고리', key: 'cat', width: 14 },
+      { header: '제품명', key: 'name', width: 36 },
+      { header: 'barcode', key: 'b', width: 14 },
+      { header: '판매상태', key: 's', width: 10 }
+    ];
+    for (const c of COUNTRIES) {
+      s4cols.push({ header: `${c.code} 현재`, key: `${c.code}_cur`, width: 10 });
+      s4cols.push({ header: `${c.code} 추천`, key: `${c.code}_rec`, width: 10 });
+      s4cols.push({ header: `${c.code} 상태`, key: `${c.code}_st`, width: 7 });
+    }
+    s4.columns = s4cols;
+    s4.getRow(1).font = { bold: true };
+    const STATUS_ICON = { LOSS: '🔴', UNDER: '🟡', OK: '🟢', OVER: '🟠', EMPTY: '⬜' };
+    let n4 = 0;
+    for (const p of products) {
+      n4++;
+      const row = { n: n4, cat: p.category, name: p.name, b: p.barcode, s: p.status };
+      for (const c of COUNTRIES) {
+        row[`${c.code}_cur`] = p.current[c.code];
+        row[`${c.code}_rec`] = p.recommended[c.code];
+        row[`${c.code}_st`] = STATUS_ICON[p.classified[c.code]] || '';
+      }
+      s4.addRow(row);
+    }
+
+    // 시트 5: 구조 이슈
+    const s5 = wb.addWorksheet('5. 구조 이슈');
+    s5.columns = [
+      { header: '항목', key: 'k', width: 36 },
+      { header: '상세', key: 'v', width: 100 }
+    ];
+    s5.getRow(1).font = { bold: true };
+    s5.addRow({ k: 'mdn-pos prices에 SGD 키 있음', v: '카탈로그 DB에 Retail_SG_SGD 필드 없음 → 싱가포르 가격 영원히 sync 안 됨. 카탈로그 DB에 필드 추가 OR mdn-pos에서 SGD 키 제거.' });
+    s5.addRow({ k: '바이어 엑셀에 일본(JP) 컬럼 없음', v: '카탈로그엔 Retail_JP_JPY 있는데 /catalog/export 엑셀에 일본 빠져있음. server.js L1373~1381 헤더 + L1411~ 데이터 배열에 JP 추가 필요.' });
+    s5.addRow({ k: 'KR 가격 누락 제품 (AI 추정 불가)', v: krMissing.map(p => `${p.name} (status=${p.status})`).join('\n') || '(없음)' });
+    s5.addRow({ k: 'AI 호출 실패 제품', v: aiFails.map(f => `${f.name}: ${f.error}`).join('\n') || '(없음)' });
+    s5.addRow({ k: 'mdn-inventory ↔ 카탈로그 매칭', v: 'catalog_id 필드가 mdn-inventory.products에 없음. barcode 매칭으로 우회 (Phase 1에서 99.4% 매칭 가능 확인됨).' });
+    s5.addRow({ k: 'POS 관리자에서 가격·제품 직접 수정 가능', v: '카탈로그 마스터 룰 파괴 위험. Task #6에서 sync-from-catalog cleanup + UI 잠금 처리 예정.' });
+
+    // 6) 파일 저장
+    await wb.xlsx.writeFile(filepath);
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    job.summary = {
+      total: products.length,
+      ai_fails: aiFails.length,
+      kr_missing: krMissing.length,
+      filepath
+    };
+    console.log(`[audit ${jobId}] complete → ${filepath}`);
+  } catch (e) {
+    console.error(`[audit ${jobId}] FAILED`, e);
+    job.status = 'failed';
+    job.error = e.message;
+    job.stack = e.stack;
+  }
+}
+
+app.get('/api/admin/pricing-audit/run', async (req, res) => {
+  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  if (!ExcelJS) return res.status(503).json({ error: 'exceljs 미설치' });
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+
+  // 동시 실행 1개 제한
+  const running = Object.values(_pricingAuditJobs).find(j => j.status === 'running');
+  if (running) {
+    return res.json({ ok: false, message: 'already running', jobId: running.jobId, progress: running.progress, total: running.total });
+  }
+
+  const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  const jobId = `pricing-audit-${ts}`;
+  const filename = `${jobId}.xlsx`;
+  const filepath = path.join(PRICING_AUDIT_DIR, filename);
+  _pricingAuditJobs[jobId] = { jobId, status: 'queued', startedAt: new Date().toISOString() };
+
+  res.json({
+    ok: true,
+    jobId,
+    status: 'started',
+    estimated_minutes: 5,
+    status_url: `/api/admin/pricing-audit/status/${jobId}`,
+    download_url_when_done: `/api/admin/pricing-audit/download/${filename}`,
+    note: '약 3~5분 소요. status_url로 폴링하거나, 5분 후 download_url 직접 시도.'
+  });
+
+  setImmediate(() => _runPricingAudit(jobId, filepath));
+});
+
+app.get('/api/admin/pricing-audit/status/:jobId', (req, res) => {
+  const job = _pricingAuditJobs[req.params.jobId];
+  if (!job) return res.status(404).json({ error: 'job not found' });
+  res.json(job);
+});
+
+app.get('/api/admin/pricing-audit/download/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  if (!filename.startsWith('pricing-audit-') || !filename.endsWith('.xlsx')) {
+    return res.status(403).json({ error: 'invalid filename' });
+  }
+  const fp = path.join(PRICING_AUDIT_DIR, filename);
+  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'file not found yet (still processing?)' });
+  res.download(fp);
+});
+
+app.get('/api/admin/pricing-audit/files', (req, res) => {
+  try {
+    const files = fs.readdirSync(PRICING_AUDIT_DIR)
+      .filter(f => f.startsWith('pricing-audit-') && f.endsWith('.xlsx'))
+      .map(f => {
+        const st = fs.statSync(path.join(PRICING_AUDIT_DIR, f));
+        return { filename: f, size: st.size, mtime: st.mtime };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    res.json({ ok: true, files, dir: PRICING_AUDIT_DIR });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/consumer-pricing/hs-reference', (req, res) => {
   res.json({ items: HS_REFERENCE_DB });
 });
