@@ -1998,6 +1998,79 @@ function genSugCombos(budget){
     return`<div class="sug-combo-card" onclick='applySugCombo(${JSON.stringify(co.items).replace(/'/g,"\\'")})'><div class="sug-combo-items">${co.label}<br>${itemsWithQty.map(i=>`<strong>${i.name}</strong> ~${fmt(i.qty)}개`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(totalCost)}</div></div>`;
   }).join('');
 }
+
+// === v2.1 helpers (2026-04-25) ===
+function _parseNum(v) { return parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0; }
+function _fmtNum(n) { return Number(n).toLocaleString('ko-KR'); }
+
+function setRecQtyText(name, el) {
+  const cursor = el.selectionStart;
+  const oldLen = el.value.length;
+  const n = _parseNum(el.value);
+  el.value = n ? _fmtNum(n) : '';
+  const diff = el.value.length - oldLen;
+  try { el.setSelectionRange(cursor + diff, cursor + diff); } catch(e){}
+  recQtyState[name] = n;
+  renderBudgetCards();
+}
+
+function onQtyManualChangeText(name, el) {
+  const cursor = el.selectionStart;
+  const oldLen = el.value.length;
+  const n = Math.max(1, _parseNum(el.value));
+  el.value = _fmtNum(n);
+  const diff = el.value.length - oldLen;
+  try { el.setSelectionRange(cursor + diff, cursor + diff); } catch(e){}
+  const c = comboItems.find(x => x.name === name);
+  if (!c) return;
+  c.manualQty = n;
+  if (typeof priceMatchByQty === 'function') {
+    const m = priceMatchByQty(name, n);
+    if (m) {
+      c.unitPrice = Math.round(m.recommendedPrice);
+      c.matchedFrom = m.src === 'in20' ? 'avg20'
+                    : m.src === 'in50' ? 'avg50'
+                    : m.src === 'close' ? ('near ' + _fmtNum(m.closest.qty))
+                    : 'OUT';
+    }
+  }
+  renderCombo();
+}
+
+function toggleSugCombos() {
+  const h = document.querySelector('.sug-combos-header');
+  const b = document.getElementById('sug-combos-body');
+  if (h && b) { h.classList.toggle('open'); b.classList.toggle('open'); }
+}
+
+function fitComboToBudget() {
+  const budget = getBudget();
+  if (!budget || !comboItems.length) return;
+  const totalQuote = comboItems.reduce((s, c) => {
+    const qty = c.manualQty || c.qty;
+    return s + Math.round(c.unitPrice * qty / (1 - c.margin/100));
+  }, 0);
+  if (totalQuote <= budget) { showToast('budget OK'); return; }
+  const ratio = budget / totalQuote;
+  comboItems.forEach(c => {
+    const qty = c.manualQty || c.qty;
+    const newQty = Math.max(1, Math.floor(qty * ratio));
+    c.manualQty = newQty;
+    if (typeof priceMatchByQty === 'function') {
+      const m = priceMatchByQty(c.name, newQty);
+      if (m) {
+        c.unitPrice = Math.round(m.recommendedPrice);
+        c.matchedFrom = m.src === 'in20' ? 'avg20'
+                      : m.src === 'in50' ? 'avg50'
+                      : m.src === 'close' ? ('near ' + _fmtNum(m.closest.qty))
+                      : 'OUT';
+      }
+    }
+  });
+  renderCombo();
+  showToast('Auto-adjusted to budget');
+}
+
 function applySugCombo(items){comboItems=items.map(c=>({name:c.name,unitPrice:c.price,margin:30}));recalcComboQty();renderCombo();}
 
 // 추천조합 자동 접기 — searchBudget 후 호출됨
