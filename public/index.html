@@ -1854,8 +1854,14 @@ function renderCombo(){
   const rem=document.getElementById('combo-remaining');
   if(budget>0){
     const r=budget-totalQuote;
-    rem.innerHTML=r>=0?`예산 잔여: <span class="positive">${fmtP(r)}</span>`:`예산 초과: <span class="negative">${fmtP(Math.abs(r))}</span>`;
-  }else{rem.innerHTML='';}
+    if(r>=0){
+      rem.classList.remove('over');
+      rem.innerHTML=`예산 잔여: <span class="positive">${fmtP(r)}</span>`;
+    } else {
+      rem.classList.add('over');
+      rem.innerHTML=`예산 초과: <span class="negative">${fmtP(Math.abs(r))}</span> <button class="combo-fit-btn" onclick="fitComboToBudget()">⚖️ 예산 맞추기</button>`;
+    }
+  }else{rem.innerHTML='';rem.classList.remove('over');}
 
   // 마진 요약
   const ms=document.getElementById('margin-summary'),mr=document.getElementById('margin-rows');
@@ -1993,6 +1999,19 @@ function genSugCombos(budget){
   }).join('');
 }
 function applySugCombo(items){comboItems=items.map(c=>({name:c.name,unitPrice:c.price,margin:30}));recalcComboQty();renderCombo();}
+
+// 추천조합 자동 접기 — searchBudget 후 호출됨
+const _origGenSug = typeof genSugCombos === 'function' ? genSugCombos : null;
+if (_origGenSug) {
+  window.genSugCombos = function(budget) {
+    _origGenSug(budget);
+    setTimeout(() => {
+      const h = document.querySelector('.sug-combos-header');
+      const b = document.getElementById('sug-combos-body');
+      if (h && b) { h.classList.remove('open'); b.classList.remove('open'); }
+    }, 50);
+  };
+}
 
 // ━━━ 거래처 비교 ━━━
 function searchVendorCompare(){
