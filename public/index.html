@@ -17,6 +17,52 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .demo-badge{background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;}
 .header .sync-btn,.header .theme-btn{background:rgba(255,255,255,0.15);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;}
 .header .sync-btn:hover,.header .theme-btn:hover{background:rgba(255,255,255,0.3);}
+.header .ai-review-btn{background:#dc2626;border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;animation:aiPulse 2.5s ease-in-out infinite;}
+.header .ai-review-btn:hover{background:#b91c1c;}
+.header .ai-review-btn span{background:rgba(255,255,255,0.3);padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;}
+@keyframes aiPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0.5);}50%{box-shadow:0 0 0 6px rgba(220,38,38,0);}}
+
+/* AI 검수 모달 */
+.ai-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;}
+.ai-modal-bg.show{display:flex;}
+.ai-modal{background:var(--card);color:var(--text);border-radius:14px;max-width:980px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,0.4);overflow:hidden;}
+.ai-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;}
+.ai-modal-head h2{margin:0;font-size:17px;font-weight:600;}
+.ai-modal-head .close{background:rgba(255,255,255,0.2);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;}
+.ai-modal-tabs{display:flex;gap:0;background:var(--card-2,#f8f9fa);border-bottom:1px solid var(--border);padding:0 24px;}
+.ai-modal-tabs button{background:none;border:none;padding:12px 18px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;}
+.ai-modal-tabs button.active{color:var(--primary);border-bottom-color:var(--primary);}
+.ai-modal-actions{padding:14px 24px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--border);background:var(--card);}
+.ai-modal-actions button{padding:7px 14px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;}
+.ai-modal-actions button:hover{background:var(--card-2,#f5f5f5);}
+.ai-modal-actions .primary{background:var(--primary);color:#fff;border-color:var(--primary);}
+.ai-modal-actions .hint{margin-left:auto;font-size:11px;color:var(--text-muted);}
+.ai-modal-body{padding:18px 24px;max-height:65vh;overflow-y:auto;}
+.ai-card{border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;background:var(--card);}
+.ai-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:12px;flex-wrap:wrap;}
+.ai-card-head .name{font-weight:600;font-size:14px;word-break:break-all;}
+.ai-card-head .meta{font-size:11px;color:var(--text-muted);margin-top:3px;}
+.ai-card-head .meta a{color:var(--primary);text-decoration:none;}
+.ai-card-head .meta a:hover{text-decoration:underline;}
+.ai-card-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
+.ai-card-grid label{display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;}
+.ai-card-grid input,.ai-card-grid select{width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;background:var(--card);color:var(--text);box-sizing:border-box;}
+.ai-card-products{margin:10px 0;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+.ai-card-products table{width:100%;border-collapse:collapse;font-size:12px;}
+.ai-card-products th{background:var(--card-2,#f8f9fa);padding:6px 8px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);}
+.ai-card-products td{padding:6px 8px;border-bottom:1px solid var(--border);}
+.ai-card-products tr:last-child td{border-bottom:none;}
+.ai-card-extras{font-size:11px;color:var(--text-muted);margin:6px 0;}
+.ai-card-extras details{margin-top:4px;}
+.ai-card-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
+.ai-card-actions button{padding:7px 16px;font-size:12px;border-radius:6px;border:none;cursor:pointer;font-weight:500;}
+.ai-card-actions .approve{background:#10b981;color:#fff;}
+.ai-card-actions .approve:hover{background:#059669;}
+.ai-card-actions .reject{background:#fff;color:#dc2626;border:1px solid #dc2626;}
+.ai-card-actions .reject:hover{background:#fee2e2;}
+.ai-card-actions .reset{background:var(--card-2,#f5f5f5);color:var(--text-muted);}
+.ai-card.reviewed{opacity:0.7;}
+.ai-empty{text-align:center;padding:60px 20px;color:var(--text-muted);}
 
 .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto;}
 .tab-btn{background:none;border:none;padding:14px 20px;font-size:14px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
@@ -488,6 +534,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <div class="header">
   <h1>제품원가 계산기</h1>
   <div class="header-right">
+    <button class="ai-review-btn" id="aiReviewBtn" onclick="openParsedModal()" title="Drive 인박스 자동 파싱 결과 검수" style="display:none;">🤖 AI 검수 <span id="aiReviewBadge">0</span></button>
     <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
     <button class="sync-btn" onclick="doSync()" id="syncBtn">동기화</button>
   </div>
@@ -504,6 +551,29 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <label>USD</label><input type="text" id="fx-usd" value="1,380" oninput="onFxChange()"><label>원</label>
   <label style="margin-left:8px;">RMB</label><input type="text" id="fx-rmb" value="190" oninput="onFxChange()"><label>원</label>
   <span class="fx-hint" id="fx-hint">환율 로딩 중...</span>
+</div>
+
+<!-- 🤖 AI 검수 모달 -->
+<div class="ai-modal-bg" id="aiModal">
+  <div class="ai-modal">
+    <div class="ai-modal-head">
+      <h2>🤖 Drive 인박스 자동 파싱 — 검수</h2>
+      <button class="close" onclick="closeParsedModal()">✕</button>
+    </div>
+    <div class="ai-modal-tabs">
+      <button class="active" data-status="pending" onclick="switchParsedTab('pending')">미검수</button>
+      <button data-status="approved" onclick="switchParsedTab('approved')">검수완료</button>
+      <button data-status="rejected" onclick="switchParsedTab('rejected')">반려</button>
+    </div>
+    <div class="ai-modal-actions">
+      <button class="primary" id="runInboxBtn" onclick="runInboxNow(false)">▶ 지금 인박스 확인</button>
+      <button onclick="runInboxNow(true)">🧪 DRY-RUN</button>
+      <span class="hint">30분마다 자동 실행 · 사업화/디자인팀이 Drive 인박스에 견적서 드롭하면 자동 파싱</span>
+    </div>
+    <div class="ai-modal-body" id="aiModalBody">
+      <div class="ai-empty">불러오는 중...</div>
+    </div>
+  </div>
 </div>
 
 <!-- 탭1: 제품→단가 -->
@@ -3857,6 +3927,186 @@ document.addEventListener('click',e=>{
   const btn = e.target.closest('.tab-btn[data-tab="consumer"]');
   if(btn && !window._cpInited){window._cpInited=true;cpInit();}
 });
+
+// ━━━ 🤖 AI 검수 (Drive 인박스 자동 파싱) ━━━
+const AI_CATEGORIES = ['피규어 및 인형','의류','문구','홈리빙','프린트/스티커','키링/잡화','모바일악세사리','광고물','시공'];
+const AI_COUNTRIES = ['국내','중국','기타해외'];
+
+async function loadParsedSummary(){
+  try{
+    const r = await fetch('/api/parsed-quotes/summary');
+    if(!r.ok) return;
+    const j = await r.json();
+    const btn = document.getElementById('aiReviewBtn');
+    const badge = document.getElementById('aiReviewBadge');
+    if(j.pending > 0){
+      btn.style.display = 'inline-flex';
+      badge.textContent = j.pending;
+    } else {
+      btn.style.display = 'none';
+    }
+  }catch(e){ /* 무시 */ }
+}
+
+function openParsedModal(){
+  document.getElementById('aiModal').classList.add('show');
+  switchParsedTab('pending');
+}
+function closeParsedModal(){
+  document.getElementById('aiModal').classList.remove('show');
+  loadParsedSummary();
+}
+function switchParsedTab(status){
+  document.querySelectorAll('.ai-modal-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.status===status));
+  loadParsedList(status);
+}
+
+async function loadParsedList(status){
+  const body = document.getElementById('aiModalBody');
+  body.innerHTML = '<div class="ai-empty">불러오는 중...</div>';
+  try{
+    const r = await fetch('/api/parsed-quotes?status=' + encodeURIComponent(status));
+    const j = await r.json();
+    if(!j.items || !j.items.length){
+      body.innerHTML = '<div class="ai-empty">' + (status==='pending'?'미검수 항목 없음 ✅':status==='approved'?'검수완료된 항목이 아직 없습니다':'반려된 항목이 없습니다') + '</div>';
+      return;
+    }
+    body.innerHTML = j.items.map(it => renderParsedCard(it, status)).join('');
+  }catch(e){
+    body.innerHTML = '<div class="ai-empty">로드 실패: ' + e.message + '</div>';
+  }
+}
+
+function renderParsedCard(it, status){
+  const isPending = status === 'pending';
+  const overrides = it.manualOverrides || {};
+  const products = it.products || [];
+  const packagingCnt = (it.packaging||[]).length;
+  const oneTimeCnt = (it.oneTime||[]).length;
+  const file = it.driveFile || {};
+  const submittedBy = file.ownerEmail || file.ownerName || '?';
+  const created = it.createdAt ? new Date(it.createdAt).toLocaleString('ko-KR') : '';
+
+  const productRows = products.map(p =>
+    '<tr><td>'+escapeHtml(p.name||'')+'</td>'+
+    '<td>'+(p.qty||'-')+'</td>'+
+    '<td>'+(p.unitPrice||'-')+'</td>'+
+    '<td>'+(p.currency||it.currency||'')+'</td>'+
+    '<td>'+(p.totalAmount||'-')+'</td>'+
+    '<td>'+escapeHtml([p.material,p.size].filter(Boolean).join(' / ')||'-')+'</td></tr>'
+  ).join('');
+
+  const categoryOptions = AI_CATEGORIES.map(c => '<option value="'+c+'"'+((overrides.품목||'')===c?' selected':'')+'>'+c+'</option>').join('');
+  const countryOptions = AI_COUNTRIES.map(c => '<option value="'+c+'"'+((overrides.국가||it.country||'')===c?' selected':'')+'>'+c+'</option>').join('');
+
+  let actions = '';
+  if(isPending){
+    actions = '<button class="reject" onclick="rejectParsed(\''+it.id+'\')">❌ 반려</button>'+
+              '<button class="approve" onclick="approveParsed(\''+it.id+'\')">✅ 검수완료</button>';
+  } else {
+    actions = '<button class="reset" onclick="resetParsed(\''+it.id+'\')">↩ 미검수로</button>';
+  }
+
+  const reviewedInfo = (status!=='pending' && it.reviewedBy) ?
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">'+(status==='approved'?'✅ 검수':'❌ 반려')+' by '+escapeHtml(it.reviewedBy)+' · '+new Date(it.reviewedAt).toLocaleString('ko-KR')+(it.rejectReason?' · '+escapeHtml(it.rejectReason):'')+'</div>' : '';
+
+  return '<div class="ai-card '+(isPending?'':'reviewed')+'" data-id="'+it.id+'">'+
+    '<div class="ai-card-head">'+
+      '<div>'+
+        '<div class="name">📄 '+escapeHtml(file.name||'(파일명 없음)')+'</div>'+
+        '<div class="meta">제출: '+escapeHtml(submittedBy)+' · '+escapeHtml(created)+
+        (file.webViewLink?' · <a href="'+file.webViewLink+'" target="_blank">Drive에서 열기 ↗</a>':'')+'</div>'+
+        reviewedInfo+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);">통화 '+(it.currency||'?')+' · '+products.length+'제품'+(packagingCnt?'·포장 '+packagingCnt:'')+(oneTimeCnt?'·일회성 '+oneTimeCnt:'')+'</div>'+
+    '</div>'+
+    (isPending ? '<div class="ai-card-grid">'+
+      '<div><label>거래처</label><input id="ov-vendor-'+it.id+'" value="'+escapeAttr(overrides.거래처||it.vendor||'')+'"></div>'+
+      '<div><label>국가</label><select id="ov-country-'+it.id+'"><option value="">— 선택 —</option>'+countryOptions+'</select></div>'+
+      '<div><label>품목</label><select id="ov-category-'+it.id+'"><option value="">— 선택 —</option>'+categoryOptions+'</select></div>'+
+    '</div>' : '') +
+    '<div class="ai-card-products"><table>'+
+      '<thead><tr><th>제품명</th><th>수량</th><th>단가</th><th>통화</th><th>총액</th><th>스펙</th></tr></thead>'+
+      '<tbody>'+(productRows||'<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:14px;">제품 라인 없음</td></tr>')+'</tbody>'+
+    '</table></div>'+
+    ((packagingCnt||oneTimeCnt) ? '<div class="ai-card-extras"><details><summary>📦 포장 '+packagingCnt+'건 / 💰 일회성 '+oneTimeCnt+'건 (참고만, 합집합 제외)</summary><pre style="font-size:11px;background:var(--card-2,#f5f5f5);padding:8px;border-radius:5px;overflow:auto;">'+escapeHtml(JSON.stringify({packaging:it.packaging,oneTime:it.oneTime},null,2))+'</pre></details></div>' : '') +
+    '<div class="ai-card-actions">'+actions+'</div>'+
+  '</div>';
+}
+
+function escapeHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escapeAttr(s){return escapeHtml(s);}
+
+async function approveParsed(id){
+  const overrides = {};
+  const v1 = document.getElementById('ov-vendor-'+id); if(v1 && v1.value) overrides.거래처 = v1.value.trim();
+  const v2 = document.getElementById('ov-country-'+id); if(v2 && v2.value) overrides.국가 = v2.value;
+  const v3 = document.getElementById('ov-category-'+id); if(v3 && v3.value) overrides.품목 = v3.value;
+  const reviewedBy = prompt('검수자 이름을 입력하세요 (예: 심영민)', localStorage.getItem('aiReviewer')||'');
+  if(!reviewedBy) return;
+  localStorage.setItem('aiReviewer', reviewedBy);
+  try{
+    const r = await fetch('/api/parsed-quotes/'+id+'/approve', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({reviewedBy, overrides})
+    });
+    if(!r.ok) throw new Error((await r.json()).error || r.statusText);
+    loadParsedList('pending');
+    loadParsedSummary();
+  }catch(e){ alert('검수완료 실패: '+e.message); }
+}
+
+async function rejectParsed(id){
+  const reason = prompt('반려 사유를 입력하세요 (예: 제품군 불명확 / 견적이 아님)');
+  if(reason === null) return;
+  const reviewedBy = prompt('검수자 이름', localStorage.getItem('aiReviewer')||'');
+  if(!reviewedBy) return;
+  localStorage.setItem('aiReviewer', reviewedBy);
+  try{
+    const r = await fetch('/api/parsed-quotes/'+id+'/reject', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({reviewedBy, reason})
+    });
+    if(!r.ok) throw new Error((await r.json()).error || r.statusText);
+    loadParsedList('pending');
+    loadParsedSummary();
+  }catch(e){ alert('반려 실패: '+e.message); }
+}
+
+async function resetParsed(id){
+  if(!confirm('미검수 상태로 되돌릴까요?')) return;
+  try{
+    const r = await fetch('/api/parsed-quotes/'+id+'/reset', { method:'PATCH' });
+    if(!r.ok) throw new Error((await r.json()).error || r.statusText);
+    const active = document.querySelector('.ai-modal-tabs button.active');
+    loadParsedList(active ? active.dataset.status : 'pending');
+    loadParsedSummary();
+  }catch(e){ alert('리셋 실패: '+e.message); }
+}
+
+async function runInboxNow(dryRun){
+  const btn = document.getElementById('runInboxBtn');
+  btn.disabled = true; btn.textContent = '실행 중...';
+  try{
+    const r = await fetch('/api/admin/inbox/run-now' + (dryRun?'?dry=1':''), { method:'POST' });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || r.statusText);
+    const res = j.result;
+    alert((dryRun?'[DRY-RUN]\n':'')+
+      '스캔: '+res.scanned+'건\n'+
+      '성공: '+res.success+'건\n'+
+      '실패: '+res.failed+'건\n'+
+      '중복스킵: '+res.skipped+'건' +
+      (res.errors && res.errors.length ? '\n\n오류:\n'+res.errors.map(e=>e.file+': '+e.error).join('\n') : ''));
+    loadParsedList('pending');
+    loadParsedSummary();
+  }catch(e){ alert('인박스 실행 실패: '+e.message); }
+  finally{ btn.disabled = false; btn.textContent = '▶ 지금 인박스 확인'; }
+}
+
+// 초기 로드 + 60초마다 폴링
+loadParsedSummary();
+setInterval(loadParsedSummary, 60 * 1000);
 </script>
 </body>
 <!-- 견적서 업로드 모달 -->

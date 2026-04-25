@@ -275,6 +275,25 @@ function saveCache(data) {
 
 let cache = loadCache();
 
+// ━━━ AI 파싱 인박스 자체 DB (2026-04-25 신규) ━━━
+const PARSED_DB_PATH = path.join(__dirname, 'data', 'parsed-quotes.json');
+const inboxWatcher = require('./lib/inbox-watcher');
+let parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
+
+function reloadParsedDb() {
+  parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
+  return parsedDb;
+}
+
+// approve/reject 후 즉시 cache.items 갱신
+function rebuildCacheWithParsed() {
+  reloadParsedDb();
+  const aiItems = inboxWatcher.parsedToCacheItems(parsedDb);
+  const baseItems = (cache.items || []).filter(it => !it._isAiParsed);
+  cache.items = [...baseItems, ...aiItems];
+  saveCache(cache);
+}
+
 // ━━━ Notion → 캐시 동기화 ━━━
 function extractProp(page, name, type) {
   const p = page.properties?.[name];
@@ -392,9 +411,13 @@ async function syncFromNotion() {
       console.log('[동기화] 거래처 DB 읽기 실패 (무시):', e.message);
     }
 
-    cache = { items, vendors, lastSync: new Date().toISOString() };
+    // AI 파싱 인박스의 approved 항목 합집합
+    reloadParsedDb();
+    const aiItems = inboxWatcher.parsedToCacheItems(parsedDb);
+
+    cache = { items: [...items, ...aiItems], vendors, lastSync: new Date().toISOString() };
     saveCache(cache);
-    console.log(`[동기화] 완료 — ${items.length}건 아이템, ${vendors.length}건 거래처 (${Date.now() - start}ms)`);
+    console.log(`[동기화] 완료 — ${items.length}건 + AI ${aiItems.length}건, ${vendors.length}건 거래처 (${Date.now() - start}ms)`);
   } catch (e) {
     console.error('[동기화 오류]', e.message);
   }
@@ -917,6 +940,98 @@ app.get('/api/quote-assist/options', (req, res) => {
   res.json({
     품명: Object.entries(품명Set).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
   });
+});
+
+// ━━━ AI 파싱 인박스 — 검수 API (2026-04-25 신규) ━━━
+// 요약 (헤더 뱃지용 — 미검수 건수만)
+app.get('/api/parsed-quotes/summary', (req, res) => {
+  reloadParsedDb();
+  const items = parsedDb.items || [];
+  const pending = items.filter(it => it.reviewStatus === 'pending').length;
+  const approved = items.filter(it => it.reviewStatus === 'approved').length;
+  const rejected = items.filter(it => it.reviewStatus === 'rejected').length;
+  res.json({
+    pending, approved, rejected, total: items.length,
+    lastRun: parsedDb.lastRun || null
+  });
+});
+
+// 리스트 (?status=pending|approved|rejected|all)
+app.get('/api/parsed-quotes', (req, res) => {
+  reloadParsedDb();
+  const status = req.query.status || 'pending';
+  let items = parsedDb.items || [];
+  if (status !== 'all') {
+    items = items.filter(it => it.reviewStatus === status);
+  }
+  // 최신순
+  items = [...items].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  res.json({ count: items.length, items });
+});
+
+// 단건 상세
+app.get('/api/parsed-quotes/:id', (req, res) => {
+  reloadParsedDb();
+  const it = (parsedDb.items || []).find(x => x.id === req.params.id);
+  if (!it) return res.status(404).json({ error: 'not_found' });
+  res.json(it);
+});
+
+// 검수완료 (approve)
+// body: { reviewedBy: '심영민', overrides: { 품목, 거래처, 국가, 프로젝트명, 품명: ['...'] } }
+app.patch('/api/parsed-quotes/:id/approve', (req, res) => {
+  reloadParsedDb();
+  const { reviewedBy, overrides } = req.body || {};
+  const updated = inboxWatcher.approveItem(parsedDb, req.params.id, reviewedBy, overrides);
+  if (!updated) return res.status(404).json({ error: 'not_found' });
+  inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+  rebuildCacheWithParsed();
+  res.json({ ok: true, item: updated });
+});
+
+// 반려 (reject)
+// body: { reviewedBy: '심영민', reason: '제품군 불명확' }
+app.patch('/api/parsed-quotes/:id/reject', (req, res) => {
+  reloadParsedDb();
+  const { reviewedBy, reason } = req.body || {};
+  const updated = inboxWatcher.rejectItem(parsedDb, req.params.id, reviewedBy, reason);
+  if (!updated) return res.status(404).json({ error: 'not_found' });
+  inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+  rebuildCacheWithParsed();
+  res.json({ ok: true, item: updated });
+});
+
+// 검수 상태 되돌리기 (approved/rejected → pending)
+app.patch('/api/parsed-quotes/:id/reset', (req, res) => {
+  reloadParsedDb();
+  const it = (parsedDb.items || []).find(x => x.id === req.params.id);
+  if (!it) return res.status(404).json({ error: 'not_found' });
+  it.reviewStatus = 'pending';
+  it.reviewedBy = null;
+  it.reviewedAt = null;
+  it.rejectReason = null;
+  inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+  rebuildCacheWithParsed();
+  res.json({ ok: true, item: it });
+});
+
+// 인박스 watcher 즉시 1회 실행 (관리자 트리거)
+// query: ?dry=1 → DRY-RUN
+app.post('/api/admin/inbox/run-now', async (req, res) => {
+  try {
+    const folderId = process.env.INBOX_DRIVE_FOLDER_ID || '';
+    if (!folderId) return res.status(503).json({ error: 'INBOX_DRIVE_FOLDER_ID 미설정' });
+    if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+    const dryRun = req.query.dry === '1';
+    const r = await inboxWatcher.runOnce({
+      folderId, parsedDbPath: PARSED_DB_PATH, anthropicKey: ANTHROPIC_API_KEY, dryRun
+    });
+    if (!dryRun) rebuildCacheWithParsed();
+    res.json({ ok: true, dryRun, result: r });
+  } catch (e) {
+    console.error('[inbox] run-now 실패:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ━━━ 실시간 환율 (캐시 1시간) ━━━
@@ -2473,6 +2588,16 @@ try {
   });
   driveBackup.mountAdminRoutes(app, { projectName: 'goods-calculator', extraJsonFiles: localJson, imageDirs: [CATALOG_IMAGE_DIR], requireAdmin: (req,res,next)=>next() });
 } catch (err) { console.error('[backup-to-drive] mount 실패:', err.message); }
+
+// ── Drive 견적 인박스 watcher (2026-04-25) ──
+try {
+  inboxWatcher.scheduleHourly({
+    folderId: process.env.INBOX_DRIVE_FOLDER_ID || '',
+    parsedDbPath: PARSED_DB_PATH,
+    anthropicKey: ANTHROPIC_API_KEY,
+    intervalMinutes: parseInt(process.env.INBOX_INTERVAL_MINUTES, 10) || 30
+  });
+} catch (err) { console.error('[inbox-watcher] 시작 실패:', err.message); }
   console.log(`[제품원가 계산기] http://localhost:${PORT}`);
   // 시작 시 동기화 + 환율
   await Promise.all([syncFromNotion(), refreshFx()]);
