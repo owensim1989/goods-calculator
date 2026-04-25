@@ -563,7 +563,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <button class="btn-export" id="btn-export" style="display:none;" onclick="exportToQuote()">🤖 AI 자동기입 텍스트 생성</button>
   </div>
-  <div class="suggested-combos" id="suggested-combos" style="display:none;"><h4>추천 조합</h4><div id="sug-combo-list"></div></div>
+  <div class="suggested-combos" id="suggested-combos" style="display:none;"><div class="sug-combos-header" onclick="toggleSugCombos()"><h4 style="margin:0;">추천 조합</h4><span class="arrow">&#9660;</span></div><div class="sug-combos-body" id="sug-combos-body"><div id="sug-combo-list"></div></div></div>
   <div id="budget-sort-bar" class="sort-bar" style="display:none;margin-top:16px;">
     <span class="label">정렬:</span>
     <button class="sort-btn active" onclick="sortBudget('weighted')">신뢰도+단가 ⭐</button>
@@ -1588,8 +1588,8 @@ function renderBudgetCards(){
             <div class="moq-meta">${r.품목} · ${distMsg}${alertMsg?`<span style="color:${alertColor};font-weight:600;">${alertMsg}</span>`:''}</div>
           </div>
           <div class="moq-qty-wrap">
-            <input class="moq-qty-input" type="number" value="${qty||''}" ${conf==='none'?'disabled':''}
-                   placeholder="수량" oninput="setRecQty('${r.품명.replace(/'/g,"\\'")}', +this.value)">
+            <input class="moq-qty-input" type="text" inputmode="numeric" value="${qty?qty.toLocaleString():''}" ${conf==='none'?'disabled':''}
+                   placeholder="수량" oninput="setRecQtyText('${r.품명.replace(/'/g,"\\'")}', this)">
             <div class="moq-qty-unit">개</div>
           </div>
           ${priceHtml}
@@ -1834,8 +1834,8 @@ function renderCombo(){
     const quote=Math.round(cost/(1-c.margin/100));
     return`<div class="combo-row">
       <span class="c-name">${c.name}</span>
-      <span class="c-field"><input type="number" value="${qty}" min="1" step="50" onchange="onQtyManualChange('${c.name}',this.value)" title="수량">개</span>
-      <span class="c-field">× ${fmtP(c.unitPrice)}</span>
+      <span class="c-field"><input type="text" inputmode="numeric" value="${qty.toLocaleString()}" oninput="onQtyManualChangeText('${c.name.replace(/\'/g,"\\\'")}',this)" title="qty">개</span>
+      <span class="c-field">× ${fmtP(c.unitPrice)}${c.matchedFrom?' <small style="color:var(--text-muted);font-size:9px;">↳'+c.matchedFrom+'</small>':''}</span>
       <span class="c-margin-group">마진 <input type="number" value="${parseFloat(c.margin.toFixed(1))}" min="0" max="95" step="1" onchange="onMarginRateChange('${c.name}',this.value)">% = <input type="number" class="margin-amt-input" value="${marginAmt}" min="0" step="100" onchange="onMarginAmtChange('${c.name}',this.value)">원/개</span>
       <span class="c-result">${fmtP(quote)}</span>
       <span class="remove-chip" onclick="removeFromCombo('${c.name}')">✕</span>
