@@ -457,6 +457,31 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cp-tier-chip{padding:8px 14px;border:1px solid var(--border);border-radius:20px;font-size:12px;cursor:pointer;background:var(--bg);transition:all .15s;}
 .cp-tier-chip:hover{border-color:var(--primary);}
 .cp-tier-chip.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+/* v2.2: input 다크 강제 + 빌더 강조 + combo-fit-btn 정의 */
+.moq-qty-input, .combo-row input {
+  background: #0f172a !important; color: #e2e8f0 !important;
+  border: 1px solid var(--border) !important;
+}
+.moq-qty-input:focus, .combo-row input:focus {
+  background: #1e293b !important; border-color: var(--primary) !important;
+}
+.combo-builder {
+  background: linear-gradient(135deg, rgba(96,165,250,0.18), rgba(52,211,153,0.10)) !important;
+  border: 2px solid rgba(96,165,250,0.55) !important;
+  box-shadow: 0 6px 20px rgba(96,165,250,0.20) !important;
+  position: relative;
+  margin-top: 20px !important;
+}
+.combo-builder h4 { color: var(--primary); font-size: 16px; }
+.combo-remaining.over { color: #f87171 !important; font-weight: 700; }
+.combo-remaining.over::before { content: "⚠️ "; }
+.combo-fit-btn {
+  margin-left: 8px; padding: 5px 12px; font-size: 11px; font-weight: 700;
+  background: #fbbf24; color: #422006; border: none; border-radius: 5px; cursor: pointer;
+}
+.combo-fit-btn:hover { background: #fcd34d; }
+
 </style>
 </head>
 <body>
@@ -2056,41 +2081,57 @@ function fitComboToBudget() {
     const qty = c.manualQty || c.qty;
     return s + Math.round(c.unitPrice * qty / (1 - c.margin/100));
   }, 0);
-  if (totalQuote <= budget) { showToast('budget OK'); return; }
+  if (totalQuote <= budget) { showToast('이미 예산 안에 있습니다'); return; }
   const ratio = budget / totalQuote;
+  let priceChangedCount = 0;
   comboItems.forEach(c => {
     const qty = c.manualQty || c.qty;
     const newQty = Math.max(1, Math.floor(qty * ratio));
+    const oldPrice = c.unitPrice;
     c.manualQty = newQty;
     if (typeof priceMatchByQty === 'function') {
       const m = priceMatchByQty(c.name, newQty);
       if (m) {
         c.unitPrice = Math.round(m.recommendedPrice);
-        c.matchedFrom = m.src === 'in20' ? 'avg20'
-                      : m.src === 'in50' ? 'avg50'
-                      : m.src === 'close' ? ('near ' + _fmtNum(m.closest.qty))
-                      : 'OUT';
+        if (c.unitPrice !== oldPrice) priceChangedCount++;
+        c.matchedFrom = m.src === 'in20' ? '±20%평균'
+                      : m.src === 'in50' ? '±50%평균'
+                      : m.src === 'close' ? ('근접 ' + _fmtNum(m.closest.qty) + '개')
+                      : '🔴범위외';
       }
     }
   });
   renderCombo();
-  showToast('Auto-adjusted to budget');
+  if (priceChangedCount > 0) {
+    showToast('예산 ' + _fmtNum(budget) + '원 맞춤 (' + priceChangedCount + '개 품목 단가 갱신)');
+  } else {
+    showToast('수량 조정 완료. 단가는 같은 매칭 범위라 변동 없음 (정상)');
+  }
 }
 
 function applySugCombo(items){comboItems=items.map(c=>({name:c.name,unitPrice:c.price,margin:30}));recalcComboQty();renderCombo();}
 
 // 추천조합 자동 접기 — searchBudget 후 호출됨
-const _origGenSug = typeof genSugCombos === 'function' ? genSugCombos : null;
-if (_origGenSug) {
-  window.genSugCombos = function(budget) {
-    _origGenSug(budget);
-    setTimeout(() => {
-      const h = document.querySelector('.sug-combos-header');
-      const b = document.getElementById('sug-combos-body');
-      if (h && b) { h.classList.remove('open'); b.classList.remove('open'); }
-    }, 50);
-  };
+// 추천조합은 항상 접힘 상태로 시작 (genSugCombos가 호출되든 안 되든)
+function _collapseSugCombos() {
+  const h = document.querySelector('.sug-combos-header');
+  const b = document.getElementById('sug-combos-body');
+  if (h && b) { h.classList.remove('open'); b.classList.remove('open'); }
 }
+// MutationObserver로 추천조합 표시될 때마다 접기
+const _sugObserver = new MutationObserver(() => {
+  const sc = document.getElementById('suggested-combos');
+  if (sc && sc.style.display !== 'none' && !sc._collapsed) {
+    sc._collapsed = true;
+    _collapseSugCombos();
+  } else if (sc && sc.style.display === 'none') {
+    sc._collapsed = false;
+  }
+});
+setTimeout(() => {
+  const sc = document.getElementById('suggested-combos');
+  if (sc) _sugObserver.observe(sc, { attributes: true, attributeFilter: ['style'] });
+}, 500);
 
 // ━━━ 거래처 비교 ━━━
 function searchVendorCompare(){
