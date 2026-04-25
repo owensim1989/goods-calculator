@@ -2003,6 +2003,7 @@ function genSugCombos(budget){
 function _parseNum(v) { return parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0; }
 function _fmtNum(n) { return Number(n).toLocaleString('ko-KR'); }
 
+let _setRecQtyTimer = null;
 function setRecQtyText(name, el) {
   const cursor = el.selectionStart;
   const oldLen = el.value.length;
@@ -2011,9 +2012,12 @@ function setRecQtyText(name, el) {
   const diff = el.value.length - oldLen;
   try { el.setSelectionRange(cursor + diff, cursor + diff); } catch(e){}
   recQtyState[name] = n;
-  renderBudgetCards();
+  // debounce 350ms — 입력 멈추면 재렌더 (입력 중에는 포커스 유지)
+  clearTimeout(_setRecQtyTimer);
+  _setRecQtyTimer = setTimeout(() => renderBudgetCards(), 350);
 }
 
+let _onQtyManualTimer = null;
 function onQtyManualChangeText(name, el) {
   const cursor = el.selectionStart;
   const oldLen = el.value.length;
@@ -2034,7 +2038,9 @@ function onQtyManualChangeText(name, el) {
                     : 'OUT';
     }
   }
-  renderCombo();
+  // debounce 350ms — 입력 중 포커스 유지
+  clearTimeout(_onQtyManualTimer);
+  _onQtyManualTimer = setTimeout(() => renderCombo(), 350);
 }
 
 function toggleSugCombos() {
