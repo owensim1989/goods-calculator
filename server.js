@@ -1743,6 +1743,181 @@ app.get('/api/admin/pricing-audit/files', (req, res) => {
   }
 });
 
+// ━━━ 가격 일괄 적용 Phase 3 (JSON 파일 → 카탈로그 일괄 PATCH) ━━━━━━━━━━━━━━━━━━━━
+// 사용 패턴:
+//   GET /api/admin/pricing-audit/apply?file=loss-2026-04-25.json&dryRun=1   ← 미리보기 (Notion 안 씀)
+//   GET /api/admin/pricing-audit/apply?file=loss-2026-04-25.json&confirm=1  ← 실제 적용
+// 데이터 파일 위치: data/audit-applies/{filename}.json
+// JSON 스키마: { items: [{barcode, country, final, name?, ...}], country_field_map: {KR:"Retail_KR_KRW", ...} }
+// 안전장치:
+//   - dryRun OR confirm 둘 중 하나 명시 필수 (실수 방지)
+//   - barcode 매칭 실패 시 not_found 리포트만, 해당 row skip
+//   - 현재가 == final 이면 PATCH 안 보냄 (멱등성)
+//   - rate limit 보호 (100ms 간격)
+//   - 실패한 페이지만 재시도 가능 (results.failed)
+app.get('/api/admin/pricing-audit/apply', async (req, res) => {
+  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+
+  const filename = req.query.file;
+  if (!filename || !/^[a-z0-9._-]+\.json$/i.test(filename)) {
+    return res.status(400).json({ error: 'file param required (e.g. ?file=loss-2026-04-25.json)' });
+  }
+  const filepath = path.join(__dirname, 'data', 'audit-applies', filename);
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: `file not found: ${filepath}` });
+  }
+
+  const isDry = req.query.dryRun === '1' || req.query.dryRun === 'true';
+  const isConfirm = req.query.confirm === '1' || req.query.confirm === 'true';
+  if (!isDry && !isConfirm) {
+    return res.status(400).json({ error: 'must specify ?dryRun=1 or ?confirm=1' });
+  }
+  if (isDry && isConfirm) {
+    return res.status(400).json({ error: 'cannot specify both dryRun and confirm' });
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(fs.readFileSync(filepath, 'utf-8'));
+  } catch (e) {
+    return res.status(500).json({ error: 'json parse fail: ' + e.message });
+  }
+  if (!Array.isArray(payload.items) || !payload.country_field_map) {
+    return res.status(400).json({ error: 'invalid payload format (need items[] and country_field_map)' });
+  }
+
+  try {
+    // 카탈로그 fetch
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const _gNum = (pr, k) => pr[k] && pr[k].number != null ? pr[k].number : null;
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+
+    // barcode → { page_id, name, current{country: number} }
+    const byBarcode = {};
+    for (const p of allPages) {
+      const pr = p.properties || {};
+      const barcode = (_gText(pr, 'Barcode') || '').trim();
+      if (!barcode) continue;
+      const cur = {};
+      for (const [code, field] of Object.entries(payload.country_field_map)) {
+        cur[code] = _gNum(pr, field);
+      }
+      byBarcode[barcode] = { page_id: p.id, current: cur, name: _gText(pr, 'Product Name') };
+    }
+
+    // 페이지별 변경사항 그룹핑 (한 제품의 여러 국가 변경을 1번 PATCH로 묶음)
+    const changesByPage = {};
+    const notFound = [];
+    const skipSame = [];
+
+    for (const it of payload.items) {
+      const e = byBarcode[it.barcode];
+      if (!e) { notFound.push({ barcode: it.barcode, country: it.country, name: it.name, reason: 'barcode not in catalog' }); continue; }
+      const field = payload.country_field_map[it.country];
+      if (!field) { notFound.push({ ...it, reason: `unknown country ${it.country}` }); continue; }
+      const currentVal = e.current[it.country];
+      const newVal = Number(it.final);
+      if (!Number.isFinite(newVal)) { notFound.push({ ...it, reason: 'final not a number' }); continue; }
+      if (currentVal === newVal) {
+        skipSame.push({ barcode: it.barcode, country: it.country, value: newVal });
+        continue;
+      }
+      if (!changesByPage[e.page_id]) {
+        changesByPage[e.page_id] = { name: e.name, page_id: e.page_id, props: {}, items: [] };
+      }
+      changesByPage[e.page_id].props[field] = { number: newVal };
+      changesByPage[e.page_id].items.push({
+        country: it.country, field, from: currentVal, to: newVal
+      });
+    }
+
+    const summary = {
+      total_items: payload.items.length,
+      not_found: notFound.length,
+      skip_same: skipSame.length,
+      pages_to_update: Object.keys(changesByPage).length,
+      cells_to_change: payload.items.length - notFound.length - skipSame.length,
+      mode: isDry ? 'DRY_RUN' : 'CONFIRMED'
+    };
+
+    if (isDry) {
+      return res.json({
+        ok: true,
+        ...summary,
+        note: 'DRY_RUN — Notion에 쓰지 않음. 실제 적용은 ?confirm=1',
+        not_found_samples: notFound.slice(0, 10),
+        skip_same_samples: skipSame.slice(0, 5),
+        changes_preview: Object.values(changesByPage).slice(0, 12).map(c => ({
+          name: c.name, changes: c.items
+        }))
+      });
+    }
+
+    // 실제 적용
+    const results = { updated: 0, failed: [] };
+    const allChanges = Object.values(changesByPage);
+    for (let i = 0; i < allChanges.length; i++) {
+      const c = allChanges[i];
+      try {
+        await notion.pages.update({ page_id: c.page_id, properties: c.props });
+        results.updated++;
+        if (i < allChanges.length - 1) await new Promise(r => setTimeout(r, 100));
+        if ((i+1) % 20 === 0) console.log(`[apply ${filename}] ${i+1}/${allChanges.length}`);
+      } catch (e) {
+        results.failed.push({ name: c.name, page_id: c.page_id, error: e.message, items: c.items });
+      }
+    }
+
+    try { if (typeof notionCache !== 'undefined' && notionCache && typeof notionCache.invalidate === 'function') notionCache.invalidate(PRODUCT_CATALOG_DB_ID); } catch(_) {}
+
+    res.json({
+      ok: true,
+      ...summary,
+      results: {
+        updated_pages: results.updated,
+        failed_pages: results.failed.length,
+        failed_samples: results.failed.slice(0, 5)
+      },
+      not_found_samples: notFound.slice(0, 10),
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('[pricing-audit/apply]', e);
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+app.get('/api/admin/pricing-audit/apply-files', (req, res) => {
+  const dir = path.join(__dirname, 'data', 'audit-applies');
+  if (!fs.existsSync(dir)) return res.json({ ok: true, files: [], note: 'dir not exists yet' });
+  try {
+    const files = fs.readdirSync(dir)
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        const st = fs.statSync(path.join(dir, f));
+        return { filename: f, size: st.size, mtime: st.mtime };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    res.json({ ok: true, files, dir });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/consumer-pricing/hs-reference', (req, res) => {
   res.json({ items: HS_REFERENCE_DB });
 });

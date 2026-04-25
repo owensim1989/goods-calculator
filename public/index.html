@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎯 제품 원가·기획 계산기</title>
+<title>제품 원가·기획 계산기</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
 :root{--primary:#2563eb;--primary-light:#dbeafe;--bg:#f8fafc;--card:#fff;--border:#e2e8f0;--text:#1e293b;--text-muted:#64748b;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--radius:12px;--header-bg:var(--primary);--input-bg:#fff;}
@@ -567,10 +567,10 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <div class="header">
   <div class="header-left">
     <button class="hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
-    <h1>🎯 제품 원가·기획 계산기</h1>
+    <h1>제품 원가·기획 계산기</h1>
   </div>
   <div class="header-right">
-    <button class="ai-review-btn idle" id="aiReviewBtn" onclick="openParsedModal()" title="견적서 인박스 자동 파싱 결과 검수">📨 견적 인박스 <span id="aiReviewBadge">0</span></button>
+    <button class="ai-review-btn idle" id="aiReviewBtn" onclick="openParsedModal()" title="견적서 인박스 자동 파싱 결과 검수">견적 인박스 <span id="aiReviewBadge">0</span></button>
     <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
     <button class="sync-btn" onclick="doSync()" id="syncBtn">동기화</button>
   </div>
@@ -590,16 +590,16 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">미스터두낫띵</div>
-      <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">💡 신제품 사업성 검토</button>
-      <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">📋 제품 리스트</button>
-      <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">📨 견적 인박스 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
+      <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
+      <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
+      <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">견적 인박스 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
     </div>
     <div class="sidebar-group sidebar-group-soon">
       <div class="sidebar-group-title">Phase 3 (예정)</div>
-      <button class="sidebar-item soon" onclick="comingSoon('데이터 건강도')" title="통합DB 누락·이상치·공백률 대시보드">📊 데이터 건강도</button>
-      <button class="sidebar-item soon" onclick="comingSoon('거래처 DB 관리')" title="Notion 거래처 DB CRUD UI">🏢 거래처 DB 관리</button>
-      <button class="sidebar-item soon" onclick="comingSoon('결재 룰 SOP')" title="🟢🟡🔴 사업화팀 결재 룰 + 점검센터 알림">✅ 결재 룰</button>
-      <button class="sidebar-item soon" onclick="comingSoon('MyDesk 양방향')" title="MyDesk → goods 자동 push 파이프라인">🔄 MyDesk 양방향</button>
+      <button class="sidebar-item soon" onclick="comingSoon('데이터 건강도')" title="통합DB 누락·이상치·공백률 대시보드">데이터 건강도</button>
+      <button class="sidebar-item soon" onclick="comingSoon('거래처 DB 관리')" title="Notion 거래처 DB CRUD UI">거래처 DB 관리</button>
+      <button class="sidebar-item soon" onclick="comingSoon('결재 룰 SOP')" title="🟢🟡🔴 사업화팀 결재 룰 + 점검센터 알림">결재 룰</button>
+      <button class="sidebar-item soon" onclick="comingSoon('MyDesk 양방향')" title="MyDesk → goods 자동 push 파이프라인">MyDesk 양방향</button>
     </div>
   </aside>
   <main class="main">
@@ -731,7 +731,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="cp-section" id="cp-list-section">
     <h3>📚 저장된 프로젝트
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
-      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="goToCatalogPage()" title="제품 리스트·바이어 엑셀·관리 도구는 사이드바 📋 제품 리스트 메뉴로 이동했습니다">📋 제품 리스트로 이동 →</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="goToCatalogPage()" title="제품 리스트·바이어 엑셀·관리 도구는 사이드바 '제품 리스트' 메뉴로 이동했습니다">제품 리스트로 이동 →</button>
     </h3>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
@@ -976,11 +976,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <div class="tab-page" id="page-catalog">
   <div class="cp-section">
     <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      📋 제품 리스트
+      제품 리스트
       <span style="font-size:11px;color:var(--text-muted);font-weight:400;margin-left:auto;">Notion 제품 카탈로그 DB · 179제품</span>
     </h3>
     <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin:6px 0 14px;">
-      💡 신제품 사업성 검토에서 <b>승인</b>된 프로젝트가 자동 등록됩니다. 이 화면에서는 카탈로그 전체에 대한 일괄 도구를 사용할 수 있습니다.
+      신제품 사업성 검토에서 <b>승인</b>된 프로젝트가 자동 등록됩니다. 이 화면에서는 카탈로그 전체에 대한 일괄 도구를 사용할 수 있습니다.
     </p>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
@@ -1021,7 +1021,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="cp-section" style="padding:0;overflow:hidden;border:1px solid var(--border);border-radius:14px;">
     <div style="background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
       <div>
-        <h2 style="margin:0;font-size:17px;font-weight:600;">📨 견적 인박스 — Drive 자동 파싱 검수</h2>
+        <h2 style="margin:0;font-size:17px;font-weight:600;">견적 인박스 — Drive 자동 파싱 검수</h2>
         <div style="font-size:11px;opacity:0.9;margin-top:4px;">30분마다 자동 실행 · 사업화/디자인팀이 Drive 인박스 폴더에 견적서를 드롭하면 자동 파싱 → 검수 후 통합DB에 반영</div>
       </div>
       <div style="display:flex;gap:8px;">
