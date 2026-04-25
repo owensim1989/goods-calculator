@@ -601,6 +601,8 @@ app.get('/api/budget', (req, res) => {
       const min = Math.min(...p.prices);
       const maxQty = Math.floor(budget / min);
       const avgQty = Math.floor(budget / avg);
+      // 분포·신뢰도·거래처·이력 (MOQ 기능)
+      const dist = calcQtyDistribution(p.품명);
       return {
         품명: p.품명,
         품목: p.품목,
@@ -610,6 +612,10 @@ app.get('/api/budget', (req, res) => {
         예상수량_최대: maxQty,
         데이터건수: p.prices.length,
         국가: [...p.countries],
+        // ━ 신규 필드 ━
+        qty_distribution: dist,
+        confidence: dist ? dist.confidence : 'none',
+        vendors: vendorsByProduct(p.품명),
       };
     })
     .filter(p => p.예상수량_최대 > 0)
@@ -677,6 +683,122 @@ app.post('/api/items', async (req, res) => {
   }
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MOQ·신뢰도 헬퍼 (2026-04-25 추가)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// 단일 행의 KRW 환산 단가 (부대비용 포함)
+function getKrwPrice(it) {
+  if (it.개당단가 == null) return null;
+  const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
+  const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
+  const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+  const krw = Math.round(it.개당단가 * fx);
+  const 부대합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
+  const is확정 = it.부대비용상태 === '확정' && 부대합계 > 0;
+  if (is확정 && it.수량 > 0) return krw + Math.round(부대합계 / it.수량);
+  return Math.round(krw * (1 + surcharge.rate));
+}
+
+function _percentile(sortedArr, p) {
+  if (!sortedArr.length) return null;
+  const idx = Math.max(0, Math.min(sortedArr.length - 1, Math.floor(sortedArr.length * p / 100)));
+  return sortedArr[idx];
+}
+
+// 신뢰도 등급 (high/mid/low/none)
+function calcConfidence(count, recent, vendors) {
+  if (count === 0) return 'none';
+  let level;
+  if (count >= 6 && recent >= 1) level = 'high';
+  else if ((count >= 3 && recent >= 1) || count >= 6) level = 'mid';
+  else level = 'low';
+  if (vendors >= 3 && level === 'mid') level = 'high';
+  return level;
+}
+
+// 품명별 발주수량 분포
+function calcQtyDistribution(품명) {
+  const items = (cache.items || []).filter(i => (i.품명 || []).includes(품명) && i.수량 > 0);
+  if (!items.length) return null;
+  const qtys = items.map(i => i.수량).sort((a, b) => a - b);
+  const dates = items.map(i => i.발주일).filter(Boolean);
+  const vendors = new Set(items.map(i => i.거래처).filter(Boolean));
+  const oneYearAgo = Date.now() - 365 * 86400 * 1000;
+  const recentCount = dates.filter(d => new Date(d).getTime() > oneYearAgo).length;
+  return {
+    min: qtys[0], p25: _percentile(qtys, 25),
+    med: qtys[Math.floor(qtys.length / 2)],
+    max: qtys[qtys.length - 1],
+    count: items.length, recent_count: recentCount,
+    vendor_count: vendors.size,
+    confidence: calcConfidence(items.length, recentCount, vendors.size)
+  };
+}
+
+// 수량 매칭 단가 (3단계 fallback)
+function priceMatchByQty(품명, qty) {
+  if (!qty || qty <= 0) return null;
+  const items = (cache.items || []).filter(i =>
+    (i.품명 || []).includes(품명) && i.수량 > 0 && i.개당단가 != null
+  );
+  if (!items.length) return null;
+  const points = items.map(it => ({
+    qty: it.수량, price: getKrwPrice(it),
+    vendor: it.거래처, date: it.발주일
+  })).filter(p => p.price != null);
+  if (!points.length) return null;
+
+  const closest = points.reduce((b, c) => Math.abs(c.qty - qty) < Math.abs(b.qty - qty) ? c : b);
+  const closeRatio = Math.abs(closest.qty - qty) / qty;
+  const r20 = points.filter(p => p.qty >= qty * 0.8 && p.qty <= qty * 1.2);
+  const r50 = points.filter(p => p.qty >= qty * 0.5 && p.qty <= qty * 1.5);
+  const avg20 = r20.length ? Math.round(r20.reduce((s, p) => s + p.price, 0) / r20.length) : null;
+  const avg50 = r50.length ? Math.round(r50.reduce((s, p) => s + p.price, 0) / r50.length) : null;
+
+  let src;
+  if (r20.length >= 1) src = 'in20';
+  else if (r50.length >= 1) src = 'in50';
+  else if (closeRatio <= 0.5) src = 'close';
+  else src = 'far';
+
+  return {
+    src,
+    closest: { qty: closest.qty, price: closest.price, vendor: closest.vendor, date: closest.date },
+    avg20: avg20 ? { price: avg20, count: r20.length } : null,
+    avg50: avg50 ? { price: avg50, count: r50.length } : null,
+    recommended_price: src === 'in20' ? avg20 : src === 'in50' ? avg50 : closest.price,
+    in_range: src !== 'far'
+  };
+}
+
+// 품명별 거래처 (cache.vendors와 매칭)
+function vendorsByProduct(품명) {
+  const items = (cache.items || []).filter(i => (i.품명 || []).includes(품명));
+  const names = [...new Set(items.map(i => i.거래처).filter(Boolean))];
+  const map = {};
+  (cache.vendors || []).forEach(v => { map[v.name] = v; });
+  return names.map(name => {
+    const v = map[name];
+    return v ? {
+      name, 사이트: v.사이트 || '', 메모: v.메모 || '',
+      제작기간: v.제작기간 || '', 품목: v.품목 || [], 유형: v.유형 || []
+    } : { name, missing: true };
+  });
+}
+
+// 품명별 발주 이력 (날짜 내림차순)
+function purchaseHistory(품명) {
+  const items = (cache.items || []).filter(i =>
+    (i.품명 || []).includes(품명) && i.수량 > 0 && i.개당단가 != null
+  );
+  return items.map(it => ({
+    qty: it.수량, price: getKrwPrice(it),
+    vendor: it.거래처 || '미지정', date: it.발주일, country: it.국가
+  })).filter(p => p.price != null)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
 // 부대비용 설정 조회
 app.get('/api/surcharge', (req, res) => {
   res.json(SURCHARGE);
@@ -726,6 +848,12 @@ app.get('/api/quote-assist', (req, res) => {
   // 수량 기반 총 원가 추정
   const estimate = qty && avgPrice ? { 총원가_평균: qty * avgPrice, 총원가_최저: qty * minPrice } : null;
 
+  // ━ MOQ·신뢰도 확장 필드 (기존 응답 호환 유지) ━
+  const qty_distribution = calcQtyDistribution(품명);
+  const price_match = qty ? priceMatchByQty(품명, qty) : null;
+  const vendors_info = vendorsByProduct(품명);
+  const purchase_history = purchaseHistory(품명);
+
   res.json({
     found: true,
     품명,
@@ -745,7 +873,37 @@ app.get('/api/quote-assist', (req, res) => {
       평균단가: Math.round(g.prices.reduce((a, b) => a + b, 0) / g.prices.length),
       최저단가: Math.min(...g.prices), 건수: g.prices.length,
     })).sort((a, b) => a.평균단가 - b.평균단가),
+    // ━ 신규 필드 ━
+    qty_distribution,
+    confidence: qty_distribution ? qty_distribution.confidence : 'none',
+    price_match,
+    vendors: vendors_info,
+    history: purchase_history,
   });
+});
+
+
+// ━━━ 신규: 수량별 단가 매칭 단독 호출 (프론트 카드 수량 입력 시 사용) ━━━
+app.get('/api/quote-assist/price-match', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const { 품명, 수량 } = req.query;
+  if (!품명) return res.status(400).json({ error: '품명 파라미터 필요' });
+  const qty = parseInt(수량);
+  if (!qty || qty <= 0) return res.status(400).json({ error: '수량 파라미터 필요 (양의 정수)' });
+  const m = priceMatchByQty(품명, qty);
+  if (!m) return res.json({ found: false, 품명, 수량: qty, message: '데이터 없음' });
+  res.json({ found: true, 품명, 수량: qty, ...m });
+});
+
+// ━━━ 신규: 품명별 발주 이력 단독 호출 (펼침 표 lazy load 용) ━━━
+app.get('/api/quote-assist/history', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const { 품명 } = req.query;
+  if (!품명) return res.status(400).json({ error: '품명 파라미터 필요' });
+  const history = purchaseHistory(품명);
+  const dist = calcQtyDistribution(품명);
+  const vendors = vendorsByProduct(품명);
+  res.json({ found: history.length > 0, 품명, history, qty_distribution: dist, vendors });
 });
 
 // 연동 API: 사용 가능한 품명 목록 (자동완성용)

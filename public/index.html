@@ -178,6 +178,129 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .surcharge-tag.domestic{background:rgba(52,211,153,0.15);color:#34d399;}
 .surcharge-tag.confirmed{background:rgba(96,165,250,0.15);color:#60a5fa;}
 .rec-card .surcharge-tag{margin-top:8px;}
+/* ━━━ MOQ·신뢰도 카드 (옵션 A, 2026-04-25) ━━━ */
+.moq-rec-list { display: flex; flex-direction: column; gap: 8px; }
+.moq-rec {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px;
+  border-left-width: 4px; transition: all 0.15s;
+}
+.moq-rec.high { border-left-color: #34d399; }
+.moq-rec.mid  { border-left-color: #fbbf24; background: rgba(251,191,36,0.07); }
+.moq-rec.low  { border-left-color: #f87171; background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.30); }
+.moq-rec.none { border-left-color: #71717a; opacity: 0.65; }
+.moq-rec.selected { background: rgba(52,211,153,0.10); border-color: #34d399; }
+
+.moq-row1 {
+  display: grid;
+  grid-template-columns: 28px 1fr 100px 180px 32px 32px 70px;
+  gap: 8px; align-items: center;
+}
+.moq-row1 > * { min-width: 0; }
+.moq-emoji { font-size: 16px; text-align: center; }
+.moq-name { font-size: 13px; font-weight: 700; }
+.moq-meta-tag { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 700; margin-left: 4px; }
+.moq-meta-tag.high { background: rgba(52,211,153,0.18); color: #34d399; }
+.moq-meta-tag.mid  { background: rgba(251,191,36,0.18); color: #fbbf24; }
+.moq-meta-tag.low  { background: rgba(248,113,113,0.22); color: #f87171; }
+.moq-meta-tag.none { background: rgba(113,113,122,0.22); color: #71717a; }
+.moq-meta { font-size: 10px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moq-qty-wrap { text-align: right; }
+.moq-qty-input {
+  width: 100%; padding: 5px 8px; font-size: 12px;
+  background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 5px; text-align: right; font-family: 'Menlo', 'Consolas', monospace; font-weight: 600;
+}
+.moq-qty-input:focus { outline: none; border-color: var(--primary); }
+.moq-qty-unit { font-size: 9px; color: var(--text-muted); margin-top: 1px; }
+
+.moq-price-box {
+  background: var(--input-bg); border-radius: 5px; padding: 6px 9px;
+  font-size: 11px; line-height: 1.4; min-height: 50px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.moq-price-line { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.moq-price-line + .moq-price-line { margin-top: 1px; }
+.moq-price-line .lbl { color: var(--text-muted); font-size: 9px; flex-shrink: 0; }
+.moq-price-line .val { font-family: 'Menlo', monospace; text-align: right; }
+.moq-price-line .val b { color: var(--primary); font-size: 12px; }
+.moq-price-line.miss .val { color: var(--text-muted); font-style: italic; font-size: 10px; }
+.moq-price-box.danger { background: rgba(248,113,113,0.15); border: 1px solid #f87171; text-align: center; align-items: center; }
+.moq-price-box.danger .danger-title { color: #f87171; font-weight: 700; font-size: 11px; }
+.moq-price-box.danger .danger-sub { color: var(--text-muted); font-size: 9px; margin-top: 1px; }
+.moq-price-box.empty { background: var(--input-bg); color: var(--text-muted); text-align: center; align-items: center; font-style: italic; font-size: 10px; }
+
+.moq-icon-slot { display: flex; align-items: center; justify-content: center; min-height: 28px; }
+.moq-icon-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 50%; width: 26px; height: 26px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 12px;
+}
+.moq-icon-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.moq-icon-btn.contact { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
+.moq-icon-btn.contact:hover { background: rgba(251,191,36,0.18); }
+.moq-icon-btn.expand.open { transform: rotate(180deg); color: var(--primary); border-color: var(--primary); }
+
+.moq-add {
+  background: var(--primary); color: #fff; border: none;
+  padding: 5px 10px; border-radius: 5px;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.moq-add:hover { background: var(--primary-dark, #3b82f6); }
+.moq-add:disabled { background: #71717a; cursor: not-allowed; }
+.moq-add.selected { background: #34d399; color: #064e3b; }
+
+/* 펼침 발주 이력 — row1과 같은 grid */
+.moq-detail { display: none; margin-top: 6px; padding: 6px 0 2px; background: var(--input-bg); border-radius: 5px; }
+.moq-detail.open { display: block; }
+.moq-detail-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 100px 180px 32px 32px 70px;
+  gap: 8px; align-items: center; padding: 3px 12px;
+  font-family: 'Menlo', 'Consolas', monospace; font-size: 10px;
+}
+.moq-detail-row.header { color: var(--text-muted); font-weight: 700; font-size: 9px; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 2px; }
+.moq-detail-meta { display: flex; gap: 12px; min-width: 0; }
+.moq-detail-meta .date { color: var(--text-muted); white-space: nowrap; }
+.moq-detail-meta .vendor { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moq-detail-row .col-qty { text-align: right; padding-right: 8px; color: var(--text); }
+.moq-detail-row .col-price { text-align: right; padding-right: 9px; color: var(--primary); font-weight: 600; }
+.moq-detail-row.header .col-qty,
+.moq-detail-row.header .col-price { color: var(--text-muted); }
+
+/* 거래처 모달 / MOQ 입력 모달 */
+.moq-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 2000; }
+.moq-modal-bg.show { display: flex; }
+.moq-modal {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 24px; min-width: 460px; max-width: 90%; max-height: 80vh; overflow: auto;
+}
+.moq-modal h3 { margin: 0 0 14px; font-size: 15px; font-weight: 700; }
+.moq-modal-close { float: right; background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
+.moq-vendor-item {
+  background: var(--input-bg); padding: 10px 12px; border-radius: 6px; margin-bottom: 6px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.moq-vendor-name { font-weight: 700; font-size: 13px; }
+.moq-vendor-meta { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.moq-vendor-action {
+  background: var(--card); border: 1px solid var(--border); color: var(--text);
+  padding: 4px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; text-decoration: none;
+}
+.moq-vendor-action:hover { border-color: var(--primary); }
+
+.moq-input-field { margin-bottom: 12px; }
+.moq-input-field label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.moq-input-field input, .moq-input-field textarea {
+  width: 100%; background: var(--input-bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.moq-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.moq-modal-btn { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; }
+.moq-modal-btn.cancel { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); }
+.moq-modal-btn.save { background: var(--primary); color: #fff; }
+.moq-modal-btn.danger { background: #f87171; color: #fff; }
+
 
 /* 정렬 버튼 */
 .sort-bar{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
@@ -443,7 +566,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="suggested-combos" id="suggested-combos" style="display:none;"><h4>추천 조합</h4><div id="sug-combo-list"></div></div>
   <div id="budget-sort-bar" class="sort-bar" style="display:none;margin-top:16px;">
     <span class="label">정렬:</span>
-    <button class="sort-btn active" onclick="sortBudget('price')">낮은가격순</button>
+    <button class="sort-btn active" onclick="sortBudget('weighted')">신뢰도+단가 ⭐</button>
+    <button class="sort-btn" onclick="sortBudget('confidence')">신뢰도순</button>
+    <button class="sort-btn" onclick="sortBudget('price')">낮은가격순</button>
     <button class="sort-btn" onclick="sortBudget('qty')">수량순</button>
     <button class="sort-btn" onclick="sortBudget('cat')">카테고리별</button>
   </div>
@@ -753,6 +878,15 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <script>
 // ━━━ 데이터: 서버에서 로드 ━━━
 let DATA=[]; // 서버에서 fetch한 전체 데이터
+window.VENDORS_CACHE = []; // 거래처 정보 캐시 (MOQ 모달용)
+async function loadVendorsCache() {
+  try {
+    const r = await fetch('/api/vendors');
+    const d = await r.json();
+    window.VENDORS_CACHE = d.vendors || [];
+  } catch (e) { console.warn('vendors load failed', e); }
+}
+loadVendorsCache();
 const SURCHARGE={'국내':0,'중국':0.15,'기타해외':0.20};
 const fmt=n=>n!=null?Math.round(n).toLocaleString('ko-KR'):'-';
 const fmtP=n=>n!=null?'₩'+Math.round(n).toLocaleString('ko-KR'):'-';
@@ -1161,6 +1295,151 @@ function renderBarChart(items){
   }
 }
 
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MOQ·신뢰도 헬퍼 (2026-04-25, 클라이언트)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// localStorage MOQ 오버라이드 (90일 만료)
+const MOQ_OVR_KEY = 'goods-moq-overrides';
+function loadMoqOvr() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MOQ_OVR_KEY) || '{}');
+    const now = Date.now();
+    let dirty = false;
+    Object.keys(raw).forEach(k => { if (raw[k].expires && raw[k].expires < now) { delete raw[k]; dirty = true; } });
+    if (dirty) localStorage.setItem(MOQ_OVR_KEY, JSON.stringify(raw));
+    return raw;
+  } catch (e) { return {}; }
+}
+function saveMoqOvr(품명, value, memo) {
+  const raw = loadMoqOvr();
+  raw[품명] = { value: +value, memo: memo || '', expires: Date.now() + 90 * 86400 * 1000 };
+  localStorage.setItem(MOQ_OVR_KEY, JSON.stringify(raw));
+}
+function clearMoqOvr(품명) {
+  const raw = loadMoqOvr();
+  delete raw[품명];
+  localStorage.setItem(MOQ_OVR_KEY, JSON.stringify(raw));
+}
+function getMoqOvr(품명) { return loadMoqOvr()[품명] || null; }
+
+// 단일 행의 KRW 환산 (부대비용 포함)
+function _krwOf(it) {
+  if (it.개당단가 == null) return null;
+  const r = SURCHARGE[it.국가] || 0;
+  const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
+  const fx = cur === 'USD' ? FX.USD : cur === 'RMB' ? FX.RMB : 1;
+  const krw = Math.round(it.개당단가 * fx);
+  if (it.부대비용상태 === '확정' && it.부대비용합계 > 0 && it.수량 > 0) {
+    return krw + Math.round(it.부대비용합계 / it.수량);
+  }
+  return Math.round(krw * (1 + r));
+}
+
+function _percentile(sorted, p) {
+  if (!sorted.length) return null;
+  const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor(sorted.length * p / 100)));
+  return sorted[idx];
+}
+
+// 신뢰도 등급
+function calcConf(count, recent, vendors) {
+  if (count === 0) return 'none';
+  let lvl;
+  if (count >= 6 && recent >= 1) lvl = 'high';
+  else if ((count >= 3 && recent >= 1) || count >= 6) lvl = 'mid';
+  else lvl = 'low';
+  if (vendors >= 3 && lvl === 'mid') lvl = 'high';
+  return lvl;
+}
+
+// 품명별 발주수량 분포
+function calcQtyDist(품명) {
+  const items = DATA.filter(i => (i.품명 || []).includes(품명) && i.수량 > 0);
+  if (!items.length) return null;
+  const qtys = items.map(i => i.수량).sort((a, b) => a - b);
+  const dates = items.map(i => i.발주일).filter(Boolean);
+  const vendors = new Set(items.map(i => i.거래처).filter(Boolean));
+  const oneYearAgo = Date.now() - 365 * 86400 * 1000;
+  const recent = dates.filter(d => new Date(d).getTime() > oneYearAgo).length;
+  return {
+    min: qtys[0], p25: _percentile(qtys, 25),
+    med: qtys[Math.floor(qtys.length / 2)],
+    max: qtys[qtys.length - 1],
+    count: items.length, recent,
+    vendor_count: vendors.size,
+    confidence: calcConf(items.length, recent, vendors.size)
+  };
+}
+
+// 수량 매칭 단가 (3단계 fallback)
+function priceMatchByQty(품명, qty) {
+  if (!qty || qty <= 0) return null;
+  const items = DATA.filter(i =>
+    (i.품명 || []).includes(품명) && i.수량 > 0 && i.개당단가 != null
+  );
+  if (!items.length) return null;
+  const points = items.map(it => ({
+    qty: it.수량, price: _krwOf(it),
+    vendor: it.거래처, date: it.발주일
+  })).filter(p => p.price != null);
+  if (!points.length) return null;
+  const closest = points.reduce((b, c) => Math.abs(c.qty - qty) < Math.abs(b.qty - qty) ? c : b);
+  const closeRatio = Math.abs(closest.qty - qty) / qty;
+  const r20 = points.filter(p => p.qty >= qty * 0.8 && p.qty <= qty * 1.2);
+  const r50 = points.filter(p => p.qty >= qty * 0.5 && p.qty <= qty * 1.5);
+  const avg20 = r20.length ? Math.round(r20.reduce((s, p) => s + p.price, 0) / r20.length) : null;
+  const avg50 = r50.length ? Math.round(r50.reduce((s, p) => s + p.price, 0) / r50.length) : null;
+  let src;
+  if (r20.length >= 1) src = 'in20';
+  else if (r50.length >= 1) src = 'in50';
+  else if (closeRatio <= 0.5) src = 'close';
+  else src = 'far';
+  return {
+    src, closest, closeRatio,
+    avg20: avg20 ? { price: avg20, count: r20.length } : null,
+    avg50: avg50 ? { price: avg50, count: r50.length } : null,
+    recommendedPrice: src === 'in20' ? avg20 : src === 'in50' ? avg50 : closest.price,
+    inRange: src !== 'far'
+  };
+}
+
+// 거래처 정보 (DATA의 거래처 + window.VENDORS_CACHE 매칭)
+function vendorsByProduct(품명) {
+  const names = [...new Set(DATA.filter(i => (i.품명 || []).includes(품명)).map(i => i.거래처).filter(Boolean))];
+  const map = {};
+  (window.VENDORS_CACHE || []).forEach(v => { map[v.name] = v; });
+  return names.map(n => map[n] ? { name: n, ...map[n] } : { name: n, missing: true });
+}
+
+// 발주 이력 (날짜 내림차순)
+function purchaseHistoryOf(품명) {
+  return DATA.filter(i => (i.품명 || []).includes(품명) && i.수량 > 0 && i.개당단가 != null)
+    .map(it => ({
+      qty: it.수량, price: _krwOf(it),
+      vendor: it.거래처 || '미지정', date: it.발주일, country: it.국가
+    }))
+    .filter(p => p.price != null)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+// 자릿수 기반 발주 수량 내림 (8838 → 8800)
+function roundDownQty(qty) {
+  if (qty < 10) return qty;
+  const digits = String(Math.floor(qty)).length;
+  const finalUnit = digits <= 3 ? Math.pow(10, digits - 2)
+                  : digits === 4 ? 100
+                  : digits === 5 ? 1000
+                  : 10000;
+  return Math.floor(qty / finalUnit) * finalUnit;
+}
+
+// 가중치 정렬용 점수
+function _confScore(c) { return ({ high: 100, mid: 60, low: 30, none: 0 })[c || 'none']; }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 // ━━━ 예산→제품 ━━━
 function formatBudget(el){let v=el.value.replace(/\D/g,'');el.value=v?parseInt(v).toLocaleString('ko-KR'):'';}
 let budgetRecs=[];
@@ -1169,7 +1448,7 @@ let comboItems=[];
 
 function getBudget(){return parseInt((document.getElementById('budget-input').value||'').replace(/\D/g,''))||0;}
 
-let budgetSortMode='price'; // 'price','qty','cat'
+let budgetSortMode='weighted'; // 'weighted','confidence','price','qty','cat'
 
 function searchBudget(){
   const budget=getBudget(),aCountry=getChecked('b-country'),aCats=getChecked('b-cat'),aProds=getChecked('b-prod'),dl=gDays(globalDL);
@@ -1193,7 +1472,23 @@ function searchBudget(){
       }
     });
   });
-  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);const qAvg=avg>0?Math.floor(budget/avg):0;const qMax=min>0?Math.floor(budget/min):0;const hasOverseas=p.details.some(d=>d.국가==='중국'||d.국가==='기타해외');return{품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,예상수량_평균:isFinite(qAvg)?qAvg:0,예상수량_최대:isFinite(qMax)?qMax:0,데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD,details:p.details.sort((a,b)=>a.부대비용포함-b.부대비용포함),hasOverseas};}).filter(p=>p.예상수량_최대>0&&p.평균단가>0);
+  budgetRecs=Object.values(pm).filter(p=>p.prices.length>0).map(p=>{
+    const avg=Math.round(p.prices.reduce((a,b)=>a+b,0)/p.prices.length),min=Math.min(...p.prices),avgD=Math.round(p.제작일수.reduce((a,b)=>a+b,0)/p.제작일수.length);
+    const qAvg=avg>0?Math.floor(budget/avg):0;const qMax=min>0?Math.floor(budget/min):0;
+    const hasOverseas=p.details.some(d=>d.국가==='중국'||d.국가==='기타해외');
+    // ━ MOQ·신뢰도 확장 ━
+    const dist = calcQtyDist(p.품명);
+    const vendors = vendorsByProduct(p.품명);
+    return{
+      품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,
+      예상수량_평균:isFinite(qAvg)?qAvg:0,예상수량_최대:isFinite(qMax)?qMax:0,
+      데이터건수:p.prices.length,국가:[...p.countries],평균제작일수:avgD,
+      details:p.details.sort((a,b)=>a.부대비용포함-b.부대비용포함),hasOverseas,
+      qty_distribution: dist,
+      confidence: dist ? dist.confidence : 'none',
+      vendors
+    };
+  }).filter(p=>p.예상수량_최대>0&&p.평균단가>0);
   const cont=document.getElementById('budget-results'),empty=document.getElementById('budget-empty');
   if(!budgetRecs.length){cont.innerHTML='';empty.style.display='block';empty.querySelector('p').textContent='조건에 맞는 제품이 없습니다';document.getElementById('suggested-combos').style.display='none';document.getElementById('budget-sort-bar').style.display='none';return;}
   empty.style.display='none';
@@ -1219,32 +1514,245 @@ function budgetSurchargeTag(r){
   return tags.length?tags.join(' '):'<span class="surcharge-tag domestic">국내 · 부대비용 없음</span>';
 }
 
+// 카드별 사용자 입력 수량 (메모리)
+const recQtyState = {};
+const recExpanded = {};
+function getRecQty(r) {
+  if (recQtyState[r.품명] != null) return recQtyState[r.품명];
+  const ovr = getMoqOvr(r.품명);
+  if (ovr) return ovr.value;
+  return roundDownQty(r.예상수량_평균 || 0);
+}
+function setRecQty(name, q) { recQtyState[name] = q; renderBudgetCards(); }
+function toggleRecExpand(name) { recExpanded[name] = !recExpanded[name]; renderBudgetCards(); }
+
 function renderBudgetCards(){
   let sorted=[...budgetRecs];
-  if(budgetSortMode==='price')sorted.sort((a,b)=>a.평균단가-b.평균단가);
-  else if(budgetSortMode==='qty')sorted.sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
-  // 'cat' stays in category groups
+  if(budgetSortMode==='weighted'){
+    sorted.sort((a,b)=>{
+      const sa = _confScore(a.confidence)*0.6 + Math.min(100, (a.예상수량_평균||0)/100)*0.4;
+      const sb = _confScore(b.confidence)*0.6 + Math.min(100, (b.예상수량_평균||0)/100)*0.4;
+      return sb - sa;
+    });
+  } else if(budgetSortMode==='confidence'){
+    const rank = { high:0, mid:1, low:2, none:3 };
+    sorted.sort((a,b)=> (rank[a.confidence]-rank[b.confidence]) || (a.평균단가-b.평균단가));
+  } else if(budgetSortMode==='price') sorted.sort((a,b)=>a.평균단가-b.평균단가);
+  else if(budgetSortMode==='qty') sorted.sort((a,b)=>b.예상수량_평균-a.예상수량_평균);
 
   const cont=document.getElementById('budget-results');
   const isInCombo=name=>comboItems.some(c=>c.name===name);
-  const renderCard=r=>{const sel=isInCombo(r.품명);return`<div class="rec-card${sel?' selected':''}" onclick="event.stopPropagation();toggleCombo('${r.품명}',${r.평균단가})"><div class="product-name">${r.품명}<span class="add-hint">${sel?'✓ 선택됨':'+ 조합추가'}</span> <span style="font-size:11px;cursor:pointer;color:var(--primary);margin-left:4px;" onclick="event.stopPropagation();showBudgetDetail('${r.품명}')">상세▸</span></div><div class="product-cat">${r.국가.join('/')} · ${r.데이터건수}건 · 평균 ${r.평균제작일수}일</div><div class="rec-detail"><span>평균단가</span><span class="val">${fmtP(r.평균단가)}</span></div><div class="rec-detail"><span>최저단가</span><span class="val">${fmtP(r.최저단가)}</span></div><div class="rec-detail"><span>예상수량</span><span class="val best">${fmt(r.예상수량_평균)}~${fmt(r.예상수량_최대)}개</span></div>${budgetSurchargeTag(r)}<div style="margin-top:6px">${trustHTML(r.데이터건수)}</div></div>`};
+
+  const renderCard = r => {
+    const sel = isInCombo(r.품명);
+    const conf = r.confidence || 'none';
+    const dist = r.qty_distribution;
+    const qty = getRecQty(r);
+    const m = (conf !== 'none' && qty > 0) ? priceMatchByQty(r.품명, qty) : null;
+
+    // 메타 줄
+    const distMsg = !dist ? '등록된 발주 이력 없음'
+      : `과거 ${dist.count}회 발주 ${dist.recent>0?'(작년 '+dist.recent+'회)':'(작년 0회 — 휴면)'} · ${dist.vendor_count}개 업체`;
+    const alertMsg = ({
+      high: '', mid: ' · ⚠️ 견적 검증 권장',
+      low: ' · 🔴 제조사 직접 견적 필수', none: ' · ⚫ 거래처 발굴 필요'
+    })[conf];
+    const alertColor = conf==='low'?'#f87171':conf==='mid'?'#fbbf24':conf==='none'?'#71717a':'';
+
+    // 단가 박스
+    let priceHtml;
+    if (conf === 'none' || !m) {
+      priceHtml = `<div class="moq-price-box empty">데이터 없음</div>`;
+    } else if (m.src === 'far') {
+      priceHtml = `<div class="moq-price-box danger"><div class="danger-title">🔴 데이터 범위 외</div><div class="danger-sub">제조사 직접 견적 필요</div></div>`;
+    } else {
+      const avgUsed = m.src==='in20'?m.avg20:m.src==='in50'?m.avg50:null;
+      const avgLabel = m.src==='in20'?'±20% 평균':m.src==='in50'?'±50% 평균':'범위 평균';
+      priceHtml = `<div class="moq-price-box">
+        <div class="moq-price-line"><span class="lbl">근접 1건</span><span class="val"><b>${fmtP(m.closest.price)}</b></span></div>
+        <div class="moq-price-line ${avgUsed?'':'miss'}"><span class="lbl">${avgLabel}</span><span class="val">${avgUsed?'<b>'+fmtP(avgUsed.price)+'</b>':'데이터 부족'}</span></div>
+      </div>`;
+    }
+
+    const isLowOrMid = conf==='mid' || conf==='low';
+    const expandOpen = recExpanded[r.품명] ? 'open' : '';
+    const ovr = getMoqOvr(r.품명);
+    const history = (recExpanded[r.품명] && dist) ? purchaseHistoryOf(r.품명) : [];
+
+    return `
+      <div class="moq-rec ${conf}${sel?' selected':''}">
+        <div class="moq-row1">
+          <div class="moq-emoji">${({high:'🟢',mid:'🟡',low:'🔴',none:'⚫'})[conf]}</div>
+          <div>
+            <div class="moq-name">${r.품명}<span class="moq-meta-tag ${conf}">${({high:'🟢 데이터 충분',mid:'🟡 직접 견적 권장',low:'🔴 직접 견적 필수',none:'⚫ 데이터 없음'})[conf]}</span>${ovr?'<span class="moq-meta-tag" style="background:rgba(96,165,250,0.18);color:#60a5fa;">⚙️ 사용자값</span>':''}</div>
+            <div class="moq-meta">${r.품목} · ${distMsg}${alertMsg?`<span style="color:${alertColor};font-weight:600;">${alertMsg}</span>`:''}</div>
+          </div>
+          <div class="moq-qty-wrap">
+            <input class="moq-qty-input" type="number" value="${qty||''}" ${conf==='none'?'disabled':''}
+                   placeholder="수량" oninput="setRecQty('${r.품명.replace(/'/g,"\\'")}', +this.value)">
+            <div class="moq-qty-unit">개</div>
+          </div>
+          ${priceHtml}
+          <div class="moq-icon-slot">
+            ${isLowOrMid && r.vendors && r.vendors.length ? `<button class="moq-icon-btn contact" title="거래처 연락처" onclick="event.stopPropagation();openVendorModal('${r.품명.replace(/'/g,"\\'")}')">☎️</button>` : ''}
+          </div>
+          <div class="moq-icon-slot">
+            ${dist ? `<button class="moq-icon-btn expand ${expandOpen}" title="발주 이력" onclick="event.stopPropagation();toggleRecExpand('${r.품명.replace(/'/g,"\\'")}')">▼</button>` : ''}
+          </div>
+          <button class="moq-add ${sel?'selected':''}" ${conf==='none'?'disabled':''}
+                  onclick="event.stopPropagation();toggleComboAtQty('${r.품명.replace(/'/g,"\\'")}', ${m && m.recommendedPrice ? m.recommendedPrice : r.평균단가}, ${qty})">
+            ${sel?'✓':'+'} 추가
+          </button>
+        </div>
+        ${dist ? `
+          <div class="moq-detail ${expandOpen}">
+            <div class="moq-detail-row header">
+              <div></div>
+              <div class="moq-detail-meta"><span class="date">발주일</span><span class="vendor">거래처</span></div>
+              <div class="col-qty">수량</div>
+              <div class="col-price">단가</div>
+              <div></div><div></div><div></div>
+            </div>
+            ${history.map(h=>`
+              <div class="moq-detail-row">
+                <div></div>
+                <div class="moq-detail-meta"><span class="date">${h.date||'-'}</span><span class="vendor">${h.vendor}</span></div>
+                <div class="col-qty">${fmt(h.qty)}</div>
+                <div class="col-price">${fmtP(h.price)}</div>
+                <div></div><div></div><div></div>
+              </div>
+            `).join('')}
+            <div style="padding:6px 14px;border-top:1px solid var(--border);margin-top:4px;display:flex;justify-content:flex-end;gap:6px;">
+              <button class="moq-icon-btn" style="width:auto;border-radius:5px;padding:3px 10px;font-size:10px;" onclick="event.stopPropagation();openMoqOvrModal('${r.품명.replace(/'/g,"\\'")}')">⚙️ MOQ 직접 입력</button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  };
 
   let html='';
   if(budgetSortMode==='cat'){
     const grouped={};
     sorted.forEach(r=>{const cat=r.품목||'기타';if(!grouped[cat])grouped[cat]=[];grouped[cat].push(r);});
     Object.keys(grouped).forEach(cat=>{
-      grouped[cat].sort((a,b)=>a.평균단가-b.평균단가);
-      html+=`<div class="cat-group-header">${cat}</div><div class="rec-grid" style="margin-bottom:8px;">`;
+      const rank = { high:0, mid:1, low:2, none:3 };
+      grouped[cat].sort((a,b)=> (rank[a.confidence]-rank[b.confidence]) || (a.평균단가-b.평균단가));
+      html+=`<div class="cat-group-header">${cat}</div><div class="moq-rec-list" style="margin-bottom:8px;">`;
       html+=grouped[cat].map(renderCard).join('');
       html+=`</div>`;
     });
-  }else{
-    html+=`<div class="rec-grid">`;
+  } else {
+    html+=`<div class="moq-rec-list">`;
     html+=sorted.map(renderCard).join('');
     html+=`</div>`;
   }
   cont.innerHTML=html;
+}
+
+// 수량 + 단가 함께 조합에 추가 (수량 매칭 단가 사용)
+function toggleComboAtQty(name, unitPrice, qty) {
+  const existing = comboItems.find(c => c.name === name);
+  if (existing) {
+    // 이미 있으면 제거
+    comboItems = comboItems.filter(c => c.name !== name);
+  } else {
+    comboItems.push({ name, unitPrice: Math.round(unitPrice), margin: 30, manualQty: qty });
+  }
+  recalcComboQty();
+  renderCombo();
+  renderBudgetCards();
+}
+
+// ━━━ ☎️ 거래처 모달 ━━━
+function openVendorModal(품명) {
+  const r = budgetRecs.find(x => x.품명 === 품명);
+  if (!r) return;
+  const vendors = r.vendors || vendorsByProduct(품명);
+  const html = `
+    <div class="moq-modal-bg show" id="moq-vendor-modal-bg" onclick="if(event.target===this)closeVendorModal()">
+      <div class="moq-modal">
+        <button class="moq-modal-close" onclick="closeVendorModal()">✕</button>
+        <h3>${품명} — 거래처 ${vendors.length}곳</h3>
+        ${vendors.length === 0 ? '<div style="color:var(--text-muted);">등록된 거래처 없음</div>' : ''}
+        ${vendors.map(v => `
+          <div class="moq-vendor-item">
+            <div style="flex:1;min-width:0;">
+              <div class="moq-vendor-name">${v.name}${v.missing?' <span style="color:var(--text-muted);font-size:10px;">(거래처 DB 미등록)</span>':''}</div>
+              <div class="moq-vendor-meta">${v.유형 && v.유형.length ? v.유형.join('·')+' · ' : ''}${v.제작기간 || ''}</div>
+              ${v.메모 ? `<div class="moq-vendor-meta" style="font-style:italic;">📝 ${v.메모}</div>` : ''}
+            </div>
+            ${v.사이트 ? `<a class="moq-vendor-action" href="${v.사이트.startsWith('http')?v.사이트:'http://'+v.사이트}" target="_blank">🌐 사이트</a>` : ''}
+          </div>
+        `).join('')}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+          📌 신뢰도가 낮은 품목은 발주 전 거래처에 직접 단가·MOQ 확인이 필요합니다.<br>
+          ※ 전화·이메일 정보는 거래처 DB에 추후 추가 예정.
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function closeVendorModal() {
+  const m = document.getElementById('moq-vendor-modal-bg');
+  if (m) m.remove();
+}
+
+// ━━━ ⚙️ MOQ 직접 입력 모달 ━━━
+function openMoqOvrModal(품명) {
+  const r = budgetRecs.find(x => x.품명 === 품명);
+  if (!r) return;
+  const dist = r.qty_distribution;
+  const ovr = getMoqOvr(품명);
+  const html = `
+    <div class="moq-modal-bg show" id="moq-ovr-modal-bg" onclick="if(event.target===this)closeMoqOvrModal()">
+      <div class="moq-modal">
+        <button class="moq-modal-close" onclick="closeMoqOvrModal()">✕</button>
+        <h3>${품명} — MOQ 직접 입력</h3>
+        <div class="moq-input-field">
+          <label>현재 데이터 분포</label>
+          <div style="font-size:13px;color:var(--text-muted);">${dist?(`${fmt(dist.min)} ~ ${fmt(dist.med)} ~ ${fmt(dist.max)}개 (${dist.count}건)`):'데이터 없음'}</div>
+        </div>
+        <div class="moq-input-field">
+          <label>내가 알고 있는 최소 발주 수량</label>
+          <input type="number" id="moq-ovr-input" value="${ovr?ovr.value:(dist?dist.med:'')}" placeholder="예: 1000">
+        </div>
+        <div class="moq-input-field">
+          <label>메모 (선택)</label>
+          <textarea id="moq-ovr-memo" rows="2" placeholder="예: A 거래처 신규 단가표 기준">${ovr?ovr.memo:''}</textarea>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);">90일간 적용 · 만료 시 자동 삭제</div>
+        <div class="moq-modal-actions">
+          ${ovr?`<button class="moq-modal-btn danger" onclick="clearMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">삭제</button>`:''}
+          <button class="moq-modal-btn cancel" onclick="closeMoqOvrModal()">취소</button>
+          <button class="moq-modal-btn save" onclick="saveMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">90일간 적용</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function closeMoqOvrModal() {
+  const m = document.getElementById('moq-ovr-modal-bg');
+  if (m) m.remove();
+}
+function saveMoqOvrAndClose(품명) {
+  const v = parseInt(document.getElementById('moq-ovr-input').value);
+  if (!v || v <= 0) { alert('올바른 수량을 입력하세요'); return; }
+  const memo = document.getElementById('moq-ovr-memo').value || '';
+  saveMoqOvr(품명, v, memo);
+  delete recQtyState[품명];  // 사용자 입력 초기화 → 오버라이드 적용
+  closeMoqOvrModal();
+  renderBudgetCards();
+  if (typeof showToast === 'function') showToast(`${품명} MOQ ${v.toLocaleString()}개로 90일간 적용`);
+}
+function clearMoqOvrAndClose(품명) {
+  clearMoqOvr(품명);
+  delete recQtyState[품명];
+  closeMoqOvrModal();
+  renderBudgetCards();
+  if (typeof showToast === 'function') showToast(`${품명} 사용자 MOQ 삭제됨`);
 }
 
 function showBudgetDetail(name){
@@ -1378,6 +1886,8 @@ function buildQuotePrompt(){
   const budget=typeof getBudget==='function'?getBudget():0;
   let deliveryText='';
   if(dl){const d=new Date(dl);if(!isNaN(d.getTime()))deliveryText=d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일까지 납품 예정';}
+
+  let hasLow=false, hasMid=false;
   const totalQuote=items.reduce((s,c)=>{const qty=c.manualQty||c.qty;return s+Math.round(c.unitPrice*qty/(1-c.margin/100));},0);
   const itemsBlock=items.map((c,i)=>{
     const qty=c.manualQty||c.qty;
@@ -1385,22 +1895,55 @@ function buildQuotePrompt(){
     const quoteUnit=Math.round(quote/qty);
     const recQty=roundDownQty(qty);
     const rounded=recQty!==qty;
-    return [
+
+    // 신뢰도·분포 정보 (budgetRecs에서 조회)
+    const r = (typeof budgetRecs!=='undefined') ? budgetRecs.find(x=>x.품명===c.name) : null;
+    const conf = r ? r.confidence : 'none';
+    const dist = r ? r.qty_distribution : null;
+    const m = (typeof priceMatchByQty==='function' && conf!=='none') ? priceMatchByQty(c.name, qty) : null;
+
+    if (conf==='low') hasLow=true;
+    if (conf==='mid') hasMid=true;
+
+    const lines = [
       (i+1)+'. '+c.name,
       '   - 추천 발주 수량: '+recQty.toLocaleString()+'개 ← 견적서에 이 값을 사용',
       rounded?'   - 이론 수량: '+qty.toLocaleString()+'개 (예산 맞춤 계산값, 참고용)':'   - (이론 수량과 추천 수량 동일)',
       '   - 원가: '+c.unitPrice.toLocaleString()+'원/개',
       '   - 마진: '+c.margin+'%',
       '   - 판매 단가: '+quoteUnit.toLocaleString()+'원/개'
-    ].join('\n');
+    ];
+    if (dist) {
+      lines.push('   - 발주 이력: 과거 '+dist.count+'회 (작년 '+dist.recent+'회) · '+dist.vendor_count+'개 업체');
+    }
+    if (m) {
+      const matchInfo = m.src==='in20' ? `±20% 범위 ${m.avg20.count}건 평균 ₩${m.avg20.price.toLocaleString()}`
+                      : m.src==='in50' ? `±50% 범위 ${m.avg50.count}건 평균 ₩${m.avg50.price.toLocaleString()}`
+                      : m.src==='close' ? `가까운 1건 (${m.closest.qty.toLocaleString()}개 발주) ₩${m.closest.price.toLocaleString()}`
+                      : `🔴 데이터 범위 외 — 가까운 발주 ${m.closest.qty.toLocaleString()}개`;
+      lines.push('   - 수량 매칭 단가: '+matchInfo);
+      if (m.src==='far') {
+        lines.push('   - ⚠️ 입력 수량이 과거 발주 범위를 벗어남 — 단가 신뢰도 낮음');
+        hasLow = true;
+      }
+    }
+    if (conf==='high') {
+      lines.push('   - 데이터 신뢰도: 🟢 높음 — 견적 사용 가능');
+    } else if (conf==='mid') {
+      lines.push('   - 데이터 신뢰도: 🟡 중간 ⚠️ — 거래처 단가 검증 권장');
+    } else if (conf==='low') {
+      lines.push('   - 데이터 신뢰도: 🔴 낮음 — 제조사 직접 견적 필수. 이 단가는 참고용.');
+    }
+    return lines.join('\n');
   }).join('\n\n');
-  return [
+
+  const lines = [
     '굿즈 제작 견적 요청드립니다.','',
     '※ 이 건은 100% 굿즈 제작 의뢰입니다.',
     '※ 각 품목을 개별 서비스 라인으로 등록해주세요.',
     '※ 서비스 항목명(services[].name)은 반드시 아래 품목명을 그대로 사용해주세요.',
     '  예: "연필", "클리어파일" — "굿즈 제작"이나 "인쇄물" 같은 일반 카테고리로 치환하지 말 것.',
-    '※ 수량(services[].quantity)은 반드시 "추천 발주 수량"을 사용해주세요. 이론값은 예산 맞춤 계산이라 현실적인 발주 단위가 아닙니다.',
+    '※ 수량(services[].quantity)은 반드시 "추천 발주 수량"을 사용해주세요.',
     '※ 비고(services[].description)에는 담당자가 최종 수량을 조정할 때 참고할 수 있도록 다음 정보를 남겨주세요:',
     '  "[조정 필요] 이론 수량 ○○개 / 원가 ○○원 / 마진 ○○% / 판매 단가 ○○원. 실제 발주 단위에 맞게 확인 후 조정하세요."','',
     deliveryText?'납기: '+deliveryText:null,
@@ -1410,7 +1953,13 @@ function buildQuotePrompt(){
     '※ 담당자 안내: 견적서 생성 후 각 품목의 "추천 발주 수량"이 실제 발주 단위(예: 100·500·1,000개)와 맞는지 확인하고, 필요 시 수량을 조정해주세요.',
     '※ 수량 축소 시에는 판매 단가 재조정도 함께 검토해주세요 (수량이 줄면 총액이 줄어 예산·마진 목표에 미달할 수 있습니다).',
     '※ 비고에 이론 수량과 단가 정보가 남겨져 있어 조정에 참고할 수 있습니다.'
-  ].filter(l=>l!==null).join('\n');
+  ];
+  if (hasLow) {
+    lines.push('','※ 🔴 주의: 위 품목 중 신뢰도 "낮음" 항목은 데이터 부족으로 부정확. 견적서 발행 전 반드시 제조사에 직접 단가 확인 후 진행해주세요.');
+  } else if (hasMid) {
+    lines.push('','※ ⚠️ 신뢰도 "중간" 항목은 거래처 단가 검증을 권장합니다.');
+  }
+  return lines.filter(l=>l!==null).join('\n');
 }
 function exportToQuote(){
   const txt=buildQuotePrompt();
