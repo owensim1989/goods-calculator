@@ -17,9 +17,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .demo-badge{background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;}
 .header .sync-btn,.header .theme-btn{background:rgba(255,255,255,0.15);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;}
 .header .sync-btn:hover,.header .theme-btn:hover{background:rgba(255,255,255,0.3);}
-.header .ai-review-btn{background:#dc2626;border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;animation:aiPulse 2.5s ease-in-out infinite;}
+.header .ai-review-btn{background:#dc2626;border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px;animation:aiPulse 2.5s ease-in-out infinite;transition:background .2s;}
 .header .ai-review-btn:hover{background:#b91c1c;}
 .header .ai-review-btn span{background:rgba(255,255,255,0.3);padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;}
+.header .ai-review-btn.idle{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.65);animation:none;font-weight:500;}
+.header .ai-review-btn.idle:hover{background:rgba(255,255,255,0.22);color:#fff;}
+.header .ai-review-btn.idle span{background:rgba(255,255,255,0.18);color:rgba(255,255,255,0.75);font-weight:500;}
 @keyframes aiPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0.5);}50%{box-shadow:0 0 0 6px rgba(220,38,38,0);}}
 
 /* AI 검수 모달 */
@@ -534,7 +537,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <div class="header">
   <h1>제품원가 계산기</h1>
   <div class="header-right">
-    <button class="ai-review-btn" id="aiReviewBtn" onclick="openParsedModal()" title="Drive 인박스 자동 파싱 결과 검수" style="display:none;">🤖 AI 검수 <span id="aiReviewBadge">0</span></button>
+    <button class="ai-review-btn idle" id="aiReviewBtn" onclick="openParsedModal()" title="Drive 인박스 자동 파싱 결과 검수">🤖 AI 검수 <span id="aiReviewBadge">0</span></button>
     <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
     <button class="sync-btn" onclick="doSync()" id="syncBtn">동기화</button>
   </div>
@@ -3934,17 +3937,18 @@ const AI_COUNTRIES = ['국내','중국','기타해외'];
 
 async function loadParsedSummary(){
   try{
-    const r = await fetch('/api/parsed-quotes/summary');
-    if(!r.ok) return;
-    const j = await r.json();
     const btn = document.getElementById('aiReviewBtn');
     const badge = document.getElementById('aiReviewBadge');
-    if(j.pending > 0){
-      btn.style.display = 'inline-flex';
-      badge.textContent = j.pending;
-    } else {
-      btn.style.display = 'none';
-    }
+    if(!btn || !badge) return;
+    const r = await fetch('/api/parsed-quotes/summary');
+    if(!r.ok){ btn.classList.add('idle'); badge.textContent = '0'; return; }
+    const j = await r.json();
+    const n = Number(j.pending) || 0;
+    badge.textContent = n;
+    btn.classList.toggle('idle', n === 0);
+    btn.title = n === 0
+      ? 'Drive 인박스 자동 파싱 결과 검수 (대기 0건 — 클릭해서 즉시 실행 가능)'
+      : '검수 대기 ' + n + '건';
   }catch(e){ /* 무시 */ }
 }
 
