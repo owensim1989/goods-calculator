@@ -1902,18 +1902,18 @@ function openVendorModal(품명) {
         <h3>${품명} — 거래처 ${vendors.length}곳</h3>
         ${vendors.length === 0 ? '<div style="color:var(--text-muted);">등록된 거래처 없음</div>' : ''}
         ${vendors.map(v => `
-          <div class="moq-vendor-item">
+          <div class="moq-vendor-item" style="flex-wrap:wrap;">
             <div style="flex:1;min-width:0;">
               <div class="moq-vendor-name">${v.name}${v.missing?' <span style="color:var(--text-muted);font-size:10px;">(거래처 DB 미등록)</span>':''}</div>
               <div class="moq-vendor-meta">${v.유형 && v.유형.length ? v.유형.join('·')+' · ' : ''}${v.제작기간 || ''}</div>
+              ${(v.전화번호 || v.이메일) ? `<div class="moq-vendor-meta" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:3px;">${v.전화번호?`<a href="tel:${v.전화번호.replace(/[^+0-9]/g,'')}" style="color:var(--primary);text-decoration:none;">📞 ${v.전화번호}</a>`:''}${v.이메일?`<a href="mailto:${v.이메일}" style="color:var(--primary);text-decoration:none;">✉️ ${v.이메일}</a>`:''}</div>` : ''}
               ${v.메모 ? `<div class="moq-vendor-meta" style="font-style:italic;">📝 ${v.메모}</div>` : ''}
             </div>
             ${v.사이트 ? `<a class="moq-vendor-action" href="${v.사이트.startsWith('http')?v.사이트:'http://'+v.사이트}" target="_blank">🌐 사이트</a>` : ''}
           </div>
         `).join('')}
         <div style="font-size:11px;color:var(--text-muted);margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
-          📌 신뢰도가 낮은 품목은 발주 전 거래처에 직접 단가·MOQ 확인이 필요합니다.<br>
-          ※ 전화·이메일 정보는 거래처 DB에 추후 추가 예정.
+          📌 신뢰도가 낮은 품목은 발주 전 거래처에 직접 단가·MOQ 확인이 필요합니다.
         </div>
       </div>
     </div>

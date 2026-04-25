@@ -317,6 +317,10 @@ function extractProp(page, name, type) {
       return null;
     case 'status':
       return p.status?.name || null;
+    case 'phone_number':
+      return p.phone_number || '';
+    case 'email':
+      return p.email || '';
     case 'files':
       return (p.files || []).map(f => ({
         name: f.name,
@@ -406,6 +410,8 @@ async function syncFromNotion() {
         사이트: extractProp(p, '사이트', 'rich_text') || '',
         메모: extractProp(p, '메모', 'rich_text') || '',
         제작기간: extractProp(p, '제작기간', 'rich_text') || '',
+        전화번호: extractProp(p, '전화번호', 'phone_number') || '',
+        이메일: extractProp(p, '이메일', 'email') || '',
       }));
     } catch (e) {
       console.log('[동기화] 거래처 DB 읽기 실패 (무시):', e.message);
