@@ -2290,6 +2290,31 @@ app.get('*', (req, res) => {
 
 // ━━━ 서버 시작 ━━━
 app.listen(PORT, async () => {
+
+// ── Drive 통합 백업 (2026-04-25) ──
+try {
+  const path = require('path');
+  const driveBackup = require('./lib/backup-to-drive');
+  const localJson = [
+    path.join(__dirname, 'data', 'goods-cache.json'),
+    path.join(__dirname, 'data', 'quote-adoption.json')
+  ];
+  driveBackup.scheduleDailyBackup({
+    projectName: 'goods-calculator',
+    extraJsonFiles: localJson,
+    imageDirs: [CATALOG_IMAGE_DIR],
+    notion: process.env.NOTION_TOKEN ? {
+      token: process.env.NOTION_TOKEN,
+      dbIds: [
+        process.env.UNIFIED_DB_ID,
+        process.env.CONSUMER_PRICING_DB_ID,
+        process.env.PRODUCT_CATALOG_DB_ID,
+        process.env.VENDOR_DB_ID
+      ].filter(Boolean)
+    } : null
+  });
+  driveBackup.mountAdminRoutes(app, { projectName: 'goods-calculator', extraJsonFiles: localJson, imageDirs: [CATALOG_IMAGE_DIR], requireAdmin: (req,res,next)=>next() });
+} catch (err) { console.error('[backup-to-drive] mount 실패:', err.message); }
   console.log(`[제품원가 계산기] http://localhost:${PORT}`);
   // 시작 시 동기화 + 환율
   await Promise.all([syncFromNotion(), refreshFx()]);
