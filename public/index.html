@@ -570,7 +570,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <h1>제품 원가·기획 계산기</h1>
   </div>
   <div class="header-right">
-    <button class="ai-review-btn idle" id="aiReviewBtn" onclick="openParsedModal()" title="견적서 인박스 자동 파싱 결과 검수">견적 인박스 <span id="aiReviewBadge">0</span></button>
     <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
     <button class="sync-btn" onclick="doSync()" id="syncBtn">동기화</button>
   </div>
@@ -580,18 +579,23 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <div class="layout">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-group">
-      <div class="sidebar-group-title">조회</div>
-      <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">단가 조회</button>
-      <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
-    </div>
-    <div class="sidebar-group">
       <div class="sidebar-group-title">기획</div>
+      <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">제품 단가</button>
       <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 기획</button>
+      <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">미스터두낫띵</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">사업화</div>
+      <button class="sidebar-item" onclick="openMyDeskBusiness()" title="MyDesk 사업화 카드 화면을 새 탭으로 열기">사업화 카드 ↗</button>
+      <button class="sidebar-item" onclick="openMyDeskPayment()" title="MyDesk 결제요청 화면을 새 탭으로 열기">결제요청 ↗</button>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-group-title">기타</div>
       <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">견적 인박스 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
     </div>
     <div class="sidebar-group sidebar-group-soon">
@@ -968,6 +972,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-danger" id="cp-btn-del" style="display:none;" onclick="cpDeleteCurrent()">삭제</button>
       <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
       <button class="cp-btn" id="cp-btn-publish" style="background:#f59e0b;display:none;" onclick="cpPublishToCatalog()">📋 제품 카탈로그 등록</button>
+      <button class="cp-btn" id="cp-btn-payment" style="background:#7c3aed;display:none;" onclick="cpToPaymentRequest()" title="저장된 사업성 검토 데이터를 MyDesk 결제요청 신규 작성 폼에 자동 채워서 새 탭으로 열기">⚡ 결제요청으로 넘기기</button>
     </div>
   </div>
 </div>
@@ -1349,6 +1354,12 @@ function goToAiReviewPage(){
 function comingSoon(label){
   if(typeof showToast==='function') showToast('🚧 '+label+' — Phase 3에서 작업 예정', 'info');
   else alert('🚧 '+label+' — Phase 3에서 작업 예정');
+}
+function openMyDeskBusiness(){
+  window.open('https://mydesk.jeisha.kr/?tab=business', '_blank', 'noopener');
+}
+function openMyDeskPayment(){
+  window.open('https://mydesk.jeisha.kr/?tab=payment', '_blank', 'noopener');
 }
 
 // ━━━ 복수선택 비교 ━━━
@@ -2814,6 +2825,8 @@ function cpNewProject(){
   document.getElementById('cp-btn-del').style.display='none';
   const pubBtn = document.getElementById('cp-btn-publish');
   if(pubBtn) pubBtn.style.display='none';
+  const payBtnNew = document.getElementById('cp-btn-payment');
+  if(payBtnNew) payBtnNew.style.display='none';
   // 작성자는 localStorage 값 유지
   const authSel = document.getElementById('cp-author');
   if(authSel){
@@ -2890,7 +2903,10 @@ async function cpLoadProject(id){
     if(authSel && it.작성자) authSel.value = it.작성자;
     // 카탈로그 등록 버튼: 승인 상태일 때만 표시
     const pubBtn = document.getElementById('cp-btn-publish');
-    if(pubBtn) pubBtn.style.display = (it.상태 === '승인') ? 'inline-block' : 'none';
+    const payBtn2 = document.getElementById('cp-btn-payment');
+    const showApproved = (it.상태 === '승인') ? 'inline-block' : 'none';
+    if(pubBtn) pubBtn.style.display = showApproved;
+    if(payBtn2) payBtn2.style.display = showApproved;
     CP_COMPETITORS = Array.isArray(it.competitors)?it.competitors.slice():[];
     if(!CP_COMPETITORS.length){CP_COMPETITORS=[{brand:'',product:'',priceKRW:null,memo:''}];}
     cpRenderCompetitors();
@@ -3989,6 +4005,7 @@ function cpRegisterNextProduct(){
   // 저장/퍼블리시 버튼 상태 리셋
   const delBtn = document.getElementById('cp-btn-del'); if (delBtn) delBtn.style.display = 'none';
   const pubBtn = document.getElementById('cp-btn-publish'); if (pubBtn) pubBtn.style.display = 'none';
+  const payBtnReset = document.getElementById('cp-btn-payment'); if (payBtnReset) payBtnReset.style.display = 'none';
   // 제품 단가/수량/사이즈/재질 + 포장비 재환산
   // (size/material은 이미 채워져 있으면 유지하는 로직이라, 강제 덮어쓰기 위해 임시로 비움)
   const sizeEl = document.getElementById('cp-size'); if (sizeEl) sizeEl.value = '';
@@ -4036,8 +4053,63 @@ function cpApplyTier(i){
 function cpToggleCatalogBtn(){
   const st = document.getElementById('cp-status').value;
   const btn = document.getElementById('cp-btn-publish');
-  if(!btn) return;
-  btn.style.display = (st === '승인' && CP_CURRENT && CP_CURRENT.id) ? 'inline-block' : 'none';
+  const payBtn = document.getElementById('cp-btn-payment');
+  const show = (st === '승인' && CP_CURRENT && CP_CURRENT.id) ? 'inline-block' : 'none';
+  if(btn) btn.style.display = show;
+  if(payBtn) payBtn.style.display = show;
+}
+
+// ━━━ ⚡ 결제요청으로 넘기기 (MyDesk 결제요청 폼 prefill) ━━━
+function _readNum(id){ const el=document.getElementById(id); if(!el) return 0; const v=parseFloat(String(el.value||'').replace(/,/g,'')); return isFinite(v)?v:0; }
+function _readText(id){ const el=document.getElementById(id); return el?String(el.value||'').trim():''; }
+function _readKRW(id){ const el=document.getElementById(id); if(!el) return 0; const t=String(el.textContent||'').replace(/[^0-9]/g,''); return parseInt(t,10)||0; }
+
+function cpToPaymentRequest(){
+  if(!CP_CURRENT || !CP_CURRENT.id){
+    if(typeof showToast==='function') showToast('먼저 저장하세요','warn'); else alert('먼저 저장하세요');
+    return;
+  }
+  const name = _readText('cp-name');
+  const status = _readText('cp-status');
+  if(status !== '승인'){
+    if(typeof showToast==='function') showToast('승인 상태에서만 결제요청으로 넘길 수 있습니다','warn');
+    return;
+  }
+  const totalKRW = _readKRW('cp-m-total'); // 마진 카드의 총 원가 (이미 KRW 환산)
+  const qty = _readNum('cp-qty');
+  const costPrice = _readNum('cp-cost-price');
+  const costCurrency = _readText('cp-cost-currency');
+  const memoUser = _readText('cp-memo');
+  const hsCode = _readText('cp-hs');
+  const category = _readText('cp-category');
+  const origin = _readText('cp-origin');
+  const productImageUrl = (CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.url) ? CP_PRODUCT_IMAGE.url : '';
+  // 메모 자동 작성 (사용자 메모 + 자동 요약)
+  const autoLines = [];
+  autoLines.push('[goods.jeisha.kr 사업성 검토에서 자동 생성]');
+  if(name) autoLines.push('• 제품: '+name);
+  if(qty) autoLines.push('• 수량: '+qty.toLocaleString()+'개');
+  if(costPrice) autoLines.push('• 생산 단가: '+costPrice.toLocaleString()+' '+(costCurrency||'KRW'));
+  if(totalKRW) autoLines.push('• 총 원가: '+totalKRW.toLocaleString()+' KRW');
+  if(hsCode) autoLines.push('• HS Code: '+hsCode);
+  if(category) autoLines.push('• 품목: '+category);
+  if(origin) autoLines.push('• 원산지: '+origin);
+  if(productImageUrl) autoLines.push('• 제품 이미지: '+productImageUrl);
+  autoLines.push('• 사업성 검토 ID: '+CP_CURRENT.id);
+  if(memoUser) autoLines.push('','[사용자 메모]', memoUser);
+  const memo = autoLines.join('\n');
+  // URL params 생성
+  const params = new URLSearchParams({
+    prefill: '1',
+    title: (name ? name + ' 발주' : '신제품 발주'),
+    amount: String(totalKRW || 0),
+    memo: memo,
+  });
+  if(productImageUrl) params.set('attachUrl', productImageUrl);
+  if(category) params.set('category', category);
+  const url = 'https://mydesk.jeisha.kr/?tab=payment&new=1&' + params.toString();
+  window.open(url, '_blank', 'noopener');
+  if(typeof showToast==='function') showToast('MyDesk 결제요청 화면을 새 탭으로 열었습니다 (자동 기입)','info');
 }
 function cpUpdateHSConfirmBadge(){
   const b = document.getElementById('cp-hs-badge');
