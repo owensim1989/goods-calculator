@@ -1583,6 +1583,7 @@ function renderBudgetCards(){
       low: ' · 🔴 제조사 직접 견적 필수', none: ' · ⚫ 거래처 발굴 필요'
     })[conf];
     const alertColor = conf==='low'?'#f87171':conf==='mid'?'#fbbf24':conf==='none'?'#71717a':'';
+    const qWarn = (typeof _qtyWarn==='function') ? _qtyWarn(dist, qty) : null;
 
     // 단가 박스
     let priceHtml;
@@ -1610,7 +1611,7 @@ function renderBudgetCards(){
           <div class="moq-emoji">${({high:'🟢',mid:'🟡',low:'🔴',none:'⚫'})[conf]}</div>
           <div>
             <div class="moq-name">${r.품명}<span class="moq-meta-tag ${conf}">${({high:'🟢 데이터 충분',mid:'🟡 직접 견적 권장',low:'🔴 직접 견적 필수',none:'⚫ 데이터 없음'})[conf]}</span>${ovr?'<span class="moq-meta-tag" style="background:rgba(96,165,250,0.18);color:#60a5fa;">⚙️ 사용자값</span>':''}</div>
-            <div class="moq-meta">${r.품목} · ${distMsg}${alertMsg?`<span style="color:${alertColor};font-weight:600;">${alertMsg}</span>`:''}</div>
+            <div class="moq-meta">${r.품목} · ${distMsg}${alertMsg?`<span style="color:${alertColor};font-weight:600;"> · ${alertMsg}</span>`:''}${qWarn?`<span style="color:${qWarn.level==='low'?'#f87171':'#fbbf24'};font-weight:600;display:block;margin-top:2px;">⚠️ ${qWarn.msg}</span>`:''}</div>
           </div>
           <div class="moq-qty-wrap">
             <input class="moq-qty-input" type="text" inputmode="numeric" value="${qty?qty.toLocaleString():''}" ${conf==='none'?'disabled':''}
@@ -2022,6 +2023,16 @@ function genSugCombos(budget){
     const totalCost=itemsWithQty.reduce((s,i)=>s+i.price*i.qty,0);
     return`<div class="sug-combo-card" onclick='applySugCombo(${JSON.stringify(co.items).replace(/'/g,"\\'")})'><div class="sug-combo-items">${co.label}<br>${itemsWithQty.map(i=>`<strong>${i.name}</strong> ~${fmt(i.qty)}개`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(totalCost)}</div></div>`;
   }).join('');
+}
+
+
+// v2.3: 비현실적 수량 판정
+function _qtyWarn(dist, qty) {
+  if (!dist || !qty) return null;
+  if (qty < dist.min) return { level:'low', msg:'과거 최소 발주(' + _fmtNum(dist.min) + '개)보다 적음. 제작 불가 가능 (금형비 등)' };
+  if (qty < dist.p25) return { level:'mid', msg:'과거 발주 대비 매우 적음 (' + _fmtNum(dist.p25) + '개 미만). 제조사 확인 권장' };
+  if (qty > dist.max * 1.5) return { level:'mid', msg:'과거 최대 발주(' + _fmtNum(dist.max) + '개)보다 크게 많음. 단가 별도 협의 필요' };
+  return null;
 }
 
 // === v2.1 helpers (2026-04-25) ===
