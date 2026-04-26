@@ -1430,9 +1430,23 @@ async function _runPricingAudit(jobId, filepath) {
     console.log(`[audit ${jobId}] processing ${products.length} products`);
 
     // 3) 헬퍼
-    const calcMinSafe = (c, krw) => {
+    // 카테고리별 배송비 (혼합 운영: 컨테이너 일괄 + 일부 직배송 평균)
+    // 작은 그룹 500원 / 중간 1500원 / 큰 그룹 3000원
+    const CATEGORY_SHIPPING = {
+      '키링/잡화': 500,
+      '프린트/스티커': 500,
+      '문구': 500,
+      '모바일 악세사리': 500,
+      '의류': 1500,
+      '홈리빙': 1500,
+      '인형': 3000,
+      '피규어/토이': 3000,
+      '기타': 3000
+    };
+    const calcMinSafe = (c, krw, category) => {
       if (c.code === 'KR') return krw;
-      const totalKRW = (krw + c.ship) * (1 + c.tariff/100) * (1 + c.vat/100);
+      const ship = CATEGORY_SHIPPING[category] != null ? CATEGORY_SHIPPING[category] : 1500;
+      const totalKRW = (krw + ship) * (1 + c.tariff/100) * (1 + c.vat/100);
       return totalKRW / c.fx;
     };
     const roundLocal = (round, value) => Math.round(value / round) * round;
@@ -1470,7 +1484,7 @@ async function _runPricingAudit(jobId, filepath) {
 
       // 수익률 최저가
       p.minSafe = {};
-      for (const c of COUNTRIES) p.minSafe[c.code] = calcMinSafe(c, p.krwPrice);
+      for (const c of COUNTRIES) p.minSafe[c.code] = calcMinSafe(c, p.krwPrice, p.category);
 
       // AI 호출
       try {

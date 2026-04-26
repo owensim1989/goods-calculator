@@ -593,8 +593,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">사업화</div>
-      <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=business" target="_blank" rel="noopener noreferrer" title="MyDesk 사업화 화면을 새 탭(시스템 기본 브라우저)으로 열기">사업화 ↗</a>
-      <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=payment" target="_blank" rel="noopener noreferrer" title="MyDesk 결제요청 화면을 새 탭으로 열기">결제요청 ↗</a>
+      <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=business" target="_blank" rel="noopener noreferrer external" onclick="return openExternalUrl(event,'https://mydesk.jeisha.kr/?tab=business')" title="MyDesk 사업화 화면 (새 창)">사업화 ↗</a>
+      <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=payment" target="_blank" rel="noopener noreferrer external" onclick="return openExternalUrl(event,'https://mydesk.jeisha.kr/?tab=payment')" title="MyDesk 결제요청 화면 (새 창)">결제요청 ↗</a>
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">기타</div>
@@ -894,7 +894,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         📦 생산 부대비용 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 국가 프리셋 기본값, AI 견적서 분석 시 덮어씀</span>
         <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:11px;padding:3px 10px;" onclick="cpApplyCountryPreset()">🔄 원산지 프리셋</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:end;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end;">
         <div class="cp-field"><label>원산지</label><select id="cp-origin" onchange="cpApplyCountryPreset(true)">
           <option value="China">🇨🇳 중국</option><option value="Korea">🇰🇷 한국</option><option value="Vietnam">🇻🇳 베트남</option><option value="Other">🌏 기타해외</option>
         </select></div>
@@ -1368,11 +1368,21 @@ function comingSoon(label){
   if(typeof showToast==='function') showToast('🚧 '+label+' — Phase 3에서 작업 예정', 'info');
   else alert('🚧 '+label+' — Phase 3에서 작업 예정');
 }
-function openMyDeskBusiness(){
-  window.open('https://mydesk.jeisha.kr/?tab=business', '_blank', 'noopener');
-}
-function openMyDeskPayment(){
-  window.open('https://mydesk.jeisha.kr/?tab=payment', '_blank', 'noopener');
+function openMyDeskBusiness(){ openExternalUrl(null, 'https://mydesk.jeisha.kr/?tab=business'); }
+function openMyDeskPayment(){ openExternalUrl(null, 'https://mydesk.jeisha.kr/?tab=payment'); }
+// 외부 링크를 시스템 기본 브라우저(Chrome 등) 새 창으로 강제 열기 — PWA / Cowork 데스크톱 앱이 가로채지 않도록
+function openExternalUrl(ev, url){
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  // popup window 옵션을 명시하면 일부 PWA scope를 우회 가능
+  const features = 'noopener,noreferrer,width=' + Math.min(1440, screen.width-80) + ',height=' + Math.min(900, screen.height-120);
+  const w = window.open(url, '_blank', features);
+  if(!w){
+    // popup blocker 등으로 실패 시 fallback — a 태그 클릭 강제
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer external';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  return false;
 }
 
 // ━━━ 복수선택 비교 ━━━
@@ -2915,11 +2925,8 @@ async function cpLoadProject(id){
     const authSel = document.getElementById('cp-author');
     if(authSel && it.작성자) authSel.value = it.작성자;
     // 카탈로그 등록 버튼: 승인 상태일 때만 표시
-    const pubBtn = document.getElementById('cp-btn-publish');
-    const payBtn2 = document.getElementById('cp-btn-payment');
-    const showApproved = (it.상태 === '승인') ? 'inline-block' : 'none';
-    if(pubBtn) pubBtn.style.display = showApproved;
-    if(payBtn2) payBtn2.style.display = showApproved;
+    // pubBtn/payBtn/cp-approval-box 토글은 cpToggleCatalogBtn 가 일괄 처리
+    cpToggleCatalogBtn();
     CP_COMPETITORS = Array.isArray(it.competitors)?it.competitors.slice():[];
     if(!CP_COMPETITORS.length){CP_COMPETITORS=[{brand:'',product:'',priceKRW:null,memo:''}];}
     cpRenderCompetitors();
@@ -3342,11 +3349,8 @@ async function cpSave(){
     showToast(CP_CURRENT?'수정 완료':'저장 완료');
     CP_CURRENT = data.item || { id: data.id };
     document.getElementById('cp-btn-del').style.display='inline-block';
-    const pubBtn = document.getElementById('cp-btn-publish');
-    if(pubBtn){
-      const st = document.getElementById('cp-status').value;
-      pubBtn.style.display = (st === '승인') ? 'inline-block' : 'none';
-    }
+    // pubBtn/payBtn/cp-approval-box 토글은 cpToggleCatalogBtn 가 일괄 처리
+    cpToggleCatalogBtn();
     // 신규 저장 시 대기 중인 제품 이미지 자동 업로드
     if(CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.pendingLocal && CP_PRODUCT_IMAGE.dataUrl){
       await cpUploadProductImage();
