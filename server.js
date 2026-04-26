@@ -1876,6 +1876,255 @@ app.get('/api/admin/pricing-audit/files', (req, res) => {
 //   - 현재가 == final 이면 PATCH 안 보냄 (멱등성)
 //   - rate limit 보호 (100ms 간격)
 //   - 실패한 페이지만 재시도 가능 (results.failed)
+// ━━━ 인상률 분석 (AI 호출 없음, 빠름 ~30초, 응답으로 엑셀 직접 다운로드) ━━━━━━━━━━━━━━━━━━━━━━━
+// 사용: GET /api/admin/pricing-audit/markup-report
+// 결과: 4시트 엑셀 (1.카테고리·국가 요약 / 2.국가별 마크업 정책 / 3.카테고리·배송비 정책 / 4.인상률 분해)
+app.get('/api/admin/pricing-audit/markup-report', async (req, res) => {
+  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  if (!ExcelJS) return res.status(503).json({ error: 'exceljs 미설치' });
+
+  try {
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const _gNum = (pr, k) => pr[k] && pr[k].number != null ? pr[k].number : null;
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+    const _gSel = (pr, k) => pr[k] && pr[k].select ? pr[k].select.name : null;
+
+    const COUNTRIES = [
+      { code: 'KR', field: 'Retail_KR_KRW', currency: 'KRW', tariff: 0,    vat: 10, fx: 1, round: 100 },
+      { code: 'TW', field: 'Retail_TW_TWD', currency: 'TWD', tariff: 3,    vat: 5,  fx: fxCache.TWD || 43, round: 10 },
+      { code: 'HK', field: 'Retail_HK_HKD', currency: 'HKD', tariff: 0,    vat: 0,  fx: fxCache.HKD || 177, round: 1 },
+      { code: 'CN', field: 'Retail_CN_CNY', currency: 'CNY', tariff: 10,   vat: 13, fx: fxCache.CNY || 190, round: 10 },
+      { code: 'TH', field: 'Retail_TH_THB', currency: 'THB', tariff: 20,   vat: 7,  fx: fxCache.THB || 40, round: 10 },
+      { code: 'US', field: 'Retail_US_USD', currency: 'USD', tariff: 5,    vat: 0,  fx: fxCache.USD || 1380, round: 0.5 },
+      { code: 'JP', field: 'Retail_JP_JPY', currency: 'JPY', tariff: 3,    vat: 10, fx: fxCache.JPY || 9.2, round: 100 }
+    ];
+    const CATEGORY_SHIPPING = {
+      '키링/잡화':       { pct: 5, min: 500 },
+      '프린트/스티커':   { pct: 5, min: 500 },
+      '문구':            { pct: 5, min: 500 },
+      '모바일 악세사리': { pct: 5, min: 500 },
+      '의류':            { pct: 6, min: 1500 },
+      '홈리빙':          { pct: 6, min: 1500 },
+      '인형':            { pct: 7, min: 3000 },
+      '피규어/토이':     { pct: 7, min: 3000 },
+      '기타':            { pct: 7, min: 3000 }
+    };
+    const GROUP_LABEL = {
+      '키링/잡화': '작은', '프린트/스티커': '작은', '문구': '작은', '모바일 악세사리': '작은',
+      '의류': '중간', '홈리빙': '중간',
+      '인형': '큰', '피규어/토이': '큰', '기타': '큰'
+    };
+
+    const products = [];
+    for (const p of allPages) {
+      const pr = p.properties || {};
+      const status = _gSel(pr, '판매상태');
+      if (status === '단종') continue;
+      const name = _gText(pr, 'Product Name');
+      if (!name || !name.trim()) continue;
+      const item = {
+        id: p.id, name: name.trim(),
+        barcode: (_gText(pr, 'Barcode') || '').trim(),
+        category: _gSel(pr, 'Category') || '(미분류)',
+        status, krwPrice: _gNum(pr, 'Retail_KR_KRW'),
+        current: {}
+      };
+      for (const c of COUNTRIES) item.current[c.code] = _gNum(pr, c.field);
+      products.push(item);
+    }
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Mr.Donothing markup analysis';
+
+    // 시트 1: 카테고리·국가 요약 (한눈에 보는 메인)
+    const s1 = wb.addWorksheet('1. 카테고리·국가 요약');
+    const COUNTRY_LIST = COUNTRIES.filter(c => c.code !== 'KR');
+    s1.columns = [
+      { header: '카테고리', key: 'cat', width: 18 },
+      { header: '제품수', key: 'n', width: 7 },
+      { header: '평균 KR가', key: 'avgKr', width: 12 },
+      { header: '그룹', key: 'grp', width: 7 },
+      { header: '배송비정책', key: 'shipPol', width: 18 },
+      ...COUNTRY_LIST.map(c => ({ header: c.code + ' 평균인상률', key: c.code, width: 13 }))
+    ];
+    s1.getRow(1).font = { bold: true };
+    s1.getRow(1).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    const cats = [...new Set(products.map(p => p.category).filter(Boolean))];
+    cats.sort((a, b) => {
+      const ord = ['작은', '중간', '큰'];
+      const ga = ord.indexOf(GROUP_LABEL[a] || '?');
+      const gb = ord.indexOf(GROUP_LABEL[b] || '?');
+      return ga - gb;
+    });
+    for (const cat of cats) {
+      const items = products.filter(p => p.category === cat && p.krwPrice != null);
+      if (items.length === 0) continue;
+      const avgKr = items.reduce((a,p)=>a+p.krwPrice, 0) / items.length;
+      const cs = CATEGORY_SHIPPING[cat] || { pct: 6, min: 1500 };
+      const row = {
+        cat, n: items.length,
+        avgKr: Math.round(avgKr),
+        grp: GROUP_LABEL[cat] || '?',
+        shipPol: cs.pct + '% (min ' + cs.min + '원)'
+      };
+      for (const c of COUNTRY_LIST) {
+        const arr = items.map(p => {
+          const ship = Math.max(p.krwPrice * cs.pct / 100, cs.min);
+          const ms = (p.krwPrice + ship) * (1 + c.tariff/100) * (1 + c.vat/100);
+          return (ms / p.krwPrice - 1) * 100;
+        });
+        const avg = arr.reduce((a,v)=>a+v, 0) / arr.length;
+        row[c.code] = avg.toFixed(1) + '%';
+      }
+      s1.addRow(row);
+    }
+    s1.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // 시트 2: 국가별 마크업 정책
+    const s2 = wb.addWorksheet('2. 국가별 마크업 정책');
+    s2.columns = [
+      { header: '국가', key: 'cc', width: 8 },
+      { header: '통화', key: 'cur', width: 8 },
+      { header: '관세율', key: 't', width: 10 },
+      { header: 'VAT', key: 'v', width: 10 },
+      { header: '관부가세 합산', key: 'tx', width: 14 },
+      { header: '환율 (KRW per 1단위)', key: 'fx', width: 18 },
+      { header: '라운딩 단위', key: 'rd', width: 12 }
+    ];
+    s2.getRow(1).font = { bold: true };
+    for (const c of COUNTRIES) {
+      const tx = ((1 + c.tariff/100) * (1 + c.vat/100) - 1) * 100;
+      s2.addRow({
+        cc: c.code, cur: c.currency,
+        t: c.tariff + '%', v: c.vat + '%',
+        tx: tx.toFixed(2) + '%',
+        fx: c.fx, rd: c.round
+      });
+    }
+
+    // 시트 3: 카테고리별 배송비 정책
+    const s3 = wb.addWorksheet('3. 카테고리·배송비 정책');
+    s3.columns = [
+      { header: '카테고리', key: 'cat', width: 18 },
+      { header: '그룹', key: 'grp', width: 8 },
+      { header: '배송비%', key: 'pct', width: 10 },
+      { header: '최소 절대값', key: 'min', width: 12 },
+      { header: '예시: KR 5천', key: 'eg5', width: 14 },
+      { header: '예시: KR 1만', key: 'eg1', width: 14 },
+      { header: '예시: KR 3만', key: 'eg3', width: 14 },
+      { header: '예시: KR 10만', key: 'eg10', width: 14 }
+    ];
+    s3.getRow(1).font = { bold: true };
+    const sortedCats = Object.keys(CATEGORY_SHIPPING).sort((a,b) => {
+      const ord = ['작은', '중간', '큰'];
+      return ord.indexOf(GROUP_LABEL[a]) - ord.indexOf(GROUP_LABEL[b]);
+    });
+    for (const cat of sortedCats) {
+      const cs = CATEGORY_SHIPPING[cat];
+      s3.addRow({
+        cat,
+        grp: GROUP_LABEL[cat] || '?',
+        pct: cs.pct + '%',
+        min: cs.min + '원',
+        eg5: Math.max(5000 * cs.pct/100, cs.min).toLocaleString() + '원',
+        eg1: Math.max(10000 * cs.pct/100, cs.min).toLocaleString() + '원',
+        eg3: Math.max(30000 * cs.pct/100, cs.min).toLocaleString() + '원',
+        eg10: Math.max(100000 * cs.pct/100, cs.min).toLocaleString() + '원'
+      });
+    }
+
+    // 시트 4: 인상률 분해 (제품별)
+    const s4 = wb.addWorksheet('4. 인상률 분해 (제품별)');
+    s4.columns = [
+      { header: 'no', key: 'n', width: 5 },
+      { header: '카테고리', key: 'cat', width: 14 },
+      { header: '제품명', key: 'name', width: 36 },
+      { header: 'barcode', key: 'b', width: 14 },
+      { header: '그룹', key: 'grp', width: 7 },
+      { header: '국가', key: 'cc', width: 6 },
+      { header: 'KR가(KRW)', key: 'kr', width: 11 },
+      { header: '관부가세%', key: 'tax', width: 10 },
+      { header: '배송비(KRW)', key: 'ship', width: 12 },
+      { header: '배송비%', key: 'shipPct', width: 9 },
+      { header: '수익률최저(KRW환산)', key: 'msKrw', width: 16 },
+      { header: '최저가 인상률%', key: 'msPct', width: 13 },
+      { header: '현재가(현지)', key: 'cur', width: 12 },
+      { header: '현재가(KRW환산)', key: 'curKrw', width: 14 },
+      { header: '현재 인상률%', key: 'curPct', width: 13 },
+      { header: '판정', key: 'verdict', width: 9 }
+    ];
+    s4.getRow(1).font = { bold: true };
+    s4.getRow(1).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+    let n4 = 0;
+    for (const p of products) {
+      if (p.krwPrice == null) continue;
+      for (const c of COUNTRIES) {
+        if (c.code === 'KR') continue;
+        n4++;
+        const cs = CATEGORY_SHIPPING[p.category] || { pct: 6, min: 1500 };
+        const ship = Math.max(p.krwPrice * cs.pct / 100, cs.min);
+        const taxPct = ((1 + c.tariff/100) * (1 + c.vat/100) - 1) * 100;
+        const msKrw = (p.krwPrice + ship) * (1 + c.tariff/100) * (1 + c.vat/100);
+        const msPct = (msKrw / p.krwPrice - 1) * 100;
+        const cur = p.current[c.code];
+        const curKrw = cur != null ? cur * c.fx : null;
+        const curPct = curKrw != null ? (curKrw / p.krwPrice - 1) * 100 : null;
+        let verdict;
+        if (cur == null) verdict = '⬜ 빈칸';
+        else if (curKrw < msKrw * 0.99) verdict = '🔴 LOSS';
+        else verdict = '🟢 OK';
+        s4.addRow({
+          n: n4, cat: p.category, name: p.name, b: p.barcode,
+          grp: GROUP_LABEL[p.category] || '?', cc: c.code,
+          kr: p.krwPrice,
+          tax: taxPct.toFixed(1) + '%',
+          ship: Math.round(ship),
+          shipPct: (ship / p.krwPrice * 100).toFixed(1) + '%',
+          msKrw: Math.round(msKrw),
+          msPct: msPct.toFixed(1) + '%',
+          cur: cur,
+          curKrw: curKrw != null ? Math.round(curKrw) : null,
+          curPct: curPct != null ? curPct.toFixed(1) + '%' : '(빈칸)',
+          verdict: verdict
+        });
+      }
+    }
+    s4.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // 응답으로 직접 stream + 디스크 백업
+    const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = `pricing-audit-markup-${ts}.xlsx`;
+    try {
+      const fp = path.join(PRICING_AUDIT_DIR, filename);
+      await wb.xlsx.writeFile(fp);
+      console.log(`[markup-report] saved → ${fp}`);
+    } catch(e) { console.error('[markup-report] save fail', e.message); }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('[markup-report]', e);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/pricing-audit/apply', async (req, res) => {
   if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
     return res.status(403).json({ error: 'unauthorized' });
