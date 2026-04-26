@@ -99,6 +99,71 @@ a.sidebar-item:hover{color:var(--text);}
 .ai-card.reviewed{opacity:0.7;}
 .ai-empty{text-align:center;padding:60px 20px;color:var(--text-muted);}
 
+/* ━━━ 견적 인박스 풀페이지 화려 UI (2026-04-26) ━━━ */
+@keyframes inboxHeroShine{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
+@keyframes inboxBadgePulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(220,38,38,0.55);}50%{transform:scale(1.05);box-shadow:0 0 0 10px rgba(220,38,38,0);}}
+@keyframes inboxFloat{0%,100%{transform:translateY(0px);}50%{transform:translateY(-4px);}}
+@keyframes inboxOrb{0%{transform:translate(0,0);}33%{transform:translate(40px,-30px);}66%{transform:translate(-30px,20px);}100%{transform:translate(0,0);}}
+
+.inbox-page{position:relative;}
+.inbox-hero{position:relative;border-radius:20px;overflow:hidden;padding:34px 32px 28px;color:#fff;background:linear-gradient(135deg,#5b21b6 0%,#7c3aed 25%,#dc2626 60%,#ea580c 100%);background-size:300% 300%;animation:inboxHeroShine 18s ease infinite;box-shadow:0 20px 60px -20px rgba(124,58,237,0.55),0 8px 24px -8px rgba(220,38,38,0.35);margin-bottom:18px;}
+.inbox-hero::before{content:"";position:absolute;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,0.18) 0%,transparent 70%);top:-100px;right:-60px;animation:inboxOrb 12s ease-in-out infinite;pointer-events:none;}
+.inbox-hero::after{content:"";position:absolute;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(251,146,60,0.25) 0%,transparent 70%);bottom:-80px;left:-40px;animation:inboxOrb 16s ease-in-out infinite reverse;pointer-events:none;}
+.inbox-hero-inner{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;}
+.inbox-hero-title{display:flex;align-items:center;gap:14px;}
+.inbox-hero-emoji{font-size:42px;line-height:1;animation:inboxFloat 3.5s ease-in-out infinite;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.25));}
+.inbox-hero h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-0.4px;text-shadow:0 2px 12px rgba(0,0,0,0.18);}
+.inbox-hero .sub{font-size:12px;opacity:0.92;margin-top:6px;font-weight:400;line-height:1.6;max-width:560px;}
+.inbox-hero-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.inbox-hero-btn{padding:11px 20px;font-size:13px;font-weight:600;border-radius:11px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.18);color:#fff;cursor:pointer;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:all 0.2s;display:inline-flex;align-items:center;gap:6px;}
+.inbox-hero-btn:hover{background:rgba(255,255,255,0.32);transform:translateY(-1px);box-shadow:0 8px 20px -6px rgba(0,0,0,0.3);}
+.inbox-hero-btn.ghost{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.22);}
+.inbox-hero-btn.ghost:hover{background:rgba(255,255,255,0.18);}
+
+.inbox-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:18px;}
+.inbox-stat{position:relative;padding:18px 20px;border-radius:14px;border:1px solid var(--border);background:var(--card);overflow:hidden;transition:all 0.2s;cursor:pointer;}
+.inbox-stat:hover{transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(0,0,0,0.18);}
+.inbox-stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:2px;}
+.inbox-stat.pending::before{background:linear-gradient(180deg,#f59e0b,#dc2626);}
+.inbox-stat.approved::before{background:linear-gradient(180deg,#10b981,#059669);}
+.inbox-stat.rejected::before{background:linear-gradient(180deg,#94a3b8,#64748b);}
+.inbox-stat.total::before{background:linear-gradient(180deg,#6366f1,#8b5cf6);}
+.inbox-stat .label{font-size:11px;font-weight:500;color:var(--text-muted);letter-spacing:0.3px;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.inbox-stat .num{font-size:32px;font-weight:700;line-height:1;letter-spacing:-1px;font-family:'JetBrains Mono','SF Mono',monospace;}
+.inbox-stat.pending .num{color:#f59e0b;}
+.inbox-stat.approved .num{color:#10b981;}
+.inbox-stat.rejected .num{color:#94a3b8;}
+.inbox-stat.total .num{color:#8b5cf6;}
+.inbox-stat .hint{font-size:10px;color:var(--text-muted);margin-top:5px;}
+.inbox-stat .pulse{position:absolute;top:14px;right:14px;width:10px;height:10px;border-radius:50%;background:#dc2626;animation:inboxBadgePulse 1.6s ease-in-out infinite;display:none;}
+.inbox-stat.pending .pulse.active{display:block;}
+
+.inbox-pills{display:flex;gap:6px;background:var(--card);padding:6px;border-radius:14px;border:1px solid var(--border);margin-bottom:16px;width:fit-content;}
+.inbox-pills button{background:transparent;border:none;padding:9px 18px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;border-radius:10px;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px;}
+.inbox-pills button:hover{color:var(--text);background:rgba(127,127,127,0.06);}
+.inbox-pills button.active{background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;font-weight:600;box-shadow:0 4px 12px -4px rgba(124,58,237,0.5);}
+.inbox-pills .count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 7px;border-radius:10px;font-size:11px;background:rgba(127,127,127,0.12);font-weight:600;font-family:'JetBrains Mono','SF Mono',monospace;}
+.inbox-pills button.active .count{background:rgba(255,255,255,0.25);color:#fff;}
+
+.inbox-list-wrap{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.inbox-list-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(124,58,237,0.04),transparent);}
+.inbox-list-head .ttl{font-size:13px;font-weight:600;}
+.inbox-list-head .ttl .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#7c3aed;margin-right:6px;vertical-align:middle;animation:inboxBadgePulse 2s ease-in-out infinite;}
+.inbox-list-body{padding:14px 18px;}
+
+.inbox-empty{text-align:center;padding:80px 20px;color:var(--text-muted);}
+.inbox-empty .ico{font-size:64px;margin-bottom:16px;opacity:0.4;animation:inboxFloat 3s ease-in-out infinite;}
+.inbox-empty .ttl{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
+.inbox-empty .sub{font-size:12px;line-height:1.6;}
+
+@media (max-width:680px){
+  .inbox-hero{padding:24px 20px;}
+  .inbox-hero h1{font-size:20px;}
+  .inbox-hero-emoji{font-size:34px;}
+  .inbox-stat .num{font-size:26px;}
+}
+
+
 .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto;}
 .tab-btn{background:none;border:none;padding:14px 20px;font-size:14px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
 .tab-btn.active{color:var(--primary);border-bottom-color:var(--primary);}
@@ -1003,7 +1068,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:6px;">📥 바이어 공유 엑셀</div>
+        <div style="font-weight:600;font-size:14px;margin-bottom:6px;">📥 제품리스트</div>
         <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">FOB·CIF 22열 포맷 + 이미지 임베드. 해외 바이어에게 보내는 표준 카탈로그 엑셀.</div>
         <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()">📥 다운로드</button>
       </div>
@@ -1034,26 +1099,65 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 </div>
 
-<!-- 탭6: 📨 견적 인박스 (Drive 자동 파싱 검수) -->
-<div class="tab-page" id="page-ai-review">
-  <div class="cp-section" style="padding:0;overflow:hidden;border:1px solid var(--border);border-radius:14px;">
-    <div style="background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div>
-        <h2 style="margin:0;font-size:17px;font-weight:600;">견적 인박스 — Drive 자동 파싱 검수</h2>
-        <div style="font-size:11px;opacity:0.9;margin-top:4px;">30분마다 자동 실행 · 사업화/디자인팀이 Drive 인박스 폴더에 견적서를 드롭하면 자동 파싱 → 검수 후 통합DB에 반영</div>
+<!-- 탭6: 📨 견적 인박스 (Drive 자동 파싱 검수) — 화려 UI v2 -->
+<div class="tab-page inbox-page" id="page-ai-review">
+  <!-- 히어로 헤더 -->
+  <div class="inbox-hero">
+    <div class="inbox-hero-inner">
+      <div class="inbox-hero-title">
+        <div class="inbox-hero-emoji">📨</div>
+        <div>
+          <h1>견적 인박스</h1>
+          <div class="sub">30분마다 자동으로 Drive 인박스 폴더를 스캔합니다. 사업화·디자인팀이 견적서(PDF/엑셀/이미지)를 드롭하면 AI가 자동 파싱하고, 여기서 검수 후 통합DB에 반영됩니다.</div>
+        </div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="cp-btn cp-btn-ghost" id="runInboxBtn" style="background:rgba(255,255,255,0.2);color:#fff;border-color:rgba(255,255,255,0.4);" onclick="runInboxNow(false)">▶ 지금 인박스 확인</button>
-        <button class="cp-btn cp-btn-ghost" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.3);" onclick="runInboxNow(true)">🧪 DRY-RUN</button>
+      <div class="inbox-hero-actions">
+        <button class="inbox-hero-btn" id="runInboxBtn" onclick="runInboxNow(false)">⚡ 지금 확인</button>
+        <button class="inbox-hero-btn ghost" onclick="runInboxNow(true)">🧪 DRY-RUN</button>
       </div>
     </div>
-    <div class="ai-modal-tabs" style="background:var(--card);">
-      <button class="active" data-status="pending" onclick="switchParsedTab('pending')">미검수</button>
-      <button data-status="approved" onclick="switchParsedTab('approved')">검수완료</button>
-      <button data-status="rejected" onclick="switchParsedTab('rejected')">반려</button>
+  </div>
+
+  <!-- 통계 카드 4종 -->
+  <div class="inbox-stats">
+    <div class="inbox-stat pending" onclick="switchParsedTab('pending')">
+      <div class="pulse" id="inboxStatPulse"></div>
+      <div class="label">⏳ 미검수</div>
+      <div class="num" id="inboxStatPending">—</div>
+      <div class="hint">검수 대기 중인 견적</div>
     </div>
-    <div class="ai-modal-body" id="aiModalBody" style="max-height:none;">
-      <div class="ai-empty">불러오는 중...</div>
+    <div class="inbox-stat approved" onclick="switchParsedTab('approved')">
+      <div class="label">✅ 검수완료</div>
+      <div class="num" id="inboxStatApproved">—</div>
+      <div class="hint">통합DB에 반영됨</div>
+    </div>
+    <div class="inbox-stat rejected" onclick="switchParsedTab('rejected')">
+      <div class="label">❌ 반려</div>
+      <div class="num" id="inboxStatRejected">—</div>
+      <div class="hint">파싱 오류·중복</div>
+    </div>
+    <div class="inbox-stat total">
+      <div class="label">📊 누적</div>
+      <div class="num" id="inboxStatTotal">—</div>
+      <div class="hint">최근 자동 실행: <span id="inboxLastRun">—</span></div>
+    </div>
+  </div>
+
+  <!-- 필터 pill (탭) -->
+  <div class="inbox-pills ai-modal-tabs">
+    <button class="active" data-status="pending" onclick="switchParsedTab('pending')">⏳ 미검수 <span class="count" id="inboxPillPending">0</span></button>
+    <button data-status="approved" onclick="switchParsedTab('approved')">✅ 검수완료 <span class="count" id="inboxPillApproved">0</span></button>
+    <button data-status="rejected" onclick="switchParsedTab('rejected')">❌ 반려 <span class="count" id="inboxPillRejected">0</span></button>
+  </div>
+
+  <!-- 리스트 -->
+  <div class="inbox-list-wrap">
+    <div class="inbox-list-head">
+      <div class="ttl"><span class="dot"></span><span id="inboxListTitle">미검수 항목</span></div>
+      <div style="font-size:11px;color:var(--text-muted);">제출자 · 제출일 · 제품 / 포장비 / 1회성 비용</div>
+    </div>
+    <div class="inbox-list-body ai-modal-body" id="aiModalBody" style="max-height:none;">
+      <div class="inbox-empty"><div class="ico">📭</div><div class="ttl">불러오는 중...</div></div>
     </div>
   </div>
 </div>
@@ -1632,7 +1736,8 @@ function calcQtyDist(품명) {
   };
 }
 
-// 수량 매칭 단가 (3단계 fallback)
+// 수량 매칭 단가 (3단계 fallback + 규모경제 회귀)
+// 회귀: 단가 = a × qty^b, b ≤ 0 강제 (수량↑ → 단가↓ 단조성 보장)
 function priceMatchByQty(품명, qty) {
   if (!qty || qty <= 0) return null;
   const items = DATA.filter(i =>
@@ -1642,7 +1747,7 @@ function priceMatchByQty(품명, qty) {
   const points = items.map(it => ({
     qty: it.수량, price: _krwOf(it),
     vendor: it.거래처, date: it.발주일
-  })).filter(p => p.price != null);
+  })).filter(p => p.price != null && p.price > 0);
   if (!points.length) return null;
   const closest = points.reduce((b, c) => Math.abs(c.qty - qty) < Math.abs(b.qty - qty) ? c : b);
   const closeRatio = Math.abs(closest.qty - qty) / qty;
@@ -1650,17 +1755,58 @@ function priceMatchByQty(품명, qty) {
   const r50 = points.filter(p => p.qty >= qty * 0.5 && p.qty <= qty * 1.5);
   const avg20 = r20.length ? Math.round(r20.reduce((s, p) => s + p.price, 0) / r20.length) : null;
   const avg50 = r50.length ? Math.round(r50.reduce((s, p) => s + p.price, 0) / r50.length) : null;
+
+  // ━━━ 규모경제 회귀 (log-log 선형 회귀 → 단가 = a × qty^b) ━━━
+  // ≥3건 + 다양한 qty 일 때만 산출. b>0 (반-규모경제)이면 b=0 평면화
+  let regPrice = null, regB = null, regForcedFlat = false, regUsable = false;
+  const uniqueQtys = new Set(points.map(p => p.qty));
+  if (points.length >= 3 && uniqueQtys.size >= 2) {
+    const n = points.length;
+    const xs = points.map(p => Math.log(p.qty));
+    const ys = points.map(p => Math.log(p.price));
+    const xMean = xs.reduce((s, v) => s + v, 0) / n;
+    const yMean = ys.reduce((s, v) => s + v, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (xs[i] - xMean) * (ys[i] - yMean);
+      den += (xs[i] - xMean) ** 2;
+    }
+    if (den > 0) {
+      const bRaw = num / den;
+      // b>0 = 데이터가 반-규모경제 (수량↑인데 단가↑) → b=0 강제 (단가=기하평균)
+      if (bRaw > 0) { regForcedFlat = true; regB = 0; }
+      else { regB = Math.max(bRaw, -1.2); }  // 너무 가파른 음수 슬로프 (b<-1.2)는 캡
+      const logA = yMean - regB * xMean;
+      regPrice = Math.round(Math.exp(logA + regB * Math.log(qty)));
+      regUsable = regPrice > 0 && isFinite(regPrice);
+    }
+  }
+
   let src;
   if (r20.length >= 1) src = 'in20';
   else if (r50.length >= 1) src = 'in50';
   else if (closeRatio <= 0.5) src = 'close';
   else src = 'far';
+
+  let bandPrice = src === 'in20' ? avg20 : src === 'in50' ? avg50 : closest.price;
+  let recommendedPrice = bandPrice;
+  let actualSrc = src;
+
+  // ━━━ 회귀 사용 가능 → 항상 우선 (수량별 단가 단조성 보장) ━━━
+  // 데이터 ≥3건 + 다양한 qty 면 회귀 채택. 수량 변경 시 단가가 합리적으로 움직임.
+  if (regUsable) {
+    recommendedPrice = regPrice;
+    actualSrc = 'reg';
+  }
+
   return {
-    src, closest, closeRatio,
+    src: actualSrc, closest, closeRatio,
     avg20: avg20 ? { price: avg20, count: r20.length } : null,
     avg50: avg50 ? { price: avg50, count: r50.length } : null,
-    recommendedPrice: src === 'in20' ? avg20 : src === 'in50' ? avg50 : closest.price,
-    inRange: src !== 'far'
+    regPrice, regB, regForcedFlat,
+    bandPrice,  // 원래 밴드 결과 (UI 디버그용)
+    recommendedPrice,
+    inRange: actualSrc !== 'far'
   };
 }
 
@@ -1825,6 +1971,16 @@ function renderBudgetCards(){
       priceHtml = `<div class="moq-price-box empty">데이터 없음</div>`;
     } else if (m.src === 'far') {
       priceHtml = `<div class="moq-price-box danger"><div class="danger-title">🔴 데이터 범위 외</div><div class="danger-sub">제조사 직접 견적 필요</div></div>`;
+    } else if (m.src === 'reg') {
+      // 규모경제 회귀로 산출된 단가 (수량 변경 시 단조성 보장)
+      const slopePct = m.regB != null ? Math.round(m.regB * 100) : null;
+      const slopeLbl = m.regForcedFlat
+        ? '평면 (반-규모경제 보정)'
+        : (slopePct != null ? `규모경제 ${slopePct}%/dec` : '규모경제');
+      priceHtml = `<div class="moq-price-box">
+        <div class="moq-price-line"><span class="lbl">🎯 회귀 추정</span><span class="val"><b>${fmtP(m.regPrice)}</b></span></div>
+        <div class="moq-price-line"><span class="lbl">${slopeLbl}</span><span class="val" style="font-size:10px;color:var(--text-muted);">근접 1건 ${fmtP(m.closest.price)}</span></div>
+      </div>`;
     } else {
       const avgUsed = m.src==='in20'?m.avg20:m.src==='in50'?m.avg50:null;
       const avgLabel = m.src==='in20'?'±20% 평균':m.src==='in50'?'±50% 평균':'범위 평균';
@@ -2183,7 +2339,8 @@ function buildQuotePrompt(){
       lines.push('   - 발주 이력: 과거 '+dist.count+'회 (작년 '+dist.recent+'회) · '+dist.vendor_count+'개 업체');
     }
     if (m) {
-      const matchInfo = m.src==='in20' ? `±20% 범위 ${m.avg20.count}건 평균 ₩${m.avg20.price.toLocaleString()}`
+      const matchInfo = m.src==='reg' ? `🎯 규모경제 회귀 ${m.regForcedFlat?'(평면)':'추정'} ₩${m.regPrice.toLocaleString()}`
+                      : m.src==='in20' ? `±20% 범위 ${m.avg20.count}건 평균 ₩${m.avg20.price.toLocaleString()}`
                       : m.src==='in50' ? `±50% 범위 ${m.avg50.count}건 평균 ₩${m.avg50.price.toLocaleString()}`
                       : m.src==='close' ? `가까운 1건 (${m.closest.qty.toLocaleString()}개 발주) ₩${m.closest.price.toLocaleString()}`
                       : `🔴 데이터 범위 외 — 가까운 발주 ${m.closest.qty.toLocaleString()}개`;
@@ -2302,7 +2459,8 @@ function onQtyManualChangeText(name, el) {
     const m = priceMatchByQty(name, n);
     if (m) {
       c.unitPrice = Math.round(m.recommendedPrice);
-      c.matchedFrom = m.src === 'in20' ? 'avg20'
+      c.matchedFrom = m.src === 'reg' ? '🎯회귀'
+                    : m.src === 'in20' ? 'avg20'
                     : m.src === 'in50' ? 'avg50'
                     : m.src === 'close' ? ('near ' + _fmtNum(m.closest.qty))
                     : 'OUT';
@@ -2339,7 +2497,8 @@ function fitComboToBudget() {
       if (m) {
         c.unitPrice = Math.round(m.recommendedPrice);
         if (c.unitPrice !== oldPrice) priceChangedCount++;
-        c.matchedFrom = m.src === 'in20' ? '±20%평균'
+        c.matchedFrom = m.src === 'reg' ? '🎯회귀(규모경제)'
+                      : m.src === 'in20' ? '±20%평균'
                       : m.src === 'in50' ? '±50%평균'
                       : m.src === 'close' ? ('근접 ' + _fmtNum(m.closest.qty) + '개')
                       : '🔴범위외';
@@ -2594,7 +2753,7 @@ async function cpRunAssign(overwrite){
         • skip: <b style="color:#f59e0b;">${d.skipped}</b>건<br>
         • 에러: <b style="color:${(d.errors?.length||0)>0?'#ef4444':'inherit'};">${d.errors?.length||0}</b>건<br>
         <div style="margin-top:6px;">분류 결과: ${byCat}</div>
-        <div style="margin-top:8px;color:var(--text-muted,#666);font-size:11px;">💡 '닫기'를 누르고 📥 바이어 공유 엑셀을 다시 다운로드해보세요.</div>`;
+        <div style="margin-top:8px;color:var(--text-muted,#666);font-size:11px;">💡 '닫기'를 누르고 📥 제품리스트를 다시 다운로드해보세요.</div>`;
     }
     showToast('✅ 분류 완료');
   }catch(e){
@@ -2631,7 +2790,7 @@ async function cpExportBuyerExcel(){
     console.error('[바이어 엑셀] 실패', e);
     alert('엑셀 내보내기 실패:\n' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = origLabel || '📥 바이어 공유 엑셀'; }
+    if (btn) { btn.disabled = false; btn.textContent = origLabel || '📥 제품리스트'; }
   }
 }
 
@@ -4224,6 +4383,8 @@ async function loadParsedSummary(){
     }
     const j = await r.json();
     const n = Number(j.pending) || 0;
+    const a = Number(j.approved) || 0;
+    const x = Number(j.rejected) || 0;
     if(badge) badge.textContent = n;
     if(btn){
       btn.classList.toggle('idle', n === 0);
@@ -4235,6 +4396,19 @@ async function loadParsedSummary(){
       sideBadge.textContent = n;
       sideBadge.style.display = n > 0 ? 'inline-block' : 'none';
     }
+    // 화려 UI 통계 갱신
+    const _t = (id, v) => { const el=document.getElementById(id); if(el) el.textContent = (v==null?'—':Number(v).toLocaleString('ko-KR')); };
+    _t('inboxStatPending', n);
+    _t('inboxStatApproved', a);
+    _t('inboxStatRejected', x);
+    _t('inboxStatTotal', n + a + x);
+    _t('inboxPillPending', n);
+    _t('inboxPillApproved', a);
+    _t('inboxPillRejected', x);
+    const pulse = document.getElementById('inboxStatPulse');
+    if(pulse) pulse.classList.toggle('active', n > 0);
+    const lastRun = document.getElementById('inboxLastRun');
+    if(lastRun) lastRun.textContent = j.lastRun ? new Date(j.lastRun).toLocaleString('ko-KR') : '—';
   }catch(e){ /* 무시 */ }
 }
 
@@ -4242,23 +4416,28 @@ async function loadParsedSummary(){
 function openParsedModal(){ goToAiReviewPage(); }
 function closeParsedModal(){ /* 페이지 전환식이라 닫기 동작 없음 */ loadParsedSummary(); }
 function switchParsedTab(status){
-  document.querySelectorAll('.ai-modal-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.status===status));
+  document.querySelectorAll('.ai-modal-tabs button, .inbox-pills button').forEach(b=>b.classList.toggle('active', b.dataset.status===status));
+  const ttl = document.getElementById('inboxListTitle');
+  if(ttl) ttl.textContent = status==='pending'?'미검수 항목':status==='approved'?'검수완료 항목':'반려 항목';
   loadParsedList(status);
 }
 
 async function loadParsedList(status){
   const body = document.getElementById('aiModalBody');
-  body.innerHTML = '<div class="ai-empty">불러오는 중...</div>';
+  body.innerHTML = '<div class="inbox-empty"><div class="ico">⏳</div><div class="ttl">불러오는 중...</div></div>';
   try{
     const r = await fetch('/api/parsed-quotes?status=' + encodeURIComponent(status));
     const j = await r.json();
     if(!j.items || !j.items.length){
-      body.innerHTML = '<div class="ai-empty">' + (status==='pending'?'미검수 항목 없음 ✅':status==='approved'?'검수완료된 항목이 아직 없습니다':'반려된 항목이 없습니다') + '</div>';
+      const empty = status==='pending' ? {ico:'🎉', ttl:'미검수 항목이 없습니다', sub:'모든 견적이 검수 완료되었거나, Drive 인박스에 새 파일이 없습니다. <br>오른쪽 상단 ⚡ 지금 확인 버튼으로 즉시 스캔할 수 있어요.'}
+                  : status==='approved' ? {ico:'🗂️', ttl:'검수완료된 항목이 아직 없습니다', sub:'미검수 탭에서 ✅ 검수완료를 눌러주세요.'}
+                  : {ico:'🧹', ttl:'반려된 항목이 없습니다', sub:'파싱 오류나 중복 견적은 여기에 모입니다.'};
+      body.innerHTML = '<div class="inbox-empty"><div class="ico">'+empty.ico+'</div><div class="ttl">'+empty.ttl+'</div><div class="sub">'+empty.sub+'</div></div>';
       return;
     }
     body.innerHTML = j.items.map(it => renderParsedCard(it, status)).join('');
   }catch(e){
-    body.innerHTML = '<div class="ai-empty">로드 실패: ' + e.message + '</div>';
+    body.innerHTML = '<div class="inbox-empty"><div class="ico">⚠️</div><div class="ttl">로드 실패</div><div class="sub">'+escapeHtml(e.message)+'</div></div>';
   }
 }
 

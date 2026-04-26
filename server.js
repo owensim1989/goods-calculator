@@ -765,7 +765,8 @@ function calcQtyDistribution(품명) {
   };
 }
 
-// 수량 매칭 단가 (3단계 fallback)
+// 수량 매칭 단가 (3단계 fallback + 규모경제 회귀)
+// 회귀: 단가 = a × qty^b, b ≤ 0 강제 (수량↑ → 단가↓ 단조성 보장)
 function priceMatchByQty(품명, qty) {
   if (!qty || qty <= 0) return null;
   const items = (cache.items || []).filter(i =>
@@ -775,7 +776,7 @@ function priceMatchByQty(품명, qty) {
   const points = items.map(it => ({
     qty: it.수량, price: getKrwPrice(it),
     vendor: it.거래처, date: it.발주일
-  })).filter(p => p.price != null);
+  })).filter(p => p.price != null && p.price > 0);
   if (!points.length) return null;
 
   const closest = points.reduce((b, c) => Math.abs(c.qty - qty) < Math.abs(b.qty - qty) ? c : b);
@@ -785,19 +786,56 @@ function priceMatchByQty(품명, qty) {
   const avg20 = r20.length ? Math.round(r20.reduce((s, p) => s + p.price, 0) / r20.length) : null;
   const avg50 = r50.length ? Math.round(r50.reduce((s, p) => s + p.price, 0) / r50.length) : null;
 
+  // ━━━ 규모경제 회귀 (log-log 선형 회귀 → 단가 = a × qty^b) ━━━
+  // ≥3건 + 다양한 qty 일 때만 산출. b>0 (반-규모경제)이면 b=0 평면화
+  let regPrice = null, regB = null, regForcedFlat = false, regUsable = false;
+  const uniqueQtys = new Set(points.map(p => p.qty));
+  if (points.length >= 3 && uniqueQtys.size >= 2) {
+    const n = points.length;
+    const xs = points.map(p => Math.log(p.qty));
+    const ys = points.map(p => Math.log(p.price));
+    const xMean = xs.reduce((s, v) => s + v, 0) / n;
+    const yMean = ys.reduce((s, v) => s + v, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (xs[i] - xMean) * (ys[i] - yMean);
+      den += (xs[i] - xMean) ** 2;
+    }
+    if (den > 0) {
+      const bRaw = num / den;
+      if (bRaw > 0) { regForcedFlat = true; regB = 0; }
+      else { regB = Math.max(bRaw, -1.2); }
+      const logA = yMean - regB * xMean;
+      regPrice = Math.round(Math.exp(logA + regB * Math.log(qty)));
+      regUsable = regPrice > 0 && isFinite(regPrice);
+    }
+  }
+
   let src;
   if (r20.length >= 1) src = 'in20';
   else if (r50.length >= 1) src = 'in50';
   else if (closeRatio <= 0.5) src = 'close';
   else src = 'far';
 
+  let bandPrice = src === 'in20' ? avg20 : src === 'in50' ? avg50 : closest.price;
+  let recommendedPrice = bandPrice;
+  let actualSrc = src;
+
+  // 회귀 사용 가능 → 항상 우선 (수량별 단가 단조성 보장)
+  if (regUsable) {
+    recommendedPrice = regPrice;
+    actualSrc = 'reg';
+  }
+
   return {
-    src,
+    src: actualSrc,
     closest: { qty: closest.qty, price: closest.price, vendor: closest.vendor, date: closest.date },
     avg20: avg20 ? { price: avg20, count: r20.length } : null,
     avg50: avg50 ? { price: avg50, count: r50.length } : null,
-    recommended_price: src === 'in20' ? avg20 : src === 'in50' ? avg50 : closest.price,
-    in_range: src !== 'far'
+    reg: regUsable ? { price: regPrice, b: regB, forced_flat: regForcedFlat } : null,
+    band_price: bandPrice,
+    recommended_price: recommendedPrice,
+    in_range: actualSrc !== 'far'
   };
 }
 
