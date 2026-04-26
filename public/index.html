@@ -37,6 +37,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sidebar-item{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;font-size:13px;color:var(--text);cursor:pointer;transition:background .15s,color .15s;font-weight:500;border:none;background:transparent;width:100%;text-align:left;font-family:inherit;}
 .sidebar-item:hover{background:var(--bg);}
 .sidebar-item.active{background:rgba(96,165,250,0.15);color:var(--primary);}
+a.sidebar-item{text-decoration:none;color:var(--text);}
+a.sidebar-item:hover{color:var(--text);}
 [data-theme="light"] .sidebar-item.active{background:var(--primary-light);color:var(--primary);font-weight:600;}
 .sidebar-item.soon{opacity:0.42;cursor:not-allowed;font-style:normal;color:var(--text-muted);}
 .sidebar-item.soon:hover{background:rgba(148,163,184,0.08);opacity:0.6;}
@@ -581,7 +583,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div class="sidebar-group">
       <div class="sidebar-group-title">기획</div>
       <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">제품 단가</button>
-      <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 기획</button>
+      <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 조합</button>
       <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
     </div>
     <div class="sidebar-group">
@@ -591,8 +593,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">사업화</div>
-      <button class="sidebar-item" onclick="openMyDeskBusiness()" title="MyDesk 사업화 카드 화면을 새 탭으로 열기">사업화 카드 ↗</button>
-      <button class="sidebar-item" onclick="openMyDeskPayment()" title="MyDesk 결제요청 화면을 새 탭으로 열기">결제요청 ↗</button>
+      <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=business" target="_blank" rel="noopener noreferrer" title="MyDesk 사업화 화면을 새 탭(시스템 기본 브라우저)으로 열기">사업화 ↗</a>
+      <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=payment" target="_blank" rel="noopener noreferrer" title="MyDesk 결제요청 화면을 새 탭으로 열기">결제요청 ↗</a>
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">기타</div>
@@ -755,7 +757,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </div>
       <div class="cp-field">
         <label>상태</label>
-        <select id="cp-status" onchange="cpToggleCatalogBtn()">
+        <select id="cp-status" onchange="cpOnStatusChange()">
           <option value="검토중">검토중</option><option value="승인">승인</option><option value="보류">보류</option><option value="거절">거절</option>
         </select>
       </div>
@@ -973,6 +975,17 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
       <button class="cp-btn" id="cp-btn-publish" style="background:#f59e0b;display:none;" onclick="cpPublishToCatalog()">📋 제품 카탈로그 등록</button>
       <button class="cp-btn" id="cp-btn-payment" style="background:#7c3aed;display:none;" onclick="cpToPaymentRequest()" title="저장된 사업성 검토 데이터를 MyDesk 결제요청 신규 작성 폼에 자동 채워서 새 탭으로 열기">⚡ 결제요청으로 넘기기</button>
+    </div>
+  </div>
+
+  <!-- 페이지 맨 아래 — 빠른 승인 박스 (저장된 프로젝트일 때만 노출) -->
+  <div class="cp-section" id="cp-approval-box" style="display:none;background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(245,158,11,.06));border:1px solid rgba(124,58,237,.2);">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div id="cp-approval-status" style="font-size:14px;font-weight:600;margin-bottom:4px;">현재 상태: <span id="cp-approval-status-val" style="color:var(--text-muted);">검토중</span></div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">사업성 검토가 끝났다면 아래 버튼으로 바로 <b>승인</b>하세요. 승인 시 카탈로그 등록 + 결제요청 버튼이 활성화됩니다.</div>
+      </div>
+      <button class="cp-btn-save" id="cp-btn-quick-approve" onclick="cpQuickApprove()" style="background:#10b981;font-size:14px;padding:10px 20px;">✅ 승인하기</button>
     </div>
   </div>
 </div>
@@ -4057,6 +4070,65 @@ function cpToggleCatalogBtn(){
   const show = (st === '승인' && CP_CURRENT && CP_CURRENT.id) ? 'inline-block' : 'none';
   if(btn) btn.style.display = show;
   if(payBtn) payBtn.style.display = show;
+  // 페이지 맨 아래 승인 박스: 저장된 프로젝트일 때만 보임. 상태 라벨 갱신 + 승인 시 버튼 숨김
+  const box = document.getElementById('cp-approval-box');
+  const lbl = document.getElementById('cp-approval-status-val');
+  const apv = document.getElementById('cp-btn-quick-approve');
+  if(box){
+    const saved = !!(CP_CURRENT && CP_CURRENT.id);
+    box.style.display = saved ? 'block' : 'none';
+    if(lbl){
+      lbl.textContent = st || '검토중';
+      const colorMap = { '승인':'#10b981', '검토중':'var(--text-muted)', '보류':'#f59e0b', '거절':'#ef4444' };
+      lbl.style.color = colorMap[st] || 'var(--text-muted)';
+    }
+    if(apv){
+      // 승인 상태면 버튼 숨김 (이미 승인됨)
+      apv.style.display = (st === '승인') ? 'none' : 'inline-flex';
+    }
+  }
+}
+
+// 상태 select 변경 핸들러 — 승인으로 바뀌면 자동 스크롤
+function cpOnStatusChange(){
+  cpToggleCatalogBtn();
+  const st = document.getElementById('cp-status').value;
+  if(st === '승인'){
+    // 페이지 맨 아래 액션 박스로 부드럽게 스크롤
+    setTimeout(()=>{
+      const target = document.getElementById('cp-approval-box') || document.querySelector('#page-consumer .cp-save-bar');
+      if(target) target.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 50);
+  }
+}
+
+// 빠른 승인 — 페이지 맨 아래 버튼 클릭 시
+async function cpQuickApprove(){
+  if(!CP_CURRENT || !CP_CURRENT.id){
+    if(typeof showToast==='function') showToast('먼저 저장하세요','warn');
+    return;
+  }
+  const sel = document.getElementById('cp-status');
+  if(!sel) return;
+  if(sel.value === '승인'){
+    if(typeof showToast==='function') showToast('이미 승인 상태입니다','info');
+    return;
+  }
+  sel.value = '승인';
+  cpToggleCatalogBtn();
+  // 자동 저장
+  if(typeof cpSave === 'function'){
+    try { await cpSave(); }
+    catch(e){ console.error('cpQuickApprove save 실패', e); }
+  }
+  if(typeof showToast==='function') showToast('✅ 승인 완료 — 카탈로그 등록·결제요청 버튼이 활성화되었습니다','success');
+  // 다시 한번 토글 (저장 후 CP_CURRENT.id 보장)
+  cpToggleCatalogBtn();
+  // 액션 바로 스크롤
+  setTimeout(()=>{
+    const bar = document.querySelector('#page-consumer .cp-save-bar');
+    if(bar) bar.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 100);
 }
 
 // ━━━ ⚡ 결제요청으로 넘기기 (MyDesk 결제요청 폼 prefill) ━━━
@@ -4094,21 +4166,25 @@ function cpToPaymentRequest(){
   if(hsCode) autoLines.push('• HS Code: '+hsCode);
   if(category) autoLines.push('• 품목: '+category);
   if(origin) autoLines.push('• 원산지: '+origin);
-  if(productImageUrl) autoLines.push('• 제품 이미지: '+productImageUrl);
+  if(productImageUrl) autoLines.push('🖼 제품 이미지: '+productImageUrl);
   autoLines.push('• 사업성 검토 ID: '+CP_CURRENT.id);
+  autoLines.push('','📎 견적서: 사업성 검토 단계에서 업로드한 견적서가 있다면 결제요청 모달의 "견적서 URL" 필드에 Drive 링크를 붙여넣어 주세요.');
   if(memoUser) autoLines.push('','[사용자 메모]', memoUser);
   const memo = autoLines.join('\n');
-  // URL params 생성
+  // URL params 생성 — attachUrl 은 견적서 전용. cp 폼은 영구 견적서 URL 보유 안 하므로 빈 값으로 보내고 사용자가 mydesk 모달에서 직접 입력
   const params = new URLSearchParams({
     prefill: '1',
     title: (name ? name + ' 발주' : '신제품 발주'),
     amount: String(totalKRW || 0),
     memo: memo,
   });
-  if(productImageUrl) params.set('attachUrl', productImageUrl);
   if(category) params.set('category', category);
+  // attachUrl 자동 전달 안 함 (사용자가 mydesk 결제요청 모달에서 견적서 URL 직접 입력)
   const url = 'https://mydesk.jeisha.kr/?tab=payment&new=1&' + params.toString();
-  window.open(url, '_blank', 'noopener');
+  // 시스템 기본 브라우저로 열기 (Cowork 데스크톱 앱이 아닌 Chrome 등)
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  document.body.appendChild(a); a.click(); a.remove();
   if(typeof showToast==='function') showToast('MyDesk 결제요청 화면을 새 탭으로 열었습니다 (자동 기입)','info');
 }
 function cpUpdateHSConfirmBadge(){
