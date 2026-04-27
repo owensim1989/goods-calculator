@@ -2309,6 +2309,188 @@ app.get('/api/admin/pricing-audit/apply', async (req, res) => {
   }
 });
 
+// ━━━ Phase 4-A: 인벤토리 → 카탈로그 마이그레이션 (신규 페이지 생성) ━━━━━━━━━━━━━━━━━━
+// 사용:
+//   GET /api/admin/pricing-audit/publish-migrate?file=migrate-a4-2026-04-27.json&dryRun=1
+//   GET /api/admin/pricing-audit/publish-migrate?file=migrate-a4-2026-04-27.json&confirm=1
+// JSON 형식: { items: [{ name, barcode, category, kr, cost, tw_freeze, size, material, ... }] }
+// 산식:
+//   - KR가/원가: JSON 그대로
+//   - TW: tw_freeze 값 그대로 (대만 동결)
+//   - HK/CN/TH/US/JP: 마진액 유지 산식 (KR가 + 배송비 + 인증비) × (1+관세)(1+VAT)
+// 안전장치:
+//   - 이미 카탈로그에 등록된 barcode → skip
+//   - DRY-RUN 미리보기 강제
+//   - rate limit 보호
+app.get('/api/admin/pricing-audit/publish-migrate', async (req, res) => {
+  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+
+  const filename = req.query.file;
+  if (!filename || !/^[a-z0-9._-]+\.json$/i.test(filename)) {
+    return res.status(400).json({ error: 'file param required' });
+  }
+  const filepath = path.join(__dirname, 'data', 'audit-applies', filename);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: `file not found: ${filepath}` });
+
+  const isDry = req.query.dryRun === '1';
+  const isConfirm = req.query.confirm === '1';
+  if (!isDry && !isConfirm) return res.status(400).json({ error: 'must specify ?dryRun=1 or ?confirm=1' });
+  if (isDry && isConfirm) return res.status(400).json({ error: 'cannot specify both' });
+
+  let payload;
+  try { payload = JSON.parse(fs.readFileSync(filepath, 'utf-8')); }
+  catch (e) { return res.status(500).json({ error: 'json parse fail: ' + e.message }); }
+  if (!Array.isArray(payload.items)) return res.status(400).json({ error: 'invalid format' });
+
+  // 카테고리 그룹 매핑
+  const CATEGORY_GROUP = {
+    '키링/잡화': { pct: 5, min: 1000 }, '프린트/스티커': { pct: 5, min: 1000 },
+    '문구': { pct: 5, min: 1000 }, '모바일 악세사리': { pct: 5, min: 1000 },
+    '의류': { pct: 6, min: 2500 }, '홈리빙': { pct: 6, min: 2500 },
+    '인형': { pct: 7, min: 5000 }, '피규어/토이': { pct: 7, min: 5000 }, '기타': { pct: 7, min: 5000 }
+  };
+  function classifyItemForCert(name) {
+    const n = name || '';
+    if ('Plush keyring' in {[name]:1} || /Plush/i.test(n)) return 3;
+    if (/Mug |Glass Cup/i.test(n)) return 3;
+    if (/Figure/i.test(n)) return 3;
+    if (/Mood light|Insense/i.test(n)) return 5;
+    return 0;
+  }
+
+  const COUNTRIES = [
+    { code: 'HK', cur: 'HKD', tariff: 0,  vat: 0,  fx: fxCache.HKD || 177, round: 1,    field: 'Retail_HK_HKD' },
+    { code: 'CN', cur: 'CNY', tariff: 10, vat: 13, fx: fxCache.CNY || 190, round: 10,   field: 'Retail_CN_CNY' },
+    { code: 'TH', cur: 'THB', tariff: 20, vat: 7,  fx: fxCache.THB || 40,  round: 10,   field: 'Retail_TH_THB' },
+    { code: 'US', cur: 'USD', tariff: 5,  vat: 0,  fx: fxCache.USD || 1380, round: 0.5, field: 'Retail_US_USD' },
+    { code: 'JP', cur: 'JPY', tariff: 3,  vat: 10, fx: fxCache.JPY || 9.2, round: 100,  field: 'Retail_JP_JPY' }
+  ];
+
+  try {
+    // 카탈로그 fetch (중복 체크)
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor, page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+    const existingBarcodes = new Set();
+    for (const p of allPages) {
+      const bc = (_gText(p.properties || {}, 'Barcode') || '').trim();
+      if (bc) existingBarcodes.add(bc);
+    }
+
+    const previews = [];
+    const results = { created: 0, skipped_duplicate: [], errors: [] };
+
+    for (const it of payload.items) {
+      // 중복 체크
+      if (existingBarcodes.has(it.barcode)) {
+        results.skipped_duplicate.push({ name: it.name, barcode: it.barcode });
+        continue;
+      }
+
+      // 카테고리 그룹
+      const group = CATEGORY_GROUP[it.category] || { pct: 6, min: 2500 };
+      const certPct = classifyItemForCert(it.name);
+      const ship = Math.max(it.kr * group.pct / 100, group.min);
+      const cert = it.kr * certPct / 100;
+
+      // 5국가 마지노선 산출
+      const newPrices = {};
+      for (const c of COUNTRIES) {
+        const minKrw = (it.kr + ship + cert) * (1 + c.tariff/100) * (1 + c.vat/100);
+        const minLocal = minKrw / c.fx;
+        const recLocal = Math.ceil(minLocal / c.round) * c.round;
+        newPrices[c.code] = c.round === 0.5 ? Math.round(recLocal * 10) / 10 : Math.round(recLocal);
+      }
+
+      // 페이지 properties
+      const props = {
+        'Product Name': { title: [{ text: { content: it.name } }] },
+        'Barcode': { rich_text: [{ text: { content: it.barcode } }] },
+        'Category': { select: { name: it.category } },
+        'Retail_KR_KRW': { number: it.kr },
+        '판매상태': { select: { name: '판매중' } }
+      };
+      if (it.cost) props['원가_KRW'] = { number: it.cost };
+      if (it.tw_freeze) props['Retail_TW_TWD'] = { number: it.tw_freeze };
+      props['Retail_HK_HKD'] = { number: newPrices.HK };
+      props['Retail_CN_CNY'] = { number: newPrices.CN };
+      props['Retail_TH_THB'] = { number: newPrices.TH };
+      props['Retail_US_USD'] = { number: newPrices.US };
+      props['Retail_JP_JPY'] = { number: newPrices.JP };
+      if (it.size) props['Size_mm'] = { rich_text: [{ text: { content: String(it.size) } }] };
+      if (it.material) props['Material'] = { rich_text: [{ text: { content: String(it.material) } }] };
+      if (it.packaging) props['Packaging'] = { rich_text: [{ text: { content: String(it.packaging) } }] };
+      if (it.hs_code) props['HS_Code'] = { rich_text: [{ text: { content: String(it.hs_code) } }] };
+      if (it.origin) {
+        const validOrigins = ['China', 'Korea', 'Vietnam', 'Other'];
+        const origin = validOrigins.includes(it.origin) ? it.origin : 'Other';
+        props['원산지'] = { select: { name: origin } };
+      }
+
+      if (isDry) {
+        previews.push({
+          name: it.name, barcode: it.barcode, category: it.category,
+          kr: it.kr, cost: it.cost,
+          tw_freeze: it.tw_freeze, new_prices: newPrices,
+          ship_cost: Math.round(ship), cert_cost: Math.round(cert),
+          group: group
+        });
+        continue;
+      }
+
+      // 실제 생성
+      try {
+        await notion.pages.create({
+          parent: { database_id: PRODUCT_CATALOG_DB_ID },
+          properties: props
+        });
+        results.created++;
+        await new Promise(r => setTimeout(r, 150));
+      } catch (e) {
+        results.errors.push({ name: it.name, barcode: it.barcode, error: e.message });
+      }
+    }
+
+    try { if (typeof notionCache !== 'undefined' && notionCache && typeof notionCache.invalidate === 'function') notionCache.invalidate(PRODUCT_CATALOG_DB_ID); } catch(_) {}
+
+    if (isDry) {
+      return res.json({
+        ok: true, mode: 'DRY_RUN', total_items: payload.items.length,
+        skipped_duplicate: results.skipped_duplicate.length,
+        to_create: payload.items.length - results.skipped_duplicate.length,
+        skipped_samples: results.skipped_duplicate.slice(0, 5),
+        previews: previews.slice(0, 12),
+        note: '실제 생성은 ?confirm=1'
+      });
+    }
+
+    res.json({
+      ok: true, mode: 'CONFIRMED', total_items: payload.items.length,
+      results: {
+        created: results.created,
+        skipped_duplicate: results.skipped_duplicate.length,
+        errors: results.errors.length,
+        error_samples: results.errors.slice(0, 5)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('[publish-migrate]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/pricing-audit/apply-files', (req, res) => {
   const dir = path.join(__dirname, 'data', 'audit-applies');
   if (!fs.existsSync(dir)) return res.json({ ok: true, files: [], note: 'dir not exists yet' });
