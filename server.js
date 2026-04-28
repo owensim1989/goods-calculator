@@ -241,6 +241,12 @@ app.use(cors({
   }
 }));
 app.use(express.json({ limit: '20mb' }));
+
+// ━━━ 로그인 시스템 (MyDesk SSO 연동) ━━━
+const auth = require('./lib/auth');
+auth.mountRoutes(app);                    // /api/login, /api/logout, /api/me 등록
+app.use(auth.requireAuthMiddleware);       // 이후 모든 요청 인증 검사 (PUBLIC_PATHS 자동 통과)
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {

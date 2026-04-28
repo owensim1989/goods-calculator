@@ -664,6 +664,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="header-right">
     <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</button>
     <button class="sync-btn" onclick="doSync()" id="syncBtn">동기화</button>
+    <span id="userBadge" style="display:none;font-size:12px;color:var(--text-muted);margin:0 6px 0 4px;white-space:nowrap;"></span>
+    <button class="theme-btn" id="logoutBtn" onclick="doGoodsLogout()" title="로그아웃" style="display:none;font-size:12px;padding:6px 10px;">로그아웃</button>
   </div>
 </div>
 
@@ -676,12 +678,12 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 조합</button>
       <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
     </div>
-    <div class="sidebar-group">
+    <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">미스터두낫띵</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
     </div>
-    <div class="sidebar-group">
+    <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">사업화</div>
       <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=business" target="_blank" rel="noopener noreferrer external" onclick="return openExternalUrl(event,'https://mydesk.jeisha.kr/?tab=business')" title="MyDesk 사업화 화면 (새 창)">사업화 ↗</a>
       <a class="sidebar-item" href="https://mydesk.jeisha.kr/?tab=payment" target="_blank" rel="noopener noreferrer external" onclick="return openExternalUrl(event,'https://mydesk.jeisha.kr/?tab=payment')" title="MyDesk 결제요청 화면 (새 창)">결제요청 ↗</a>
@@ -1462,8 +1464,58 @@ function evalDL(days,it){if(days==null)return{c:'',t:''};const d=it.제작일수
 
 function trustHTML(cnt){const lvl=cnt>=5?5:cnt>=3?4:cnt>=2?3:cnt;const lb=['','낮음','낮음','보통','높음','매우높음'];const dots=Array.from({length:5},(_,i)=>`<div class="trust-dot${i<lvl?' filled':''}"></div>`).join('');return`<div class="trust-bar"><div class="trust-dots">${dots}</div><span class="trust-label">${lb[lvl]||'낮음'}</span></div>`;}
 
+// ━━━ 인증/권한 (MyDesk SSO 연동) ━━━
+window._goodsUser = null;
+function _hasRestrictedAccess(u){
+  if(!u) return false;
+  if(u.role === '관리자') return true;
+  if(u.team === '사업화지원') return true;
+  if(u.team === '두낫띵') return true;
+  return false;
+}
+async function _initGoodsAuth(){
+  try {
+    const r = await fetch('/api/me', { credentials: 'same-origin' });
+    if (!r.ok) { location.replace('/login.html'); return; }
+    const j = await r.json();
+    const u = (j && j.employee) || null;
+    window._goodsUser = u;
+    // 헤더에 사용자 표시
+    const ub = document.getElementById('userBadge');
+    const lo = document.getElementById('logoutBtn');
+    if (u && ub) {
+      const teamPart = u.team ? ' · ' + u.team : '';
+      ub.textContent = '👤 ' + u.name + teamPart;
+      ub.style.display = '';
+    }
+    if (lo) lo.style.display = '';
+    // 권한 없는 그룹 숨김
+    if (!_hasRestrictedAccess(u)) {
+      document.querySelectorAll('.sidebar-group[data-perm-restricted="1"]').forEach(function(g){ g.style.display = 'none'; });
+      // 현재 활성 메뉴가 restricted였으면 안전한 페이지로 폴백
+      const actv = document.querySelector('.sidebar-item.active');
+      if (actv && ['consumer','catalog'].indexOf(actv.dataset.page || '') >= 0) {
+        const fb = document.querySelector('.sidebar-item[data-page="product"]');
+        if (fb) switchPage(fb);
+      }
+    }
+  } catch (e) {
+    console.error('[auth] /api/me 실패', e);
+  }
+}
+async function doGoodsLogout(){
+  try { await fetch('/api/logout', { method:'POST', credentials:'same-origin' }); } catch(e){}
+  location.replace('/login.html');
+}
+
 // 사이드바 페이지 전환
 function switchPage(item){
+  // 권한 체크 — 미스터두낫띵 그룹(consumer/catalog)은 사업화팀·두낫띵팀·관리자만
+  const _page = item && item.dataset ? (item.dataset.page || '') : '';
+  if (['consumer','catalog'].indexOf(_page) >= 0 && !_hasRestrictedAccess(window._goodsUser)) {
+    if (typeof showToast === 'function') showToast('이 메뉴는 사업화팀·두낫띵팀·관리자만 접근 가능합니다', 'warn');
+    return;
+  }
   document.querySelectorAll('.sidebar-item').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.tab-page').forEach(x=>x.classList.remove('active'));
   item.classList.add('active');
@@ -4753,5 +4805,13 @@ setInterval(loadParsedSummary, 60 * 1000);
   </div>
 </div>
 
+<script>
+// 페이지 진입 시 인증 확인 + 권한별 사이드바 노출
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initGoodsAuth);
+} else {
+  _initGoodsAuth();
+}
+</script>
 </body>
 </html>

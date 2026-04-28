@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>로그인 — 제품원가 계산기</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --border: rgba(255,255,255,0.08);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #6366f1;
+    --accent-hi: #818cf8;
+    --error: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Noto Sans KR", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    background:
+      radial-gradient(1200px 800px at 90% -10%, rgba(99,102,241,.18), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(34,211,238,.12), transparent 60%),
+      var(--bg);
+  }
+  .card {
+    width: 100%; max-width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 36px 32px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.35);
+  }
+  .brand {
+    font-size: 22px; font-weight: 700; margin: 0 0 4px;
+    letter-spacing: -.01em;
+  }
+  .subtitle {
+    margin: 0 0 28px; color: var(--muted); font-size: 14px;
+  }
+  label {
+    display: block; font-size: 13px; color: var(--muted);
+    margin: 16px 0 6px; font-weight: 500;
+  }
+  input[type=text], input[type=password] {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 15px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  input[type=text]:focus, input[type=password]:focus {
+    border-color: var(--accent);
+    background: rgba(99,102,241,.08);
+  }
+  .btn {
+    width: 100%;
+    margin-top: 24px;
+    padding: 13px 16px;
+    font-size: 15px; font-weight: 600;
+    background: var(--accent);
+    color: white; border: 0; border-radius: 10px;
+    cursor: pointer;
+    transition: background .15s, transform .05s;
+  }
+  .btn:hover:not(:disabled) { background: var(--accent-hi); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .err {
+    margin-top: 14px; padding: 10px 12px;
+    background: rgba(248,113,113,.12);
+    border: 1px solid rgba(248,113,113,.35);
+    border-radius: 8px;
+    color: var(--error);
+    font-size: 13px;
+    display: none;
+  }
+  .err.show { display: block; }
+  .hint {
+    margin-top: 18px;
+    color: var(--muted); font-size: 12px; line-height: 1.6;
+    text-align: center;
+  }
+  .hint code {
+    background: rgba(255,255,255,.06); padding: 1px 6px; border-radius: 4px;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <form class="card" id="loginForm" autocomplete="on">
+    <h1 class="brand">제품원가 계산기</h1>
+    <p class="subtitle">MyDesk 계정으로 로그인하세요</p>
+
+    <label for="name">이름</label>
+    <input type="text" id="name" name="name" required autocomplete="username" placeholder="예: 김정은">
+
+    <label for="password">비밀번호</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="MyDesk와 동일">
+
+    <button type="submit" class="btn" id="submitBtn">로그인</button>
+    <div class="err" id="errBox"></div>
+
+    <div class="hint">
+      비밀번호는 <a href="https://mydesk.jeisha.kr" style="color:var(--accent-hi)" target="_blank">MyDesk</a>와 동일합니다.<br>
+      접근이 필요한데 막혀있다면 관리자에게 문의하세요.
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  const form = document.getElementById('loginForm');
+  const btn = document.getElementById('submitBtn');
+  const errBox = document.getElementById('errBox');
+  const nameInput = document.getElementById('name');
+  const pwInput = document.getElementById('password');
+
+  function showErr(msg) {
+    errBox.textContent = msg;
+    errBox.classList.add('show');
+  }
+  function clearErr() {
+    errBox.classList.remove('show');
+    errBox.textContent = '';
+  }
+
+  // 이미 로그인되어 있으면 메인으로
+  fetch('/api/me', { credentials: 'same-origin' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && j.ok) location.replace('/'); })
+    .catch(() => {});
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErr();
+    const name = nameInput.value.trim();
+    const password = pwInput.value;
+    if (!name || !password) {
+      showErr('이름과 비밀번호를 입력하세요');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '확인 중...';
+    try {
+      const r = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name, password })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.ok) {
+        location.replace('/');
+        return;
+      }
+      showErr(j.error || '로그인 실패 (' + r.status + ')');
+    } catch (err) {
+      showErr('서버 연결 실패: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '로그인';
+    }
+  });
+
+  // 첫 진입 시 이름 input에 포커스
+  setTimeout(() => nameInput.focus(), 50);
+})();
+</script>
+</body>
+</html>
