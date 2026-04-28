@@ -2,235 +2,261 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>로그인 — 제품원가 계산기</title>
 <style>
-  :root {
-    --bg: #0f172a;
-    --panel: #1e293b;
-    --border: rgba(255,255,255,0.08);
-    --text: #f1f5f9;
-    --muted: #94a3b8;
-    --accent: #6366f1;
-    --accent-hi: #818cf8;
-    --error: #f87171;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0; min-height: 100vh;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Noto Sans KR", sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap {
-    min-height: 100vh;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-    background:
-      radial-gradient(1200px 800px at 90% -10%, rgba(99,102,241,.18), transparent 60%),
-      radial-gradient(900px 600px at -10% 110%, rgba(34,211,238,.12), transparent 60%),
-      var(--bg);
-  }
-  .card {
-    width: 100%; max-width: 460px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 32px 30px;
-    box-shadow: 0 20px 50px rgba(0,0,0,.35);
-  }
-  .brand {
-    font-size: 22px; font-weight: 700; margin: 0 0 4px;
-    letter-spacing: -.01em;
-  }
-  .subtitle {
-    margin: 0 0 22px; color: var(--muted); font-size: 13px;
-  }
-  .picker-label {
-    font-size: 12px; color: var(--muted); margin: 0 0 8px; font-weight: 500;
-  }
-  .picker {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
-    margin-bottom: 16px;
-  }
-  .picker button {
-    padding: 10px 4px; font-size: 13px;
-    background: rgba(255,255,255,.04);
-    border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text);
-    cursor: pointer; transition: .15s;
-    font-family: inherit;
-  }
-  .picker button:hover { background: rgba(99,102,241,.12); }
-  .picker button.active {
-    background: rgba(99,102,241,.2);
-    border-color: var(--accent);
-    color: var(--accent-hi);
-  }
-  label {
-    display: block; font-size: 12px; color: var(--muted);
-    margin: 14px 0 6px; font-weight: 500;
-  }
-  input[type=text], input[type=password] {
-    width: 100%;
-    padding: 11px 13px;
-    font-size: 14px;
-    background: rgba(255,255,255,.04);
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    color: var(--text);
-    outline: none;
-    transition: .15s;
-  }
-  input[type=text]:focus, input[type=password]:focus {
-    border-color: var(--accent);
-    background: rgba(99,102,241,.08);
-  }
-  .btn {
-    width: 100%;
-    margin-top: 20px;
-    padding: 12px 16px;
-    font-size: 14px; font-weight: 600;
-    background: var(--accent);
-    color: white; border: 0; border-radius: 9px;
-    cursor: pointer;
-    transition: .15s;
-  }
-  .btn:hover:not(:disabled) { background: var(--accent-hi); }
-  .btn:disabled { opacity: .55; cursor: not-allowed; }
-  .err {
-    margin-top: 12px; padding: 9px 11px;
-    background: rgba(248,113,113,.12);
-    border: 1px solid rgba(248,113,113,.35);
-    border-radius: 7px;
-    color: var(--error);
-    font-size: 12px;
-    display: none;
-  }
-  .err.show { display: block; }
-  .hint {
-    margin-top: 16px;
-    color: var(--muted); font-size: 11px; line-height: 1.55;
-    text-align: center; opacity: 0.7;
-  }
-  @media (max-width: 480px) {
-    .picker { grid-template-columns: repeat(3, 1fr); }
-  }
+:root{
+  --bg:#0f1117; --surface:#1a1d27; --surface2:#242736; --border:#2e3144;
+  --text:#e4e6f0; --text-dim:#8b8fa3;
+  --primary:#3b82f6; --primary-light:#60a5fa;
+  --success:#00b894; --warning:#fdcb6e; --danger:#e17055; --info:#74b9ff;
+  --radius:12px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Pretendard","Noto Sans KR",sans-serif;-webkit-font-smoothing:antialiased;}
+.login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:460px;text-align:center;}
+.login-card .logo{font-size:28px;font-weight:700;margin-bottom:6px;background:linear-gradient(135deg,var(--primary),var(--info));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.login-card .subtitle{font-size:13px;color:var(--text-dim);margin-bottom:28px;}
+
+/* 저장된 로그인 카드 */
+.saved-login-card{display:flex;align-items:center;gap:14px;background:var(--surface2);border-radius:var(--radius);padding:16px;cursor:pointer;transition:all .2s;}
+.saved-login-card:hover{background:var(--border);}
+.saved-login-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;}
+.saved-login-info{flex:1;text-align:left;}
+.saved-login-name{font-size:16px;font-weight:600;}
+.saved-login-team{font-size:12px;color:var(--text-dim);}
+
+.form-group{margin-bottom:14px;text-align:left;}
+.form-label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px;font-weight:500;}
+
+/* 팀 아코디언 */
+.team-accordion{margin-bottom:6px;}
+.team-header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:background .2s;user-select:none;}
+.team-header:hover{background:var(--surface2);}
+.team-header .arrow{transition:transform .2s;font-size:10px;color:var(--text-dim);}
+.team-header.open .arrow{transform:rotate(90deg);}
+.team-members{display:none;padding:8px 0 4px;}
+.team-header.open + .team-members{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;}
+
+/* 직원 카드 */
+.emp-card{padding:14px 8px;background:var(--surface2);border:2px solid transparent;border-radius:12px;cursor:pointer;transition:all .2s;text-align:center;}
+.emp-card:hover{border-color:var(--primary);background:rgba(59,130,246,.10);}
+.emp-card.selected{border-color:var(--primary);background:rgba(59,130,246,.15);}
+.login-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;margin:0 auto 6px;}
+.emp-card .emp-name{font-size:12px;font-weight:500;margin-top:6px;}
+.emp-card .emp-team{font-size:10px;color:var(--text-dim);}
+
+/* 비번 + 저장 */
+.pw-row{display:flex;align-items:center;gap:8px;margin:14px 0 8px;}
+.pw-row input[type=password]{flex:1;padding:11px 13px;font-size:14px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);outline:none;}
+.pw-row input[type=password]:focus{border-color:var(--primary);}
+.pw-row label{font-size:11px;color:var(--text-dim);cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;}
+.pw-row label input[type=checkbox]{width:auto;}
+
+.btn{padding:12px 16px;font-size:14px;font-weight:600;border:0;border-radius:9px;cursor:pointer;transition:all .2s;font-family:inherit;}
+.btn-primary{background:var(--primary);color:#fff;width:100%;}
+.btn-primary:hover:not(:disabled){background:var(--primary-light);}
+.btn-primary:disabled{opacity:.55;cursor:not-allowed;}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border);width:100%;}
+.btn-ghost:hover{background:var(--surface2);color:var(--text);}
+.btn-sm{padding:9px 12px;font-size:12px;}
+
+.err{margin-top:12px;padding:9px 11px;background:rgba(225,112,85,.12);border:1px solid rgba(225,112,85,.35);border-radius:7px;color:var(--danger);font-size:12px;display:none;text-align:left;}
+.err.show{display:block;}
+
+@media(max-width:640px){
+  .login-card{padding:28px 20px;}
+  .login-card .logo{font-size:24px;}
+  .team-header.open + .team-members{grid-template-columns:repeat(auto-fill,minmax(75px,1fr));}
+  .emp-card{padding:10px 6px;}
+  .emp-card .emp-name{font-size:11px;}
+  .login-avatar{width:42px;height:42px;font-size:16px;}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <form class="card" id="loginForm" autocomplete="on">
-    <h1 class="brand">제품원가 계산기</h1>
-    <p class="subtitle">MyDesk 계정으로 로그인</p>
+<div class="login-screen">
+  <div class="login-card">
+    <div class="logo">제품원가 계산기</div>
+    <div class="subtitle">제이샤 사업화 도구</div>
 
-    <div class="picker-label">이름 선택</div>
-    <div class="picker" id="namePicker">
-      <button type="button" data-name="심영민">심영민</button>
-      <button type="button" data-name="김정은">김정은</button>
-      <button type="button" data-name="이진아">이진아</button>
-      <button type="button" data-name="조희재">조희재</button>
-      <button type="button" data-name="성은실">성은실</button>
-      <button type="button" data-name="김주희">김주희</button>
-      <button type="button" data-name="강수연">강수연</button>
-      <button type="button" data-name="윤혜빈">윤혜빈</button>
-      <button type="button" data-name="이나현">이나현</button>
-      <button type="button" data-name="박소정">박소정</button>
-      <button type="button" data-name="우현지">우현지</button>
-      <button type="button" data-name="오샛별">오샛별</button>
+    <!-- 저장된 로그인 (단일 사용자) -->
+    <div id="savedLoginArea" style="display:none;">
+      <div class="saved-login-card" onclick="autoLogin()">
+        <div class="saved-login-avatar" id="savedAvatar"></div>
+        <div class="saved-login-info">
+          <div class="saved-login-name" id="savedName"></div>
+          <div class="saved-login-team" id="savedTeam"></div>
+        </div>
+        <span style="font-size:22px;color:var(--text-dim);">→</span>
+      </div>
+      <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:10px;">클릭하면 바로 로그인됩니다</p>
+      <button class="btn btn-ghost btn-sm" onclick="clearSavedLogin()" style="margin-top:6px;">다른 계정으로 로그인</button>
     </div>
 
-    <input type="text" id="nameInput" name="name" autocomplete="username" placeholder="목록에 없으면 직접 입력">
+    <!-- 일반 로그인 -->
+    <div id="normalLoginArea">
+      <div class="form-group"><label class="form-label">로그인</label></div>
+      <div id="loginGrid"></div>
 
-    <label for="password">MyDesk 비밀번호</label>
-    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="MyDesk와 동일">
-
-    <button type="submit" class="btn" id="submitBtn">로그인</button>
-    <div class="err" id="errBox"></div>
-
-    <div class="hint">
-      비밀번호는 <a href="https://mydesk.jeisha.kr" style="color:var(--accent-hi);" target="_blank">MyDesk</a>와 동일
+      <div class="pw-row">
+        <input type="password" id="loginPw" placeholder="비밀번호 입력" autocomplete="current-password">
+        <label><input type="checkbox" id="rememberMe">저장</label>
+      </div>
+      <button class="btn btn-primary" onclick="doLogin()" id="submitBtn">로그인</button>
+      <div class="err" id="errBox"></div>
     </div>
-  </form>
+  </div>
 </div>
 <script>
-(function(){
-  const form = document.getElementById('loginForm');
-  const btn = document.getElementById('submitBtn');
-  const errBox = document.getElementById('errBox');
-  const nameInput = document.getElementById('nameInput');
-  const pwInput = document.getElementById('password');
-  const picker = document.getElementById('namePicker');
-  let pickedName = '';
+// 직원 목록 — MyDesk 폴백과 동일 순서 (색상 인덱스 일치)
+const EMPLOYEES = [
+  { name:'성은실', team:'디자인팀' },
+  { name:'강수연', team:'디자인팀' },
+  { name:'김주희', team:'디자인팀' },
+  { name:'윤혜빈', team:'디자인팀' },
+  { name:'이나현', team:'디자인팀' },
+  { name:'박소정', team:'디자인팀' },
+  { name:'조희재', team:'두낫띵' },
+  { name:'우현지', team:'영상·마케팅' },
+  { name:'오샛별', team:'영상·마케팅' },
+  { name:'김정은', team:'사업화지원' },
+  { name:'이진아', team:'사업화지원' },
+  { name:'심영민', team:'사업화지원' }
+];
+const COLORS = ['#3b82f6','#00b894','#e17055','#74b9ff','#fd79a8','#fdcb6e','#60a5fa','#55efc4'];
+const TEAM_ORDER = ['디자인팀','영상·마케팅','두낫띵','사업화지원'];
+const TEAM_COLORS = {
+  '디자인팀':'var(--primary)',
+  '두낫띵':'var(--danger)',
+  '영상·마케팅':'var(--success)',
+  '사업화지원':'var(--warning)'
+};
+const STORAGE_KEY = 'goods_saved_login';
 
-  function showErr(m){ errBox.textContent = m; errBox.classList.add('show'); }
-  function clearErr(){ errBox.classList.remove('show'); errBox.textContent = ''; }
+let selectedName = '';
 
-  picker.querySelectorAll('button').forEach(b => {
-    b.addEventListener('click', () => {
-      picker.querySelectorAll('button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      pickedName = b.dataset.name;
-      nameInput.value = '';
-      try { localStorage.setItem('goods_login_last_name', pickedName); } catch(e){}
-      pwInput.focus();
+function $(id){ return document.getElementById(id); }
+function showErr(m){ $('errBox').textContent = m; $('errBox').classList.add('show'); }
+function clearErr(){ $('errBox').classList.remove('show'); $('errBox').textContent = ''; }
+
+function buildLoginGrid(){
+  const grid = $('loginGrid');
+  let html = '';
+  TEAM_ORDER.forEach((team, ti) => {
+    const members = EMPLOYEES.filter(e => e.team === team);
+    if (!members.length) return;
+    const isFirst = ti === 0;  // 첫 팀만 펼침
+    html += '<div class="team-accordion">';
+    html += '<div class="team-header' + (isFirst?' open':'') + '" onclick="this.classList.toggle(\'open\')" style="border-left:3px solid '+TEAM_COLORS[team]+';">';
+    html += '<span class="arrow">▶</span>';
+    html += '<span style="font-size:13px;font-weight:600;color:'+TEAM_COLORS[team]+';">'+team+'</span>';
+    html += '<span style="font-size:11px;color:var(--text-dim);margin-left:auto;">'+members.length+'명</span>';
+    html += '</div>';
+    html += '<div class="team-members">';
+    members.forEach(e => {
+      const idx = EMPLOYEES.indexOf(e);
+      const color = COLORS[idx % COLORS.length];
+      html += '<div class="emp-card" data-name="'+e.name+'" onclick="selectEmp(this,\''+e.name+'\')">';
+      html += '<div class="login-avatar" style="background:'+color+';">'+e.name[0]+'</div>';
+      html += '<div class="emp-name">'+e.name+'</div>';
+      html += '<div class="emp-team">'+e.team+'</div>';
+      html += '</div>';
     });
+    html += '</div></div>';
   });
+  grid.innerHTML = html;
+}
 
-  // 마지막 선택 복원
+function selectEmp(el, name){
+  document.querySelectorAll('.emp-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedName = name;
+  clearErr();
+  $('loginPw').focus();
+}
+
+async function doLogin(){
+  clearErr();
+  if (!selectedName) { showErr('직원을 선택해주세요'); return; }
+  const pw = $('loginPw').value;
+  if (!pw) { showErr('비밀번호를 입력해주세요'); return; }
+  const btn = $('submitBtn');
+  btn.disabled = true; btn.textContent = '확인 중...';
   try {
-    const last = localStorage.getItem('goods_login_last_name');
-    if (last) {
-      const b = picker.querySelector('button[data-name="' + last + '"]');
-      if (b) { b.classList.add('active'); pickedName = last; }
-    }
-  } catch(e){}
-
-  // 이미 로그인된 상태면 메인으로
-  fetch('/api/me', { credentials: 'same-origin' })
-    .then(r => r.ok ? r.json() : null)
-    .then(j => { if (j && j.ok) location.replace('/'); })
-    .catch(() => {});
-
-  nameInput.addEventListener('input', () => {
-    if (nameInput.value.trim()) {
-      picker.querySelectorAll('button').forEach(x => x.classList.remove('active'));
-      pickedName = '';
-    }
-  });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    clearErr();
-    const name = (pickedName || nameInput.value || '').trim();
-    const password = pwInput.value;
-    if (!name) { showErr('이름을 선택하거나 입력하세요'); return; }
-    if (!password) { showErr('비밀번호를 입력하세요'); return; }
-    btn.disabled = true; btn.textContent = '확인 중...';
-    try {
-      const r = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ name, password })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (r.ok && j.ok) {
-        location.replace('/');
-        return;
+    const r = await fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify({ name: selectedName, password: pw })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) {
+      if ($('rememberMe').checked) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: selectedName, pw })); } catch(e){}
       }
-      showErr(j.error || '로그인 실패 (' + r.status + ')');
-    } catch (err) {
-      showErr('서버 연결 실패: ' + err.message);
-    } finally {
-      btn.disabled = false; btn.textContent = '로그인';
+      location.replace('/');
+      return;
     }
-  });
+    showErr(j.error || '로그인 실패 ('+r.status+')');
+  } catch(e){
+    showErr('서버 연결 실패: '+e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '로그인';
+  }
+}
 
-  // 첫 진입 포커스: 마지막 선택 있으면 비번, 없으면 이름 input
-  setTimeout(() => { if (pickedName) pwInput.focus(); else nameInput.focus(); }, 60);
-})();
+function showSavedLogin(emp){
+  $('savedLoginArea').style.display = 'block';
+  $('normalLoginArea').style.display = 'none';
+  const idx = EMPLOYEES.findIndex(e => e.name === emp.name);
+  $('savedAvatar').style.background = COLORS[(idx<0?0:idx) % COLORS.length];
+  $('savedAvatar').textContent = emp.name[0];
+  $('savedName').textContent = emp.name;
+  $('savedTeam').textContent = emp.team;
+}
+function showNormalLogin(){
+  $('savedLoginArea').style.display = 'none';
+  $('normalLoginArea').style.display = 'block';
+  buildLoginGrid();
+  setTimeout(() => $('loginPw').focus(), 60);
+}
+function clearSavedLogin(){
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e){}
+  showNormalLogin();
+}
+async function autoLogin(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e){}
+  if (!saved || !saved.name || !saved.pw) { clearSavedLogin(); return; }
+  selectedName = saved.name;
+  $('loginPw').value = saved.pw;
+  $('rememberMe').checked = true;
+  await doLogin();
+}
+function checkSavedLogin(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e){}
+  if (!saved || !saved.name) { showNormalLogin(); return; }
+  const emp = EMPLOYEES.find(e => e.name === saved.name);
+  if (!emp) { clearSavedLogin(); return; }
+  showSavedLogin(emp);
+}
+
+// Enter 키로 로그인
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && $('normalLoginArea').style.display !== 'none') doLogin();
+});
+
+// 이미 로그인 상태면 메인으로
+fetch('/api/me', { credentials:'same-origin' })
+  .then(r => r.ok ? r.json() : null)
+  .then(j => { if (j && j.ok) location.replace('/'); })
+  .catch(() => {});
+
+// 진입 흐름
+checkSavedLogin();
 </script>
 </body>
 </html>
