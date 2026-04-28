@@ -2491,6 +2491,212 @@ app.get('/api/admin/pricing-audit/publish-migrate', async (req, res) => {
   }
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 4-28 새 산식 PREVIEW — HS×국가 관세 매트릭스 + 카테고리 인증비 + 국가 배송비 배수
+//   사용: GET /api/admin/pricing-audit/preview-recalc-2026-04-28?password=XXX
+//   카탈로그 179건 전체에 새 산식 적용 → 어제 박힌 값 vs 새 값 비교 Excel 다운로드
+//   ※ DRY-RUN 전용 — Notion·DB 변경 0
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) => {
+  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+
+  // ── 1. 매트릭스 정의 ──────────────────────────────────────────────
+  // HS × 8국 관세 매트릭스 (4-28 1차안, MFN 기준)
+  const TARIFF = {
+    '6109.10': { KR:0, TW:12,  HK:0, CN:14,  TH:30, US:16.5, JP:10.9, IDN:25 },
+    '3926.90': { KR:0, TW:5,   HK:0, CN:6.5, TH:20, US:5.3,  JP:3.9,  IDN:10 },
+    '4911.91': { KR:0, TW:0,   HK:0, CN:0,   TH:0,  US:0,    JP:0,    IDN:5  },
+    '6301.40': { KR:0, TW:7.5, HK:0, CN:5,   TH:30, US:8.5,  JP:5.3,  IDN:25 },
+    '9503.00': { KR:0, TW:5,   HK:0, CN:0,   TH:5,  US:0,    JP:0,    IDN:10 },
+    '3926.40': { KR:0, TW:5,   HK:0, CN:6.5, TH:20, US:5.3,  JP:3.9,  IDN:10 },
+    '_DEFAULT_':{ KR:0, TW:5,  HK:0, CN:8,   TH:15, US:5,    JP:5,    IDN:10 }
+  };
+  function lookupTariff(hsRaw, country) {
+    const hs = String(hsRaw || '').trim();
+    const prefix6 = hs.replace(/[^0-9.]/g,'').slice(0, 7);
+    if (TARIFF[prefix6]) return TARIFF[prefix6][country];
+    const prefix5 = prefix6.slice(0, 5);
+    for (const k of Object.keys(TARIFF)) {
+      if (k.startsWith(prefix5)) return TARIFF[k][country];
+    }
+    return TARIFF._DEFAULT_[country];
+  }
+
+  const NEW_COUNTRIES = [
+    { code:'HK',  cur:'HKD', vat:0,  fx: fxCache.HKD || 177,  round:1,    shipMult:1.0, field:'Retail_HK_HKD' },
+    { code:'CN',  cur:'CNY', vat:13, fx: fxCache.CNY || 190,  round:10,   shipMult:1.0, field:'Retail_CN_CNY' },
+    { code:'TH',  cur:'THB', vat:7,  fx: fxCache.THB || 40,   round:10,   shipMult:1.4, field:'Retail_TH_THB' },
+    { code:'US',  cur:'USD', vat:0,  fx: fxCache.USD || 1380, round:0.5,  shipMult:2.5, field:'Retail_US_USD' },
+    { code:'JP',  cur:'JPY', vat:10, fx: fxCache.JPY || 9.2,  round:100,  shipMult:1.0, field:'Retail_JP_JPY' },
+    { code:'IDN', cur:'IDR', vat:11, fx: fxCache.IDR || 0.087,round:1000, shipMult:1.5, field:'Retail_ID_IDR' }
+  ];
+
+  const OLD_COUNTRIES = {
+    HK: { tariff:0,  vat:0,  fx:177,  round:1    },
+    CN: { tariff:10, vat:13, fx:190,  round:10   },
+    TH: { tariff:20, vat:7,  fx:40,   round:10   },
+    US: { tariff:5,  vat:0,  fx:1380, round:0.5  },
+    JP: { tariff:3,  vat:10, fx:9.2,  round:100  }
+  };
+
+  const CATEGORY_GROUP_NEW = {
+    '키링/잡화':{pct:5,min:1000}, '프린트/스티커':{pct:5,min:1000},
+    '문구':{pct:5,min:1000}, '모바일 악세사리':{pct:5,min:1000},
+    '의류':{pct:6,min:2500}, '홈리빙':{pct:6,min:2500},
+    '인형':{pct:7,min:5000}, '피규어/토이':{pct:7,min:5000}, '기타':{pct:7,min:5000}
+  };
+  function certPctNew(name) {
+    const n = name || '';
+    if (/Plush/i.test(n)) return 3;
+    if (/Mug |Glass Cup/i.test(n)) return 3;
+    if (/Figure/i.test(n)) return 3;
+    if (/Mood light|Insense|Incense/i.test(n)) return 5;
+    return 0;
+  }
+  function roundLocal(local, round) {
+    const ceiled = Math.ceil(local / round) * round;
+    return round === 0.5 ? Math.round(ceiled * 10) / 10 : Math.round(ceiled);
+  }
+
+  try {
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor, page_size: 100
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t=>t.plain_text||'').join('');
+    const _gNum  = (pr, k) => pr[k] && pr[k].number != null ? pr[k].number : null;
+    const _gSel  = (pr, k) => pr[k] && pr[k].select ? pr[k].select.name : null;
+
+    const rows = [];
+    let summary = { HK:{up:0,down:0,same:0,new:0}, CN:{up:0,down:0,same:0,new:0}, TH:{up:0,down:0,same:0,new:0},
+                    US:{up:0,down:0,same:0,new:0}, JP:{up:0,down:0,same:0,new:0}, IDN:{up:0,down:0,same:0,new:0} };
+    let countDiscontinued = 0;
+
+    for (const p of allPages) {
+      const pr = p.properties || {};
+      const status = _gSel(pr, '판매상태');
+      if (status === '단종') { countDiscontinued++; continue; }
+
+      const name = _gText(pr, 'Product Name');
+      const cat = _gSel(pr, 'Category') || '기타';
+      const hs = _gText(pr, 'HS_Code');
+      const kr = _gNum(pr, 'Retail_KR_KRW');
+      if (!kr) continue;
+
+      const grp = CATEGORY_GROUP_NEW[cat] || CATEGORY_GROUP_NEW['기타'];
+      const cert = kr * certPctNew(name) / 100;
+
+      for (const c of NEW_COUNTRIES) {
+        const ship = Math.max(kr * grp.pct / 100, grp.min) * c.shipMult;
+        const tariffPct = lookupTariff(hs, c.code);
+        const newMinKrw = (kr + ship + cert) * (1 + tariffPct/100) * (1 + c.vat/100);
+        const newRecLocal = roundLocal(newMinKrw / c.fx, c.round);
+        const currentPrice = _gNum(pr, c.field);
+
+        let oldRecLocal = null, oldMinKrw = null;
+        const oldC = OLD_COUNTRIES[c.code];
+        if (oldC) {
+          const oldShip = Math.max(kr * grp.pct / 100, grp.min);
+          oldMinKrw = (kr + oldShip + cert) * (1 + oldC.tariff/100) * (1 + oldC.vat/100);
+          oldRecLocal = roundLocal(oldMinKrw / oldC.fx, oldC.round);
+        }
+
+        let diffPct = null, signal = '';
+        if (oldMinKrw && oldMinKrw > 0) {
+          diffPct = (newMinKrw - oldMinKrw) / oldMinKrw * 100;
+          if (Math.abs(diffPct) < 5) { signal = '🟢 동일'; summary[c.code].same++; }
+          else if (diffPct > 20)     { signal = '🔴 크게 인상'; summary[c.code].up++; }
+          else if (diffPct > 5)      { signal = '🟠 인상'; summary[c.code].up++; }
+          else if (diffPct < -20)    { signal = '🔵 크게 인하'; summary[c.code].down++; }
+          else                       { signal = '🟡 인하'; summary[c.code].down++; }
+        } else {
+          signal = '⚪ 신규(IDN)';
+          if (c.code === 'IDN') summary.IDN.new++;
+        }
+
+        rows.push({
+          제품명: name, 카테고리: cat, HS: hs || '(없음)', KR가: kr,
+          국가: c.code, 통화: c.cur,
+          현재값: currentPrice,
+          어제관세: oldC ? oldC.tariff : 'N/A',
+          새관세: tariffPct,
+          어제마지노원: oldMinKrw ? Math.round(oldMinKrw) : 'N/A',
+          새마지노원: Math.round(newMinKrw),
+          어제추천: oldRecLocal !== null ? oldRecLocal : 'N/A',
+          새추천: newRecLocal,
+          변화pct: diffPct !== null ? Number(diffPct.toFixed(1)) : 'NEW',
+          신호: signal,
+          ship배수: c.shipMult
+        });
+      }
+    }
+
+    const ExcelJS = require('exceljs');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('전체 비교');
+    const cols = ['제품명','카테고리','HS','KR가','국가','통화','현재값','어제관세','새관세','어제마지노원','새마지노원','어제추천','새추천','변화pct','신호','ship배수'];
+    ws.addRow(cols);
+    ws.getRow(1).eachCell(c => {
+      c.font = { bold:true, color:{argb:'FFFFFFFF'} };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1F4E79'} };
+      c.alignment = { horizontal:'center' };
+    });
+    rows.forEach(r => ws.addRow(cols.map(k => r[k])));
+    const sigCol = cols.indexOf('신호') + 1, diffCol = cols.indexOf('변화pct') + 1;
+    for (let i = 2; i <= ws.rowCount; i++) {
+      const sig = String(ws.getRow(i).getCell(sigCol).value || '');
+      let bg = 'FFC6E0B4';
+      if (sig.includes('🔴')) bg = 'FFFFC7CE';
+      else if (sig.includes('🟠')) bg = 'FFFFEB9C';
+      else if (sig.includes('🔵')) bg = 'FFBDD7EE';
+      else if (sig.includes('🟡')) bg = 'FFFFF2CC';
+      else if (sig.includes('⚪')) bg = 'FFE7E6E6';
+      ws.getRow(i).getCell(sigCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
+      ws.getRow(i).getCell(diffCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
+    }
+    ws.columns.forEach((c, i) => {
+      const widths = [38,12,12,9,6,6,11,9,9,12,12,11,11,9,14,9];
+      c.width = widths[i] || 11;
+    });
+
+    const ws2 = wb.addWorksheet('요약');
+    ws2.addRow(['국가','인상(>+5%)','인하(<-5%)','거의동일(±5%)','신규(IDN)']);
+    ws2.getRow(1).eachCell(c => { c.font = { bold:true, color:{argb:'FFFFFFFF'} }; c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1F4E79'} }; });
+    for (const cc of ['HK','CN','TH','US','JP','IDN']) {
+      const s = summary[cc];
+      ws2.addRow([cc, s.up, s.down, s.same, s.new || 0]);
+    }
+    ws2.addRow([]);
+    ws2.addRow(['총 카탈로그 페이지', allPages.length]);
+    ws2.addRow(['단종 제외', countDiscontinued]);
+    ws2.addRow(['처리 행 (제품×6국)', rows.length]);
+    ws2.addRow(['생성', new Date().toISOString()]);
+
+    const buf = await wb.xlsx.writeBuffer();
+    const today = new Date().toISOString().slice(0,10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="catalog_recalc_${today}.xlsx"`);
+    res.setHeader('X-Total-Items', String(allPages.length));
+    res.setHeader('X-Skipped-Discontinued', String(countDiscontinued));
+    res.setHeader('X-Processed-Rows', String(rows.length));
+    res.send(Buffer.from(buf));
+  } catch (e) {
+    console.error('[preview-recalc-2026-04-28]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 app.get('/api/admin/pricing-audit/apply-files', (req, res) => {
   const dir = path.join(__dirname, 'data', 'audit-applies');
   if (!fs.existsSync(dir)) return res.json({ ok: true, files: [], note: 'dir not exists yet' });
