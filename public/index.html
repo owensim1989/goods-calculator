@@ -544,6 +544,31 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cp-comp-stats .stat{display:flex;gap:6px;align-items:baseline;}
 .cp-comp-stats .stat .lbl{color:var(--text-muted);font-size:11px;}
 .cp-comp-stats .stat .val{font-weight:700;color:var(--primary);font-size:15px;}
+.cp-mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;}
+.cp-mp-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.cp-mp-card .brand{font-weight:700;font-size:13px;color:var(--primary);margin-bottom:4px;}
+.cp-mp-card .product{font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;}
+.cp-mp-card .price{font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.cp-mp-card .range{font-size:10px;color:var(--text-muted);}
+.cp-mp-card .reason{font-size:10px;color:var(--text-muted);margin-top:6px;line-height:1.4;border-top:1px dashed var(--border);padding-top:6px;}
+.cp-mp-summary{padding:14px 16px;border-radius:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.cp-mp-summary.cheap{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.02));border:1px solid rgba(34,197,94,.3);}
+.cp-mp-summary.aligned{background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(59,130,246,.02));border:1px solid rgba(59,130,246,.3);}
+.cp-mp-summary.expensive{background:linear-gradient(135deg,rgba(239,68,68,.08),rgba(239,68,68,.02));border:1px solid rgba(239,68,68,.3);}
+.cp-mp-summary.no-target{background:var(--bg);border:1px dashed var(--border);}
+.cp-mp-summary .lhs{display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px;}
+.cp-mp-summary .lbl{font-size:11px;color:var(--text-muted);}
+.cp-mp-summary .val{font-size:20px;font-weight:700;color:var(--text);}
+.cp-mp-summary .gap{font-size:14px;font-weight:700;}
+.cp-mp-summary .gap.cheap{color:#16a34a;}
+.cp-mp-summary .gap.aligned{color:#2563eb;}
+.cp-mp-summary .gap.expensive{color:#dc2626;}
+.cp-mp-summary .verdict{font-size:13px;font-weight:600;padding:6px 12px;border-radius:8px;}
+.cp-mp-summary .verdict.cheap{background:rgba(34,197,94,.15);color:#16a34a;}
+.cp-mp-summary .verdict.aligned{background:rgba(59,130,246,.15);color:#2563eb;}
+.cp-mp-summary .verdict.expensive{background:rgba(239,68,68,.15);color:#dc2626;}
+.cp-mp-meta{font-size:10px;color:var(--text-muted);text-align:right;margin-top:8px;font-style:italic;}
+@media (max-width:680px){.cp-mp-grid{grid-template-columns:1fr;}}
 .cp-margin-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;}
 .cp-margin-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;}
 .cp-margin-card .lbl{font-size:11px;color:var(--text-muted);}
@@ -1007,6 +1032,17 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="cp-margin-card highlight"><div class="lbl">마진율</div><div class="val" id="cp-m-rate">-</div></div>
     </div>
     <div class="cp-verdict" id="cp-verdict" style="display:none;"></div>
+  </div>
+
+  <div class="cp-auto-section" id="cp-market-price-section">
+    <h4>📊 시장가 비교 (sanity check) <span class="auto-tag">AI 추정</span>
+      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="라인프렌즈·카카오프렌즈·산리오 동급 카테고리 한국 시장가를 AI로 추정 → 우리 가격이 시장 평균 대비 적정한지 점검">🔍 시장가 추정</button>
+    </h4>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">우리 한국 타겟가가 라인프렌즈/카카오프렌즈/산리오 동급 캐릭터 굿즈 시장 평균 대비 적정한지 AI로 빠르게 점검합니다. 정확한 동일 제품 매칭은 불가능하므로 카테고리 평균 기반 ±15% 가이드라인.</p>
+    <div id="cp-market-price-result" style="display:none;"></div>
+    <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
+      💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 추정</b> 버튼을 누르면 결과가 표시됩니다 (AI 호출 1회 ~5초)
+    </div>
   </div>
 
   <div class="cp-auto-section">
@@ -3431,6 +3467,115 @@ function cpCountryEdit(i,key,val){
   CP_COUNTRIES[i][key] = num;
   cpRenderCountryTable();
 }
+
+// ━━━ 📊 시장가 sanity check ━━━
+let _cpMarketPriceCache = null;  // 마지막 응답 캐시 (cpSave 시 함께 저장 가능)
+
+async function cpEstimateMarketPrice(){
+  const productName = (document.getElementById('cp-name').value||'').trim();
+  if(!productName){showToast('제품명을 먼저 입력하세요');return;}
+  const category = document.getElementById('cp-category')?.value || '';
+  const size = document.getElementById('cp-size')?.value || '';
+  const material = document.getElementById('cp-material')?.value || '';
+  const hsCode = document.getElementById('cp-hs')?.value || '';
+  const ourTargetKRW = cpParseNum(document.getElementById('cp-target-price').value) || null;
+
+  const btn = document.getElementById('cp-btn-market-price');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '⏳ AI 분석중...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/consumer-pricing/estimate-market-price',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ productName, category, size, material, hsCode, ourTargetKRW })
+    });
+    const j = await r.json();
+    if(!r.ok){
+      showToast('시장가 추정 실패: ' + (j.error || r.status));
+      return;
+    }
+    _cpMarketPriceCache = j;
+    cpRenderMarketPrice(j);
+  } catch(e){
+    console.error(e);
+    showToast('시장가 추정 실패: ' + e.message);
+  } finally {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
+}
+
+function cpRenderMarketPrice(data){
+  const wrap = document.getElementById('cp-market-price-result');
+  const empty = document.getElementById('cp-market-price-empty');
+  if(!wrap || !data) return;
+  empty.style.display = 'none';
+  wrap.style.display = 'block';
+
+  const brands = data.brands || [];
+  const cards = brands.map(b => `
+    <div class="cp-mp-card">
+      <div class="brand">${escapeHtml(b.brand||'')}</div>
+      <div class="product">${escapeHtml(b.productExample||'-')}</div>
+      <div class="price">${b.estimatedKRW ? cpFmtKRW(b.estimatedKRW) : '-'}</div>
+      <div class="range">범위: ${b.lowKRW?cpFmtKRW(b.lowKRW):'-'} ~ ${b.highKRW?cpFmtKRW(b.highKRW):'-'}</div>
+      <div class="reason">${escapeHtml(b.reason||'')}</div>
+    </div>
+  `).join('');
+
+  let summaryHtml = '';
+  const verdict = data.verdict;
+  const gap = data.gapPct;
+  if (data.avgKRW != null && data.ourPriceKRW != null && verdict) {
+    const verdictTxt = verdict==='cheap'?'🟢 시장가 대비 저렴':(verdict==='aligned'?'🔵 시장가와 적정':'🔴 시장가 대비 비쌈');
+    const gapTxt = (gap>=0?'+':'') + gap.toFixed(1) + '%';
+    const advice = verdict==='cheap'
+      ? '시장 평균보다 충분히 저렴 → 가격 경쟁력 우위. 단, 너무 싸면 브랜드 가치 낮게 보일 수 있음 (확인)'
+      : verdict==='aligned'
+      ? '시장 평균과 ±15% 이내 → 적정 가격대. 그대로 진행 권장'
+      : '시장 평균보다 비쌈 → 차별화 포인트(디자인·소재·라이선스 등)가 명확하지 않으면 인하 검토';
+    summaryHtml = `
+      <div class="cp-mp-summary ${verdict}">
+        <div class="lhs">
+          <div class="lbl">3사 평균</div>
+          <div class="val">${cpFmtKRW(data.avgKRW)}</div>
+        </div>
+        <div class="lhs">
+          <div class="lbl">우리 가격</div>
+          <div class="val">${cpFmtKRW(data.ourPriceKRW)}</div>
+        </div>
+        <div class="lhs">
+          <div class="lbl">갭</div>
+          <div class="gap ${verdict}">${gapTxt}</div>
+        </div>
+        <div class="verdict ${verdict}">${verdictTxt}</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.5;">💡 ${escapeHtml(advice)}</div>
+    `;
+  } else if (data.avgKRW != null) {
+    summaryHtml = `
+      <div class="cp-mp-summary no-target">
+        <div class="lhs">
+          <div class="lbl">3사 평균 (한국 타겟가 미입력)</div>
+          <div class="val">${cpFmtKRW(data.avgKRW)}</div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">한국 타겟가를 입력하면 갭% 자동 계산됩니다</div>
+      </div>
+    `;
+  }
+
+  const summaryNote = data.summary ? `<div style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.5;background:var(--bg);padding:10px 14px;border-radius:8px;">📌 ${escapeHtml(data.summary)}</div>` : '';
+  const ts = data.generatedAt ? new Date(data.generatedAt).toLocaleString('ko-KR') : '';
+  const meta = ts ? `<div class="cp-mp-meta">분석 시점: ${ts} · AI 추정값이므로 실제 시장가와 차이 가능</div>` : '';
+
+  wrap.innerHTML = `
+    ${summaryNote}
+    <div class="cp-mp-grid">${cards}</div>
+    ${summaryHtml}
+    ${meta}
+  `;
+}
+
 
 // ━━━ 저장/삭제 ━━━
 async function cpSave(){
