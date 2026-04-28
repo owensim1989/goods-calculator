@@ -545,7 +545,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cp-comp-stats .stat .lbl{color:var(--text-muted);font-size:11px;}
 .cp-comp-stats .stat .val{font-weight:700;color:var(--primary);font-size:15px;}
 .cp-mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;}
-.cp-mp-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.cp-mp-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;transition:all .15s;}
+.cp-mp-card:hover{border-color:var(--primary);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.15);}
 .cp-mp-card .brand{font-weight:700;font-size:13px;color:var(--primary);margin-bottom:4px;}
 .cp-mp-card .product{font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.4;}
 .cp-mp-card .price{font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;}
@@ -857,11 +858,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
     <div class="cp-input-big">
       <div class="cp-field">
-        <label>② 경쟁사 URL <span style="font-weight:400;color:var(--text-muted);font-size:11px;">— Enter로 자동 매칭</span></label>
-        <input type="url" id="cp-comp-url" placeholder="https://... 붙여넣고 Enter" onkeydown="if(event.key===&apos;Enter&apos;){event.preventDefault();cpScrapeCompetitor();}">
-      </div>
-      <div class="cp-field">
-        <label>③ 🎯 타겟 소비자가 (KRW) *</label>
+        <label>② 🎯 타겟 소비자가 (KRW) *</label>
         <input type="text" id="cp-target-price" placeholder="예: 15,000" oninput="cpOnTargetInput(this)">
         <div id="cp-target-vs-avg" style="font-size:11px;color:var(--text-muted);margin-top:4px;min-height:14px;"></div>
       </div>
@@ -901,6 +898,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="cp-auto-section">
     <h4>🏷️ 분류 &amp; 관세 <span class="auto-tag">AI 자동</span>
       <span style="margin-left:auto;display:flex;gap:4px;">
+        <button class="cp-btn cp-btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="cpForceRefreshHS()" title="현재 제품명으로 HS 코드를 다시 AI 분석">🔄 다시 추천</button>
         <button class="cp-btn cp-btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="cpHSSearch(&apos;customs&apos;)" title="관세청 UNI-PASS">🏛️ 관세청</button>
         <button class="cp-btn cp-btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="cpHSSearch(&apos;google&apos;)" title="구글 검색">🔎 구글</button>
         <button class="cp-btn cp-btn-ghost" style="padding:3px 10px;font-size:11px;" onclick="cpHSSuggest()" title="다른 후보">🤖 다른 후보</button>
@@ -921,22 +919,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <option>기타</option>
       </select></div>
       <div class="cp-field"><label>HS 참조 일치</label><input type="text" id="cp-hs-match" readonly style="background:var(--bg);" placeholder="AI 분석 후 표시"></div>
-    </div>
-  </div>
-
-  <div class="cp-auto-section">
-    <h4>🔍 경쟁사 시장 분석 <span class="auto-tag">AI 자동 + 수동 추가</span>
-      <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:11px;padding:3px 10px;" onclick="cpAddCompetitor()">+ 수동 추가</button>
-    </h4>
-    <table class="cp-comp-table">
-      <thead><tr><th style="width:22%">브랜드</th><th style="width:28%">제품명</th><th style="width:15%">가격(KRW)</th><th>URL / 메모</th><th style="width:40px;"></th></tr></thead>
-      <tbody id="cp-comp-tbody"></tbody>
-    </table>
-    <div class="cp-comp-stats">
-      <div class="stat"><span class="lbl">평균</span><span class="val" id="cp-comp-avg">-</span></div>
-      <div class="stat"><span class="lbl">최저</span><span class="val" id="cp-comp-min">-</span></div>
-      <div class="stat"><span class="lbl">최고</span><span class="val" id="cp-comp-max">-</span></div>
-      <div class="stat"><span class="lbl">건수</span><span class="val" id="cp-comp-cnt">0</span></div>
     </div>
   </div>
 
@@ -2719,8 +2701,14 @@ async function cpLoadEmployees(){
     const d = await r.json();
     const sel = document.getElementById('cp-author');
     if(!sel || !d.employees) return;
+    // 로그인 사용자 자동 매칭 우선 → 없으면 localStorage 값 fallback
+    const loginName = (window._goodsUser && window._goodsUser.name) || '';
+    const inList = loginName && d.employees.some(e => e.name === loginName);
     const saved = localStorage.getItem('cp_author') || '';
-    sel.innerHTML = '<option value="">선택</option>' + d.employees.map(e=>`<option value="${escapeHtml(e.name)}" ${e.name===saved?'selected':''}>${escapeHtml(e.name)} · ${escapeHtml(e.team||'')}</option>`).join('');
+    const defaultName = inList ? loginName : saved;
+    sel.innerHTML = '<option value="">선택</option>' + d.employees.map(e=>`<option value="${escapeHtml(e.name)}" ${e.name===defaultName?'selected':''}>${escapeHtml(e.name)} · ${escapeHtml(e.team||'')}</option>`).join('');
+    // 로그인 사용자로 자동 매칭됐으면 localStorage도 동기화
+    if (inList && loginName !== saved) localStorage.setItem('cp_author', loginName);
   }catch(e){console.warn('[직원 로드 실패]',e);}
 }
 function cpRememberAuthor(){
@@ -3208,6 +3196,7 @@ function cpRemoveCompetitor(i){
 }
 function cpRenderCompetitors(){
   const tb = document.getElementById('cp-comp-tbody');
+  if (!tb) { cpUpdateCompStats(); return; }  // 섹션 제거됨 — NOOP (CP_COMPETITORS는 빈 배열로 cpSave 시 보존)
   tb.innerHTML = CP_COMPETITORS.map((c,i)=>`<tr>
     <td><input type="text" value="${escapeHtml(c.brand||'')}" oninput="cpCompEdit(${i},'brand',this.value)" placeholder="브랜드명"></td>
     <td><input type="text" value="${escapeHtml(c.product||'')}" oninput="cpCompEdit(${i},'product',this.value)" placeholder="제품명"></td>
@@ -3229,6 +3218,8 @@ function cpCompEditPrice(i,el){
   cpUpdateTargetVsAvg();
 }
 function cpUpdateCompStats(){
+  // 경쟁사 시장 분석 섹션 제거됨 (시장가 비교 sanity check 대체) — DOM 없으면 NOOP
+  if (!document.getElementById('cp-comp-avg')) return;
   const prices = CP_COMPETITORS.map(c=>c.priceKRW).filter(p=>p!=null&&p>0);
   const cnt = prices.length;
   if(!cnt){
@@ -3258,13 +3249,18 @@ function cpOnTargetInput(el){
   cpRecalc();
 }
 function cpUpdateTargetVsAvg(){
+  const el = document.getElementById('cp-target-vs-avg');
+  if (!el) return;
   const t = cpParseNum(document.getElementById('cp-target-price').value);
   const avg = cpCompAvg();
-  const el = document.getElementById('cp-target-vs-avg');
-  if(t==null||avg==null){el.value='';return;}
+  if(t==null||avg==null){
+    if ('value' in el) el.value=''; else el.textContent='';
+    return;
+  }
   const pct = ((t/avg)-1)*100;
   const sign = pct>=0?'+':'';
-  el.value = `${sign}${pct.toFixed(1)}% (평균 ${cpFmtKRW(avg)})`;
+  const txt = `${sign}${pct.toFixed(1)}% (평균 ${cpFmtKRW(avg)})`;
+  if ('value' in el) el.value = txt; else el.textContent = txt;
 }
 
 // ━━━ 원가·마진 ━━━
@@ -3565,15 +3561,31 @@ function cpRenderMarketPrice(data){
   wrap.style.display = 'block';
 
   const brands = data.brands || [];
-  const cards = brands.map(b => `
-    <div class="cp-mp-card">
-      <div class="brand">${escapeHtml(b.brand||'')}</div>
+  // 우리 제품명을 검색어로 사용 (없으면 productExample fallback)
+  const searchKeyword = (document.getElementById('cp-name')?.value||'').trim();
+  const cards = brands.map(b => {
+    const brand = (b.brand||'').toLowerCase();
+    const kw = encodeURIComponent(searchKeyword || b.productExample || '');
+    let url = '';
+    if (brand.includes('line') || brand.includes('라인')) {
+      url = `https://store.linefriends.com/kr/search?keyword=${kw}`;
+    } else if (brand.includes('kakao') || brand.includes('카카오')) {
+      url = `https://store.kakaofriends.com/kr/search?keyword=${kw}`;
+    } else if (brand.includes('sanrio') || brand.includes('산리오')) {
+      url = `https://www.sanrio.co.kr/search/?searchword=${kw}`;
+    } else {
+      // 그 외 브랜드는 구글 검색으로 fallback
+      url = `https://www.google.com/search?q=${encodeURIComponent(b.brand+' '+(searchKeyword||b.productExample||''))}`;
+    }
+    return `
+    <div class="cp-mp-card" onclick="window.open('${escapeHtml(url)}', '_blank', 'noopener')" title="🔗 ${escapeHtml(b.brand)} 공식몰에서 검색 결과 새 탭 열기" style="cursor:pointer;">
+      <div class="brand">${escapeHtml(b.brand||'')} <span style="font-size:10px;color:var(--text-muted);font-weight:400;">🔗</span></div>
       <div class="product">${escapeHtml(b.productExample||'-')}</div>
       <div class="price">${b.estimatedKRW ? cpFmtKRW(b.estimatedKRW) : '-'}</div>
       <div class="range">범위: ${b.lowKRW?cpFmtKRW(b.lowKRW):'-'} ~ ${b.highKRW?cpFmtKRW(b.highKRW):'-'}</div>
       <div class="reason">${escapeHtml(b.reason||'')}</div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   let summaryHtml = '';
   const verdict = data.verdict;
@@ -4012,14 +4024,20 @@ function cpApplyTariffsToCountries(t){
 let CP_HS_DEBOUNCE = null;
 let CP_HS_LAST_QUERY = '';
 function cpOnNameInput(){
+  // 제품명이 바뀌면 HS 확정 상태 리셋 → 자동 재분석 허용
+  if (window._cpHSConfirmed) {
+    window._cpHSConfirmed = false;
+    if (typeof cpUpdateHSConfirmBadge === 'function') cpUpdateHSConfirmBadge();
+  }
   clearTimeout(CP_HS_DEBOUNCE);
   CP_HS_DEBOUNCE = setTimeout(cpAutoHSSoon, 1500);
 }
-async function cpAutoHSSoon(){
+async function cpAutoHSSoon(force){
   const name = (document.getElementById('cp-name').value||'').trim();
   if(!name || name.length < 2) return;
-  if(name === CP_HS_LAST_QUERY) return;
-  if(document.getElementById('cp-hs').value) return;
+  // 사용자가 HS 확정했으면 자동 재분석 안 함 (force=true 면 무시)
+  if (!force && window._cpHSConfirmed) return;
+  if (!force && name === CP_HS_LAST_QUERY) return;
   CP_HS_LAST_QUERY = name;
   const hsInput = document.getElementById('cp-hs');
   const orig = hsInput.placeholder;
@@ -4046,6 +4064,20 @@ async function cpAutoHSSoon(){
       hsInput.placeholder = orig;
     }
   }catch(e){ hsInput.placeholder = orig; console.warn('[AutoHS]',e); }
+}
+
+
+// 🔄 HS Code 강제 재추천 (사용자 클릭)
+async function cpForceRefreshHS(){
+  const name = (document.getElementById('cp-name').value||'').trim();
+  if(!name){ showToast('먼저 제품명을 입력하세요'); return; }
+  // 캐시·확정 상태 리셋 후 강제 재호출
+  window._cpHSCache = null;
+  window._cpHSConfirmed = false;
+  CP_HS_LAST_QUERY = '';
+  if (typeof cpUpdateHSConfirmBadge === 'function') cpUpdateHSConfirmBadge();
+  showToast('🔄 HS 재분석 중...');
+  await cpAutoHSSoon(true);
 }
 
 // ━━━ 경쟁사 URL 자동 매칭 ━━━
