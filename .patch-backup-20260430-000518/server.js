@@ -264,23 +264,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// 미스터두낫띵·사업화 페이지 전용 API 서버측 가드
-// (사업화지원 + 두낫띵 + 관리자만. 클라이언트 _hasRestrictedAccess 와 동일 룰)
-// 우회 차단 — 직접 fetch로 호출해도 403
-app.use((req, res, next) => {
-  const p = req.path || '';
-  // 화이트리스트: cross-origin 공개 API + 사이드바 뱃지 → 통과
-  if (p.startsWith('/api/parsed-quotes/summary')) return next();
-  if (p.startsWith('/api/catalog-image/')) return next();
-  // 가드 대상: 미스터두낫띵·사업화 전용 데이터 API
-  if (p.startsWith('/api/consumer-pricing') ||
-      p.startsWith('/api/parsed-quotes') ||
-      p === '/api/catalog-image-debug') {
-    return auth.requireRestrictedAccess(req, res, next);
-  }
-  next();
-});
-
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {

@@ -226,28 +226,6 @@ function requireRestrictedAccess(req, res, next) {
   next();
 }
 
-// 미스터두낫띵·사업화 페이지 전용 API 가드 — 사업화지원 + 두낫띵 + 관리자만
-// (클라이언트 _hasRestrictedAccess 와 동일 룰)
-function hasRestrictedAccess(user) {
-  if (!user) return false;
-  if (user.role === '관리자') return true;
-  if (user.team === '사업화지원') return true;
-  if (user.team === '두낫띵') return true;
-  return false;
-}
-
-function requireRestrictedAccess(req, res, next) {
-  const user = req.user || getUser(req);
-  if (!user) {
-    return res.status(401).json({ error: 'unauthorized', loginUrl: '/login.html' });
-  }
-  if (!hasRestrictedAccess(user)) {
-    return res.status(403).json({ error: '권한 없음 — 사업화지원·두낫띵·관리자 전용 기능입니다' });
-  }
-  req.user = user;
-  next();
-}
-
 // ━━━ 라우트 마운트 ━━━
 
 function mountRoutes(app) {

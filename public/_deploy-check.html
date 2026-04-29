@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>배포 점검 — 2026-04-29</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0f0f10;
+    --panel: #1a1a1d;
+    --border: #2a2a2e;
+    --text: #e5e5e7;
+    --muted: #8a8a91;
+    --primary: #7c3aed;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; margin-bottom: 18px;
+  }
+  .section h2 {
+    font-size: 16px; margin: 0 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section h2 .num {
+    background: var(--primary); color: white;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .check {
+    display: grid; grid-template-columns: 32px 1fr auto 100px;
+    gap: 10px; align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+  .check:first-child { border-top: none; }
+  .check .icon { font-size: 18px; text-align: center; }
+  .check .body .title { font-weight: 600; font-size: 14px; }
+  .check .body .desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .check .body .result {
+    margin-top: 6px; font-size: 11px; font-family: 'JetBrains Mono', Consolas, monospace;
+    color: var(--muted); white-space: pre-wrap; word-break: break-all;
+  }
+  .check button {
+    background: var(--primary); color: white; border: none; border-radius: 6px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 500;
+  }
+  .check button:hover { opacity: 0.9; }
+  .check button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .check .status {
+    font-size: 12px; font-weight: 600; text-align: center;
+    padding: 4px 8px; border-radius: 6px;
+  }
+  .status.idle { background: #2a2a2e; color: var(--muted); }
+  .status.run { background: #1e3a8a; color: #93c5fd; }
+  .status.pass { background: rgba(16,185,129,0.15); color: var(--success); }
+  .status.fail { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .status.warn { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .summary {
+    margin-top: 24px; padding: 18px; border-radius: 12px;
+    background: linear-gradient(135deg, rgba(124,58,237,0.1), rgba(16,185,129,0.05));
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+  .summary .big { font-size: 32px; font-weight: 700; }
+  .summary .desc { color: var(--muted); margin-top: 8px; }
+  .toolbar {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-bottom: 12px;
+  }
+  .toolbar button {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  .toolbar button.primary {
+    background: var(--primary); border-color: var(--primary); color: white;
+  }
+  .manual {
+    background: rgba(245,158,11,0.05); border: 1px dashed rgba(245,158,11,0.3);
+    border-radius: 8px; padding: 10px 12px; margin-top: 8px;
+    font-size: 12px; color: var(--muted);
+  }
+  .manual b { color: var(--warning); }
+  a { color: #93c5fd; }
+  code {
+    background: var(--bg); padding: 2px 6px; border-radius: 4px;
+    font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚀 배포 점검</h1>
+  <p class="sub">
+    마진율 갭 시각화 + 한국수출입은행 환율 cron + consumer-pricing 서버 가드.
+    배포 직후 이 페이지에서 ▶ 전체 실행 → 모두 ✓ 인지 확인.
+  </p>
+
+  <div class="toolbar">
+    <button class="primary" onclick="runAll()">▶ 전체 실행</button>
+    <button onclick="resetAll()">초기화</button>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">1</span> 한국수출입은행 환율 cron</h2>
+
+    <div class="check" data-test="fx-cache">
+      <div class="icon">📊</div>
+      <div class="body">
+        <div class="title">GET /api/fx — 환율 캐시 응답</div>
+        <div class="desc">USD/CNY/TWD/HKD/THB/JPY/IDR 환산값 + source + updatedAt 확인</div>
+        <div class="result"></div>
+      </div>
+      <button onclick="testFxCache()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+
+    <div class="check" data-test="fx-alerts">
+      <div class="icon">⚠️</div>
+      <div class="body">
+        <div class="title">GET /api/fx/alerts — 알림 endpoint 동작</div>
+        <div class="desc">200 응답 + alerts 배열 + threshold_pct 5.0</div>
+        <div class="result"></div>
+      </div>
+      <button onclick="testFxAlerts()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+
+    <div class="check" data-test="fx-source">
+      <div class="icon">🇰🇷</div>
+      <div class="body">
+        <div class="title">환율 출처 확인 (Eximbank vs 폴백)</div>
+        <div class="desc">EXIM_API_KEY 설정됐으면 source = "koreaexim". 미설정 시 "open.er-api.com" 폴백 (정상)</div>
+        <div class="result"></div>
+        <div class="manual">
+          <b>Railway env 점검</b>: <code>EXIM_API_KEY</code> 환경변수 추가 필요.
+          <a href="https://www.koreaexim.go.kr/ir/HPHKIR020M01.do?sa=a" target="_blank">한국수출입은행 인증키 발급</a> (무료, 즉시) → Railway → goods 서비스 → Variables → 추가 → 재배포
+        </div>
+      </div>
+      <button onclick="testFxSource()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">2</span> 마진율 갭 시각화</h2>
+
+    <div class="check" data-test="margin-ui">
+      <div class="icon">📈</div>
+      <div class="body">
+        <div class="title">신제품 폼 — 마진율 컬럼 시각 점검 (수동)</div>
+        <div class="desc">신제품 폼 진입 → 8국 표 가장 우측에 "마진율 (한국→수출)" 컬럼 표시 확인</div>
+        <div class="manual">
+          <b>수동 점검 절차</b>:<br>
+          ① <a href="/#consumer" target="_blank">신제품 사업성 검토</a> 새 탭으로 열기 → Cmd+Shift+R 강제 새로고침<br>
+          ② 임의 프로젝트 선택 (또는 새로 입력: 제품명·품목·생산단가·수량·타겟가)<br>
+          ③ 결과 표 우측 끝 컬럼: <code>한국 X% / → Y% / 갭 ±Z%</code> 표시 확인<br>
+          ④ "확정 현지가" input 에 권장값보다 낮은 값 입력 → 갭 빨강(-N%) 변화 확인<br>
+          ⑤ 권장값 그대로 → 갭 0 근처 (라운딩 차이만)
+        </div>
+      </div>
+      <button onclick="markManual('margin-ui', true)">✓ 통과</button>
+      <div class="status idle">수동</div>
+    </div>
+
+    <div class="check" data-test="recalc-excel">
+      <div class="icon">📑</div>
+      <div class="body">
+        <div class="title">preview-recalc Excel — 4개 신규 컬럼</div>
+        <div class="desc">FOB원 / 한국마진pct / 수출후마진pct / 마진갭pct (FOB 없으면 N/A)</div>
+        <div class="manual">
+          <b>수동 점검 절차</b>:<br>
+          관리자 환경변수 <code>ADMIN_PASSWORD</code> 알면 직접 다운로드 →
+          <code>/api/admin/pricing-audit/preview-recalc-2026-04-28?password=XXX</code><br>
+          또는 미설정 시 빈 password 통과 → 파일 다운로드 → 우측 4개 컬럼 + 색상 코딩 확인
+        </div>
+      </div>
+      <button onclick="testRecalcExcel()">▶ 시도</button>
+      <div class="status idle">대기</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2><span class="num">3</span> consumer-pricing 서버 가드</h2>
+
+    <div class="check" data-test="me">
+      <div class="icon">👤</div>
+      <div class="body">
+        <div class="title">GET /api/me — 현재 로그인 상태</div>
+        <div class="desc">200 + employee 정보. team / role 으로 권한 판단</div>
+        <div class="result"></div>
+      </div>
+      <button onclick="testMe()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+
+    <div class="check" data-test="consumer-pricing">
+      <div class="icon">🔒</div>
+      <div class="body">
+        <div class="title">GET /api/consumer-pricing — 권한 가드</div>
+        <div class="desc">사업화·두낫띵·관리자 → 200. 그 외 → 403 (우회 차단)</div>
+        <div class="result"></div>
+      </div>
+      <button onclick="testConsumerPricing()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+
+    <div class="check" data-test="parsed-quotes-summary">
+      <div class="icon">🌐</div>
+      <div class="body">
+        <div class="title">GET /api/parsed-quotes/summary — 공개 (사이드바 뱃지)</div>
+        <div class="desc">권한 무관하게 200 응답이어야 함</div>
+        <div class="result"></div>
+      </div>
+      <button onclick="testParsedSummary()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+
+    <div class="check" data-test="parsed-quotes">
+      <div class="icon">🔒</div>
+      <div class="body">
+        <div class="title">GET /api/parsed-quotes — 가드 적용</div>
+        <div class="desc">권한자 200 / 비권한자 403</div>
+        <div class="result"></div>
+      </div>
+      <button onclick="testParsedQuotes()">▶ 실행</button>
+      <div class="status idle">대기</div>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="big" id="summaryIcon">⏸</div>
+    <div class="desc" id="summaryText">▶ 전체 실행 버튼을 눌러 점검을 시작하세요</div>
+  </div>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const $all = (sel) => document.querySelectorAll(sel);
+
+function setStatus(testId, type, label, resultText) {
+  const row = document.querySelector(`.check[data-test="${testId}"]`);
+  if (!row) return;
+  const st = row.querySelector('.status');
+  st.className = 'status ' + type;
+  st.textContent = label;
+  const res = row.querySelector('.result');
+  if (res && resultText !== undefined) res.textContent = resultText;
+  updateSummary();
+}
+
+function updateSummary() {
+  const all = $all('.check');
+  let pass = 0, fail = 0, warn = 0, idle = 0;
+  all.forEach(r => {
+    const cls = r.querySelector('.status').className;
+    if (cls.includes('pass')) pass++;
+    else if (cls.includes('fail')) fail++;
+    else if (cls.includes('warn')) warn++;
+    else idle++;
+  });
+  const icon = $('#summaryIcon');
+  const text = $('#summaryText');
+  if (idle > 0 && pass === 0 && fail === 0) {
+    icon.textContent = '⏸';
+    text.textContent = '▶ 전체 실행 버튼을 눌러 점검을 시작하세요';
+  } else if (fail > 0) {
+    icon.textContent = '❌';
+    text.textContent = `${fail}개 실패 / ${pass}개 통과 / ${warn}개 경고. 실패 항목 위 결과 메시지 확인 필요.`;
+  } else if (warn > 0 && idle === 0) {
+    icon.textContent = '⚠️';
+    text.textContent = `${pass}개 통과 / ${warn}개 경고. 경고 항목 확인 후 배포 진행 가능`;
+  } else if (pass > 0 && idle === 0 && fail === 0) {
+    icon.textContent = '✅';
+    text.textContent = `${pass}개 모두 통과 — 배포 OK`;
+  } else {
+    icon.textContent = '🔄';
+    text.textContent = `진행중: ${pass}/${all.length} 통과, ${idle}개 남음`;
+  }
+}
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts || {}));
+  let body = null;
+  try { body = await r.json(); } catch (_) { body = null; }
+  return { status: r.status, ok: r.ok, body };
+}
+
+async function testFxCache() {
+  setStatus('fx-cache', 'run', '실행중...', '');
+  try {
+    const r = await fetchJSON('/api/fx');
+    if (r.status !== 200) { setStatus('fx-cache', 'fail', '실패', `HTTP ${r.status}`); return false; }
+    const fx = r.body;
+    const required = ['USD','CNY','TWD','HKD','THB','JPY','IDR'];
+    const missing = required.filter(c => !fx[c]);
+    if (missing.length) { setStatus('fx-cache', 'fail', '실패', `누락 통화: ${missing.join(', ')}`); return false; }
+    const updatedAt = fx.updatedAt ? new Date(fx.updatedAt) : null;
+    const ageHr = updatedAt ? ((Date.now() - updatedAt.getTime()) / 3600000).toFixed(1) : '?';
+    const lines = [
+      `USD=${fx.USD} CNY=${fx.CNY} TWD=${fx.TWD} HKD=${fx.HKD}`,
+      `THB=${fx.THB} JPY=${fx.JPY} IDR=${fx.IDR}`,
+      `source=${fx.source || '(none)'} | updated=${fx.updatedAt || '?'} (${ageHr}h ago)`
+    ].join('\n');
+    if (ageHr !== '?' && parseFloat(ageHr) > 24) {
+      setStatus('fx-cache', 'warn', '경고', lines + '\n⚠️ 24h 초과 — cron 미작동 가능성');
+      return false;
+    }
+    setStatus('fx-cache', 'pass', '✓ 통과', lines);
+    return true;
+  } catch (e) { setStatus('fx-cache', 'fail', '에러', e.message); return false; }
+}
+
+async function testFxAlerts() {
+  setStatus('fx-alerts', 'run', '실행중...', '');
+  try {
+    const r = await fetchJSON('/api/fx/alerts?limit=5');
+    if (r.status !== 200) { setStatus('fx-alerts', 'fail', '실패', `HTTP ${r.status}`); return false; }
+    const b = r.body;
+    if (!Array.isArray(b.alerts)) { setStatus('fx-alerts', 'fail', '실패', 'alerts 배열 누락'); return false; }
+    const lines = [
+      `alerts.length = ${b.alerts.length}`,
+      `threshold = ±${b.threshold_pct}%`,
+      b.alerts.length === 0 ? '(아직 큰 변동 감지 없음 — 정상)' : '최근 알림: ' + (b.alerts[0].swings || []).map(s => `${s.code} ${s.delta}%`).join(', ')
+    ].join('\n');
+    setStatus('fx-alerts', 'pass', '✓ 통과', lines);
+    return true;
+  } catch (e) { setStatus('fx-alerts', 'fail', '에러', e.message); return false; }
+}
+
+async function testFxSource() {
+  setStatus('fx-source', 'run', '실행중...', '');
+  try {
+    const r = await fetchJSON('/api/fx');
+    if (r.status !== 200) { setStatus('fx-source', 'fail', '실패', `HTTP ${r.status}`); return false; }
+    const src = r.body.source;
+    if (src === 'koreaexim') {
+      setStatus('fx-source', 'pass', '✓ 한국수출입은행', `source=${src}\nsourceDate=${r.body.sourceDate}\n→ EXIM_API_KEY 정상 설정`);
+      return true;
+    } else if (src === 'open.er-api.com') {
+      setStatus('fx-source', 'warn', '폴백 동작', `source=${src}\n→ EXIM_API_KEY 미설정 또는 발급키 오류. 폴백으로 정상 동작 중이지만 한국수출입은행 권장.`);
+      return true;
+    } else {
+      setStatus('fx-source', 'warn', '확인 필요', `source=${src || '(null)'}\n→ 디스크 캐시값으로 부팅 직후 가능. 잠시 후 재실행`);
+      return true;
+    }
+  } catch (e) { setStatus('fx-source', 'fail', '에러', e.message); return false; }
+}
+
+function markManual(testId, pass) {
+  setStatus(testId, pass ? 'pass' : 'fail', pass ? '✓ 통과' : '실패', '(수동 확인됨)');
+}
+
+async function testRecalcExcel() {
+  setStatus('recalc-excel', 'run', '실행중...', '');
+  const pwd = prompt('ADMIN_PASSWORD 입력 (Railway env). 미설정이면 빈 값 OK:');
+  if (pwd === null) { setStatus('recalc-excel', 'idle', '취소', ''); return false; }
+  try {
+    const r = await fetch(`/api/admin/pricing-audit/preview-recalc-2026-04-28?password=${encodeURIComponent(pwd)}`, { credentials: 'same-origin' });
+    if (r.status === 403) { setStatus('recalc-excel', 'fail', '403', 'ADMIN_PASSWORD 불일치'); return false; }
+    if (r.status !== 200) { setStatus('recalc-excel', 'fail', '실패', `HTTP ${r.status}`); return false; }
+    const total = r.headers.get('X-Total-Items');
+    const skipped = r.headers.get('X-Skipped-Discontinued');
+    const rows = r.headers.get('X-Processed-Rows');
+    const ct = r.headers.get('Content-Type') || '';
+    if (!ct.includes('spreadsheet')) { setStatus('recalc-excel', 'fail', '실패', `Content-Type=${ct}`); return false; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `catalog_recalc_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setStatus('recalc-excel', 'pass', '✓ 다운로드', `total=${total} / skipped=${skipped} / rows=${rows}\n→ 엑셀 우측 4개 컬럼 직접 확인`);
+    return true;
+  } catch (e) { setStatus('recalc-excel', 'fail', '에러', e.message); return false; }
+}
+
+async function testMe() {
+  setStatus('me', 'run', '실행중...', '');
+  try {
+    const r = await fetchJSON('/api/me');
+    if (r.status !== 200 || !r.body || !r.body.employee) {
+      setStatus('me', 'fail', '미인증', `HTTP ${r.status} — 로그인 후 다시 실행`);
+      return false;
+    }
+    const u = r.body.employee;
+    const restricted = (u.role === '관리자' || u.team === '사업화지원' || u.team === '두낫띵');
+    const lines = [
+      `name=${u.name} / team=${u.team || '?'} / role=${u.role || '?'}`,
+      restricted ? '→ 권한 있음 (consumer-pricing 200 기대)' : '→ 권한 없음 (consumer-pricing 403 기대)'
+    ].join('\n');
+    window._currentUser = u;
+    setStatus('me', 'pass', '✓ 로그인', lines);
+    return true;
+  } catch (e) { setStatus('me', 'fail', '에러', e.message); return false; }
+}
+
+async function testConsumerPricing() {
+  setStatus('consumer-pricing', 'run', '실행중...', '');
+  const u = window._currentUser;
+  const expectRestricted = u && (u.role === '관리자' || u.team === '사업화지원' || u.team === '두낫띵');
+  try {
+    const r = await fetchJSON('/api/consumer-pricing');
+    if (expectRestricted) {
+      if (r.status === 200) {
+        setStatus('consumer-pricing', 'pass', '✓ 권한자 200', `로그인 사용자 권한 OK / 응답 ${(r.body && r.body.items || r.body || []).length || '?'}건`);
+        return true;
+      }
+      setStatus('consumer-pricing', 'fail', '실패', `권한자인데 HTTP ${r.status}`);
+      return false;
+    } else {
+      if (r.status === 403) {
+        setStatus('consumer-pricing', 'pass', '✓ 비권한자 403', '서버 가드 정상 차단');
+        return true;
+      }
+      if (r.status === 200) {
+        setStatus('consumer-pricing', 'fail', '실패', '비권한자 200 — 우회 가능 (위험)');
+        return false;
+      }
+      setStatus('consumer-pricing', 'warn', `HTTP ${r.status}`, JSON.stringify(r.body));
+      return false;
+    }
+  } catch (e) { setStatus('consumer-pricing', 'fail', '에러', e.message); return false; }
+}
+
+async function testParsedSummary() {
+  setStatus('parsed-quotes-summary', 'run', '실행중...', '');
+  try {
+    const r = await fetchJSON('/api/parsed-quotes/summary');
+    if (r.status !== 200) {
+      setStatus('parsed-quotes-summary', 'fail', '실패', `HTTP ${r.status}`);
+      return false;
+    }
+    setStatus('parsed-quotes-summary', 'pass', '✓ 200 (공개)', JSON.stringify(r.body));
+    return true;
+  } catch (e) { setStatus('parsed-quotes-summary', 'fail', '에러', e.message); return false; }
+}
+
+async function testParsedQuotes() {
+  setStatus('parsed-quotes', 'run', '실행중...', '');
+  const u = window._currentUser;
+  const expectRestricted = u && (u.role === '관리자' || u.team === '사업화지원' || u.team === '두낫띵');
+  try {
+    const r = await fetchJSON('/api/parsed-quotes');
+    if (expectRestricted) {
+      if (r.status === 200) { setStatus('parsed-quotes', 'pass', '✓ 권한자 200', ''); return true; }
+      setStatus('parsed-quotes', 'fail', '실패', `HTTP ${r.status}`);
+      return false;
+    } else {
+      if (r.status === 403) { setStatus('parsed-quotes', 'pass', '✓ 비권한자 403', '서버 가드 정상'); return true; }
+      setStatus('parsed-quotes', 'fail', '실패', `HTTP ${r.status}`);
+      return false;
+    }
+  } catch (e) { setStatus('parsed-quotes', 'fail', '에러', e.message); return false; }
+}
+
+async function runAll() {
+  resetAll();
+  await testFxCache();
+  await testFxAlerts();
+  await testFxSource();
+  await testMe();
+  await testConsumerPricing();
+  await testParsedSummary();
+  await testParsedQuotes();
+}
+
+function resetAll() {
+  $all('.check').forEach(r => {
+    const st = r.querySelector('.status');
+    const res = r.querySelector('.result');
+    if (r.dataset.test === 'margin-ui') {
+      st.className = 'status idle'; st.textContent = '수동';
+    } else {
+      st.className = 'status idle'; st.textContent = '대기';
+    }
+    if (res) res.textContent = '';
+  });
+  updateSummary();
+}
+
+updateSummary();
+</script>
+</body>
+</html>
