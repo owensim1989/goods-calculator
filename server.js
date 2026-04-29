@@ -247,6 +247,23 @@ const auth = require('./lib/auth');
 auth.mountRoutes(app);                    // /api/login, /api/logout, /api/me 등록
 app.use(auth.requireAuthMiddleware);       // 이후 모든 요청 인증 검사 (PUBLIC_PATHS 자동 통과)
 
+// 미스터두낫띵·사업화 페이지 전용 API 서버측 가드
+// (사업화지원 + 두낫띵 + 관리자만. 클라이언트 _hasRestrictedAccess 와 동일 룰)
+// 우회 차단 — 직접 fetch로 호출해도 403
+app.use((req, res, next) => {
+  const p = req.path || '';
+  // 화이트리스트: cross-origin 공개 API + 사이드바 뱃지 → 통과
+  if (p.startsWith('/api/parsed-quotes/summary')) return next();
+  if (p.startsWith('/api/catalog-image/')) return next();
+  // 가드 대상: 미스터두낫띵·사업화 전용 데이터 API
+  if (p.startsWith('/api/consumer-pricing') ||
+      p.startsWith('/api/parsed-quotes') ||
+      p === '/api/catalog-image-debug') {
+    return auth.requireRestrictedAccess(req, res, next);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
@@ -1084,56 +1101,224 @@ app.post('/api/admin/inbox/run-now', async (req, res) => {
   }
 });
 
-// ━━━ 실시간 환율 (캐시 1시간) ━━━
-let fxCache = { USD: 1380, RMB: 190, CNY: 190, TWD: 43, HKD: 177, THB: 40, JPY: 9.2, IDR: 0.087, updatedAt: null };
+// ━━━ 실시간 환율 (한국수출입은행 1차 + open.er-api.com 폴백) ━━━
+let fxCache = { USD: 1380, RMB: 190, CNY: 190, TWD: 43, HKD: 177, THB: 40, JPY: 9.2, IDR: 0.087, source: null, updatedAt: null };
 const https = require('https');
 
-function fetchJSON(url) {
+const FX_CACHE_FILE = path.join(__dirname, 'data', 'fx-cache.json');
+const FX_ALERTS_FILE = path.join(__dirname, 'data', 'fx-alerts.json');
+const FX_ALERT_THRESHOLD = 0.05;  // ±5% 변동 시 알림
+
+function _ensureDataDir() {
+  const dir = path.dirname(FX_CACHE_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function loadFxCache() {
+  try {
+    if (fs.existsSync(FX_CACHE_FILE)) {
+      const obj = JSON.parse(fs.readFileSync(FX_CACHE_FILE, 'utf-8'));
+      if (obj && obj.USD) {
+        fxCache = { ...fxCache, ...obj };
+        console.log('[환율] 디스크 캐시 로드:', fxCache.source || '(unknown)', fxCache.updatedAt);
+      }
+    }
+  } catch (e) { console.warn('[환율] 디스크 캐시 로드 실패:', e.message); }
+}
+function saveFxCache() {
+  try {
+    _ensureDataDir();
+    fs.writeFileSync(FX_CACHE_FILE, JSON.stringify(fxCache, null, 2), 'utf-8');
+  } catch (e) { console.warn('[환율] 디스크 캐시 저장 실패:', e.message); }
+}
+
+function loadFxAlerts() {
+  try {
+    if (fs.existsSync(FX_ALERTS_FILE)) return JSON.parse(fs.readFileSync(FX_ALERTS_FILE, 'utf-8'));
+  } catch (e) {}
+  return [];
+}
+function saveFxAlerts(arr) {
+  try {
+    _ensureDataDir();
+    fs.writeFileSync(FX_ALERTS_FILE, JSON.stringify(arr, null, 2), 'utf-8');
+  } catch (e) { console.warn('[환율] 알림 저장 실패:', e.message); }
+}
+
+function fetchJSON(url, opts) {
+  opts = opts || {};
   return new Promise((resolve, reject) => {
-    https.get(url, res => {
+    const timeout = opts.timeout || 10000;
+    const req = https.get(url, res => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
-        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('JSON parse: ' + e.message + ' — ' + data.slice(0, 200))); }
       });
-    }).on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(timeout, () => { req.destroy(new Error('timeout')); });
   });
 }
 
-async function refreshFx() {
-  try {
-    // open.er-api.com — 무료, 키 불필요
-    const data = await fetchJSON('https://open.er-api.com/v6/latest/USD');
-    if (data && data.rates && data.rates.KRW) {
-      const r = data.rates;
-      const krwPer = code => r[code] && r.KRW ? (r.KRW / r[code]) : null;
-      const usdKrw = Math.round(r.KRW);
-      const cnyKrw = krwPer('CNY');
-      const twdKrw = krwPer('TWD');
-      const hkdKrw = krwPer('HKD');
-      const thbKrw = krwPer('THB');
-      const jpyKrw = krwPer('JPY');
-      const idrKrw = krwPer('IDR');
-      fxCache = {
-        USD: usdKrw,
-        RMB: cnyKrw ? Math.round(cnyKrw) : fxCache.RMB,
-        CNY: cnyKrw ? Math.round(cnyKrw) : fxCache.CNY,
-        TWD: twdKrw ? +twdKrw.toFixed(2) : fxCache.TWD,
-        HKD: hkdKrw ? +hkdKrw.toFixed(2) : fxCache.HKD,
-        THB: thbKrw ? +thbKrw.toFixed(2) : fxCache.THB,
-        JPY: jpyKrw ? +jpyKrw.toFixed(3) : fxCache.JPY,
-        IDR: idrKrw ? +idrKrw.toFixed(4) : fxCache.IDR,
-        updatedAt: new Date().toISOString()
-      };
-      console.log(`[환율] USD=${fxCache.USD} CNY=${fxCache.CNY} TWD=${fxCache.TWD} HKD=${fxCache.HKD} THB=${fxCache.THB} JPY=${fxCache.JPY}`);
+// 한국수출입은행 환율 API (https://www.koreaexim.go.kr — 무료 발급)
+// AP01 = 환율조회, JPY 는 100단위(JPY(100)) 라 ÷100 변환
+async function fetchEximbankRates() {
+  const key = process.env.EXIM_API_KEY || '';
+  if (!key) throw new Error('EXIM_API_KEY 미설정');
+  // 평일·주말·휴일 대응: 오늘 → 어제 → 그제 (최대 3일 전까지 시도)
+  const today = new Date();
+  for (let dayOffset = 0; dayOffset < 4; dayOffset++) {
+    const d = new Date(today.getTime() - dayOffset * 86400000);
+    const ymd = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${encodeURIComponent(key)}&searchdate=${ymd}&data=AP01`;
+    try {
+      const data = await fetchJSON(url, { timeout: 12000 });
+      if (Array.isArray(data) && data.length > 0) {
+        // 한국수출입은행 응답 row 별 deal_bas_r 가 KRW 환율 ('1,381.00' 같은 문자열)
+        const parseRate = s => Number(String(s || '').replace(/,/g, '')) || null;
+        const map = {};
+        for (const row of data) {
+          if (!row || !row.cur_unit) continue;
+          map[row.cur_unit] = parseRate(row.deal_bas_r);
+        }
+        const usd = map['USD'];
+        const cny = map['CNH'] || map['CNY'];   // 위안화 — 보통 CNH
+        const twd = map['TWD'];                  // 대만달러 — 영업일에 따라 미제공 가능
+        const hkd = map['HKD'];
+        const thb = map['THB'];
+        const jpy100 = map['JPY(100)'];           // 엔화는 100단위
+        const jpy = jpy100 ? jpy100 / 100 : null;
+        const idr100 = map['IDR(100)'];           // 인도네시아 루피아도 100단위
+        const idr = idr100 ? idr100 / 100 : null;
+        if (!usd) {
+          // 영업일 아니면 빈 응답 — 다음 dayOffset 시도
+          if (dayOffset < 3) continue;
+          throw new Error('USD 환율 미제공');
+        }
+        return { usd, cny, twd, hkd, thb, jpy, idr, dateYmd: ymd };
+      }
+    } catch (e) {
+      if (dayOffset >= 3) throw e;
     }
-  } catch (e) {
-    console.error('[환율 갱신 실패]', e.message);
+  }
+  throw new Error('Eximbank: 4일 연속 응답 없음');
+}
+
+// open.er-api.com — 폴백 (키 불필요, 영업시간 무관)
+async function fetchOpenEr() {
+  const data = await fetchJSON('https://open.er-api.com/v6/latest/USD', { timeout: 8000 });
+  if (!data || !data.rates || !data.rates.KRW) throw new Error('open.er-api.com: KRW 환율 없음');
+  const r = data.rates;
+  const krwPer = code => r[code] && r.KRW ? (r.KRW / r[code]) : null;
+  return {
+    usd: Math.round(r.KRW),
+    cny: krwPer('CNY'),
+    twd: krwPer('TWD'),
+    hkd: krwPer('HKD'),
+    thb: krwPer('THB'),
+    jpy: krwPer('JPY'),
+    idr: krwPer('IDR')
+  };
+}
+
+// 변동 감지 — ±5% 초과 시 알림 파일에 기록
+function detectFxSwings(prev, next) {
+  const swings = [];
+  const codes = ['USD','CNY','TWD','HKD','THB','JPY','IDR'];
+  for (const code of codes) {
+    const a = prev[code], b = next[code];
+    if (!a || !b) continue;
+    const ratio = (b - a) / a;
+    if (Math.abs(ratio) >= FX_ALERT_THRESHOLD) {
+      swings.push({
+        code,
+        prev: a,
+        next: b,
+        delta: +(ratio * 100).toFixed(2),
+        direction: ratio > 0 ? 'up' : 'down'
+      });
+    }
+  }
+  return swings;
+}
+
+async function refreshFx() {
+  const prev = { ...fxCache };
+  let source = null;
+  let raw = null;
+  try {
+    raw = await fetchEximbankRates();
+    source = 'koreaexim';
+    console.log(`[환율] 한국수출입은행 OK (${raw.dateYmd}): USD=${raw.usd}`);
+  } catch (e1) {
+    console.warn('[환율] 한국수출입은행 실패 → open.er-api.com 폴백:', e1.message);
+    try {
+      raw = await fetchOpenEr();
+      source = 'open.er-api.com';
+    } catch (e2) {
+      console.error('[환율] 양쪽 모두 실패. 기존 값 유지:', e2.message);
+      return;
+    }
+  }
+
+  fxCache = {
+    USD: raw.usd ? Math.round(raw.usd) : fxCache.USD,
+    RMB: raw.cny ? Math.round(raw.cny) : fxCache.RMB,
+    CNY: raw.cny ? Math.round(raw.cny) : fxCache.CNY,
+    TWD: raw.twd ? +Number(raw.twd).toFixed(2) : fxCache.TWD,
+    HKD: raw.hkd ? +Number(raw.hkd).toFixed(2) : fxCache.HKD,
+    THB: raw.thb ? +Number(raw.thb).toFixed(2) : fxCache.THB,
+    JPY: raw.jpy ? +Number(raw.jpy).toFixed(3) : fxCache.JPY,
+    IDR: raw.idr ? +Number(raw.idr).toFixed(4) : fxCache.IDR,
+    source,
+    sourceDate: raw.dateYmd || null,
+    updatedAt: new Date().toISOString()
+  };
+  saveFxCache();
+  console.log(`[환율] ${source} USD=${fxCache.USD} CNY=${fxCache.CNY} TWD=${fxCache.TWD} HKD=${fxCache.HKD} THB=${fxCache.THB} JPY=${fxCache.JPY} IDR=${fxCache.IDR}`);
+
+  // 큰 변동 감지 (이전 값 있을 때만)
+  if (prev.USD && prev.updatedAt) {
+    const swings = detectFxSwings(prev, fxCache);
+    if (swings.length) {
+      const alerts = loadFxAlerts();
+      const entry = {
+        ts: fxCache.updatedAt,
+        source,
+        sourceDate: fxCache.sourceDate,
+        threshold_pct: FX_ALERT_THRESHOLD * 100,
+        swings
+      };
+      alerts.push(entry);
+      // 최근 90건만 보관
+      if (alerts.length > 90) alerts.splice(0, alerts.length - 90);
+      saveFxAlerts(alerts);
+      const summary = swings.map(s => `${s.code} ${s.delta>0?'+':''}${s.delta}%`).join(', ');
+      console.warn(`[환율] ⚠️ 큰 변동 감지 (±${FX_ALERT_THRESHOLD*100}%): ${summary}`);
+    }
   }
 }
 
 app.get('/api/fx', (req, res) => {
   res.json(fxCache);
+});
+
+// 환율 알림 조회 — 점검센터 / admin 대시보드 연동용
+app.get('/api/fx/alerts', (req, res) => {
+  const alerts = loadFxAlerts();
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 90);
+  res.json({ alerts: alerts.slice(-limit).reverse(), threshold_pct: FX_ALERT_THRESHOLD * 100 });
+});
+
+// 환율 수동 갱신 — admin 전용 (env ADMIN_PASSWORD)
+app.post('/api/fx/refresh', async (req, res) => {
+  const pwd = req.query.password || (req.body && req.body.password) || '';
+  if ((process.env.ADMIN_PASSWORD || '') && pwd !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: 'unauthorized' });
+  }
+  await refreshFx();
+  res.json({ ok: true, fx: fxCache });
 });
 
 // ━━━ 채택률 추적 API ━━━
@@ -1213,7 +1398,80 @@ app.patch('/api/adoption/:id', (req, res) => {
 });
 
 // ━━━ 소비자가 산정 API (Notion DB: 016ec336fe324fc29f6590017ee3f023) ━━━
-// 국가별 관부가세·배송비 프리셋 (대표값, UI에서 수정 가능)
+// ━━━ 4-28 새 산식 — 신제품 사업성 검토 폼 (cpRenderCountryTable) 용 ━━━
+// 카탈로그 일괄 재계산(preview-recalc-2026-04-28)와 동일 매트릭스. TW만 추가됨 (preview는 6국, 신제품 폼은 8국).
+const NEW_FORMULA_COUNTRIES = [
+  { code: 'KR',  name: '한국',   currency: 'KRW', vatPct: 10, shipMult: 0,   round: 1,    flag: '🇰🇷' },
+  { code: 'TW',  name: '대만',   currency: 'TWD', vatPct: 5,  shipMult: 1.0, round: 10,   flag: '🇹🇼' },
+  { code: 'HK',  name: '홍콩',   currency: 'HKD', vatPct: 0,  shipMult: 1.0, round: 1,    flag: '🇭🇰', note: '홍콩 무관세' },
+  { code: 'CN',  name: '중국',   currency: 'CNY', vatPct: 13, shipMult: 1.0, round: 10,   flag: '🇨🇳' },
+  { code: 'TH',  name: '태국',   currency: 'THB', vatPct: 7,  shipMult: 1.4, round: 10,   flag: '🇹🇭' },
+  { code: 'US',  name: '미국',   currency: 'USD', vatPct: 0,  shipMult: 2.5, round: 0.5,  flag: '🇺🇸', note: 'de minimis 검토' },
+  { code: 'JP',  name: '일본',   currency: 'JPY', vatPct: 10, shipMult: 1.0, round: 100,  flag: '🇯🇵' },
+  { code: 'IDN', name: '인도네시아', currency: 'IDR', vatPct: 11, shipMult: 1.5, round: 1000, flag: '🇮🇩' }
+];
+
+// HS×8국 관세 매트릭스 (4-28 1차안, MFN 기준) — 6자리 prefix
+const NEW_FORMULA_TARIFF = {
+  '6109.10': { KR:0, TW:12,  HK:0, CN:14,  TH:30, US:16.5, JP:10.9, IDN:25 },  // 티셔츠
+  '3926.90': { KR:0, TW:5,   HK:0, CN:6.5, TH:20, US:5.3,  JP:3.9,  IDN:10 },  // PVC잡화
+  '4911.91': { KR:0, TW:0,   HK:0, CN:0,   TH:0,  US:0,    JP:0,    IDN:5  },  // 스티커
+  '6301.40': { KR:0, TW:7.5, HK:0, CN:5,   TH:30, US:8.5,  JP:5.3,  IDN:25 },  // 담요
+  '9503.00': { KR:0, TW:5,   HK:0, CN:0,   TH:5,  US:0,    JP:0,    IDN:10 },  // 완구
+  '3926.40': { KR:0, TW:5,   HK:0, CN:6.5, TH:20, US:5.3,  JP:3.9,  IDN:10 },  // 캐릭터 PVC
+  '_DEFAULT_':{ KR:0, TW:5,  HK:0, CN:8,   TH:15, US:5,    JP:5,    IDN:10 }
+};
+
+// HS 관세 매트릭스 메타 — 6개월 단위 재검토 권장
+const NEW_FORMULA_TARIFF_META = {
+  lastReviewedAt: '2026-04-28',  // 매트릭스 마지막 검토일 (변경 시 갱신)
+  reviewCycleMonths: 6           // 권장 재검토 주기
+};
+
+// 카테고리 배송비 그룹 (Owen 결정 4-29: 피규어/토이→5%, 인형→6%로 이동)
+const NEW_FORMULA_CATEGORY_SHIPPING = {
+  '키링/잡화':       { pct: 5, min: 1000 },
+  '프린트/스티커':   { pct: 5, min: 1000 },
+  '문구':            { pct: 5, min: 1000 },
+  '모바일 악세사리': { pct: 5, min: 1000 },
+  '피규어/토이':     { pct: 5, min: 1000 },  // 4-29 이동 (어제 7%/5000원 → 5%/1000원)
+  '의류':            { pct: 6, min: 2500 },
+  '홈리빙':          { pct: 6, min: 2500 },
+  '인형':            { pct: 6, min: 2500 },  // 4-29 이동 (어제 7%/5000원 → 6%/2500원)
+  '기타':            { pct: 7, min: 5000 }   // 특수제품 fallback
+};
+
+// 인증비 매칭 룰 (제품명 키워드 + 카테고리 fallback) — % 가산
+function newFormulaCertPct(productName, category) {
+  const n = String(productName || '');
+  // 5% — 무드라이트/인센스/캔들 (전기/연소 제품)
+  if (/Mood\s*light|Incense|무드라이트|무드\s*라이트|인센스|캔들|Candle/i.test(n)) return 5;
+  // 3% — 봉제·도자기·플라스틱 피규어 (KC인증 필수 카테고리)
+  if (/Plush|Mug|Glass\s*Cup|Figure|인형|머그|유리컵|피규어/i.test(n)) return 3;
+  // 카테고리 fallback
+  if (category === '인형' || category === '피규어/토이') return 3;
+  return 0;
+}
+
+// HS prefix 매칭 (preview-recalc 와 동일 로직)
+function newFormulaLookupTariff(hsRaw, country) {
+  const hs = String(hsRaw || '').replace(/[^0-9.]/g, '').slice(0, 7);
+  if (NEW_FORMULA_TARIFF[hs]) return NEW_FORMULA_TARIFF[hs][country];
+  const prefix5 = hs.slice(0, 5);
+  for (const k of Object.keys(NEW_FORMULA_TARIFF)) {
+    if (k.startsWith(prefix5)) return NEW_FORMULA_TARIFF[k][country];
+  }
+  return NEW_FORMULA_TARIFF._DEFAULT_[country];
+}
+
+// 통화별 라운딩 (ceil 우선)
+function newFormulaRoundLocal(local, round) {
+  if (!round || round <= 0) return local;
+  const ceiled = Math.ceil(local / round) * round;
+  return round === 0.5 ? Math.round(ceiled * 10) / 10 : Math.round(ceiled);
+}
+
+// (호환성 유지) 기존 7국 프리셋 — UI fallback / 옛 호출자용
 const CONSUMER_PRICING_COUNTRIES = [
   { code: 'KR', name: '한국',   currency: 'KRW', tariffPct: 0,    vatPct: 10, shippingKRW: 0 },
   { code: 'TW', name: '대만',   currency: 'TWD', tariffPct: 3,    vatPct: 5,  shippingKRW: 3000 },
@@ -1225,7 +1483,18 @@ const CONSUMER_PRICING_COUNTRIES = [
 ];
 
 app.get('/api/consumer-pricing/presets', (req, res) => {
-  res.json({ countries: CONSUMER_PRICING_COUNTRIES, fx: fxCache });
+  // 새 산식 프리셋 추가 응답 (클라가 4-28 새 산식 사용)
+  res.json({
+    countries: CONSUMER_PRICING_COUNTRIES,  // 호환성
+    fx: fxCache,
+    newFormula: {
+      countries: NEW_FORMULA_COUNTRIES,
+      tariffMatrix: NEW_FORMULA_TARIFF,
+      tariffMeta: NEW_FORMULA_TARIFF_META,
+      categoryShipping: NEW_FORMULA_CATEGORY_SHIPPING,
+      version: '2026-04-28'
+    }
+  });
 });
 
 // 저장된 소비자가 산정 프로젝트 목록
@@ -2602,6 +2871,10 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
       const grp = CATEGORY_GROUP_NEW[cat] || CATEGORY_GROUP_NEW['기타'];
       const cert = kr * certPctNew(name) / 100;
 
+      // FOB_KRW = 도매원가 (cogs proxy). 없으면 마진 계산 skip
+      const fobKrw = _gNum(pr, 'FOB_KRW');
+      const krMarginPct = (fobKrw && kr > 0) ? ((kr - fobKrw) / kr) * 100 : null;
+
       for (const c of NEW_COUNTRIES) {
         const ship = Math.max(kr * grp.pct / 100, grp.min) * c.shipMult;
         const tariffPct = lookupTariff(hs, c.code);
@@ -2630,6 +2903,19 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
           if (c.code === 'IDN') summary.IDN.new++;
         }
 
+        // ━━ 마진율 갭 계산 ━━
+        // 수출 후 마진 (현재값 기준): 현재값(현지)×환율 → 실수령KRW = priceKRW/(1+VAT)/(1+관세) - ship - cert
+        // FOB_KRW 없거나 현재값 없으면 N/A
+        let exportMarginPct = null, gapPct = null;
+        if (fobKrw && currentPrice && currentPrice > 0) {
+          const priceKRW = currentPrice * c.fx;
+          const recovered = priceKRW / (1 + c.vat/100) / (1 + tariffPct/100) - ship - cert;
+          if (recovered > 0) {
+            exportMarginPct = ((recovered - fobKrw) / recovered) * 100;
+            if (krMarginPct != null) gapPct = exportMarginPct - krMarginPct;
+          }
+        }
+
         rows.push({
           제품명: name, 카테고리: cat, HS: hs || '(없음)', KR가: kr,
           국가: c.code, 통화: c.cur,
@@ -2642,7 +2928,12 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
           새추천: newRecLocal,
           변화pct: diffPct !== null ? Number(diffPct.toFixed(1)) : 'NEW',
           신호: signal,
-          ship배수: c.shipMult
+          ship배수: c.shipMult,
+          // 마진율 갭 (4-29 추가)
+          FOB원: fobKrw != null ? Math.round(fobKrw) : 'N/A',
+          한국마진pct: krMarginPct != null ? Number(krMarginPct.toFixed(1)) : 'N/A',
+          수출후마진pct: exportMarginPct != null ? Number(exportMarginPct.toFixed(1)) : 'N/A',
+          마진갭pct: gapPct != null ? Number(gapPct.toFixed(1)) : 'N/A'
         });
       }
     }
@@ -2650,7 +2941,7 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
     const ExcelJS = require('exceljs');
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('전체 비교');
-    const cols = ['제품명','카테고리','HS','KR가','국가','통화','현재값','어제관세','새관세','어제마지노원','새마지노원','어제추천','새추천','변화pct','신호','ship배수'];
+    const cols = ['제품명','카테고리','HS','KR가','국가','통화','현재값','어제관세','새관세','어제마지노원','새마지노원','어제추천','새추천','변화pct','신호','ship배수','FOB원','한국마진pct','수출후마진pct','마진갭pct'];
     ws.addRow(cols);
     ws.getRow(1).eachCell(c => {
       c.font = { bold:true, color:{argb:'FFFFFFFF'} };
@@ -2671,9 +2962,32 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
       ws.getRow(i).getCell(diffCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
     }
     ws.columns.forEach((c, i) => {
-      const widths = [38,12,12,9,6,6,11,9,9,12,12,11,11,9,14,9];
+      const widths = [38,12,12,9,6,6,11,9,9,12,12,11,11,9,14,9, 10,11,12,10];
       c.width = widths[i] || 11;
     });
+
+    // 마진갭 컬럼 색상 코딩 (4-29 추가): >= 0 녹색 / -2~0 노랑 / < -2 빨강
+    const gapCol = cols.indexOf('마진갭pct') + 1;
+    const krMarginCol = cols.indexOf('한국마진pct') + 1;
+    const exMarginCol = cols.indexOf('수출후마진pct') + 1;
+    for (let i = 2; i <= ws.rowCount; i++) {
+      const v = ws.getRow(i).getCell(gapCol).value;
+      if (typeof v === 'number') {
+        let bg = 'FFC6E0B4';  // 녹색 (>= 0)
+        if (v < -5) bg = 'FFFFC7CE';  // 빨강 (< -5%)
+        else if (v < 0) bg = 'FFFFEB9C';  // 노랑 (-5 ~ 0)
+        ws.getRow(i).getCell(gapCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
+        ws.getRow(i).getCell(exMarginCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
+      }
+      // 한국마진 자체 색상 (절대값 기준)
+      const km = ws.getRow(i).getCell(krMarginCol).value;
+      if (typeof km === 'number') {
+        let bg = 'FFC6E0B4';
+        if (km < 15) bg = 'FFFFC7CE';
+        else if (km < 30) bg = 'FFFFEB9C';
+        ws.getRow(i).getCell(krMarginCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
+      }
+    }
 
     const ws2 = wb.addWorksheet('요약');
     ws2.addRow(['국가','인상(>+5%)','인하(<-5%)','거의동일(±5%)','신규(IDN)']);
@@ -4158,8 +4472,9 @@ try {
 } catch (err) { console.error('[inbox-watcher] 시작 실패:', err.message); }
   console.log(`[제품원가 계산기] http://localhost:${PORT}`);
   // 시작 시 동기화 + 환율
+  loadFxCache();  // 디스크에 저장된 마지막 환율 먼저 복구 (외부 API 실패해도 합리적 값 보장)
   await Promise.all([syncFromNotion(), refreshFx()]);
-  // 30분마다 자동 동기화, 1시간마다 환율 갱신
+  // 30분마다 자동 동기화, 6시간마다 환율 갱신 (한국수출입은행은 영업일 1회 발표 — 6시간이면 평일 오전 갱신 보장)
   setInterval(syncFromNotion, 30 * 60 * 1000);
-  setInterval(refreshFx, 60 * 60 * 1000);
+  setInterval(refreshFx, 6 * 60 * 60 * 1000);
 });

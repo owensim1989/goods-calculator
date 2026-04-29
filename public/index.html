@@ -544,6 +544,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cp-comp-stats .stat{display:flex;gap:6px;align-items:baseline;}
 .cp-comp-stats .stat .lbl{color:var(--text-muted);font-size:11px;}
 .cp-comp-stats .stat .val{font-weight:700;color:var(--primary);font-size:15px;}
+.cp-ship-opt{padding:4px 10px;font-size:11px;font-weight:500;border:none;background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;transition:all .15s;}
+.cp-ship-opt:hover{background:var(--card);color:var(--text);}
+.cp-ship-opt.active{background:var(--primary);color:white;font-weight:600;}
+.cp-rec-apply{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:1px solid var(--primary);color:var(--primary);background:transparent;font-size:14px;font-weight:700;cursor:pointer;padding:0;margin-left:4px;line-height:1;transition:all .15s;vertical-align:middle;}
+.cp-rec-apply:hover{background:var(--primary);color:white;}
 .cp-mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;}
 .cp-mp-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;transition:all .15s;}
 .cp-mp-card:hover{border-color:var(--primary);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.15);}
@@ -905,8 +910,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </span>
     </h4>
     <div class="cp-grid">
-      <div class="cp-field"><label>HS Code <span id="cp-hs-badge" style="float:right;font-size:10px;font-weight:500;padding:1px 6px;border-radius:8px;background:#fef3c7;color:#92400e;">⚠️ 미확정</span></label><input type="text" id="cp-hs" placeholder="프로젝트명 입력 → 자동 추천"></div>
-      <div class="cp-field"><label>품목 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">(바이어 엑셀 카테고리)</span></label><select id="cp-category">
+      <div class="cp-field"><label>HS Code <span id="cp-hs-badge" style="float:right;font-size:10px;font-weight:500;padding:1px 6px;border-radius:8px;background:#fef3c7;color:#92400e;">⚠️ 미확정</span></label><input type="text" id="cp-hs" placeholder="프로젝트명 입력 → 자동 추천" oninput="cpRenderCountryTable()"></div>
+      <div class="cp-field"><label>품목 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">(바이어 엑셀 카테고리)</span></label><select id="cp-category" onchange="cpRenderCountryTable()">
         <option value="">선택</option>
         <option>피규어/토이</option>
         <option>키링/잡화</option>
@@ -1030,21 +1035,38 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div class="cp-auto-section">
-    <h4>🌏 국가별 현지 소비자가 <span class="auto-tag">환율·관세 자동</span></h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">수익률 유지 최저가 = 한국 타겟가 기준 수익률을 수출 후에도 유지하기 위한 최저 현지 판매가. 공식: <code>한국가 × (1+관세)(1+VAT) + 현지배송비</code>. 확정가가 이 값보다 낮으면 <b style="color:var(--danger);">🔴 수익률 미달</b>.</p>
+    <h4>🌏 국가별 현지 소비자가
+      <span class="auto-tag" id="cp-formula-tag">4-28 새 산식</span><span id="cp-tariff-review-badge" style="display:none;font-size:10px;font-weight:600;padding:3px 8px;border-radius:8px;background:#fef3c7;color:#92400e;margin-left:6px;cursor:help;" title=""></span>
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <span class="cp-ship-mode" id="cp-ship-mode-wrap" style="display:inline-flex;gap:2px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:2px;">
+          <button class="cp-ship-opt active" data-mode="LCL" onclick="cpSetShipMode('LCL')" title="컨테이너 단체 발송 (개당 가장 저렴, 디폴트)">📦 LCL/선박</button>
+          <button class="cp-ship-opt" data-mode="AIR" onclick="cpSetShipMode('AIR')" title="항공 박스 단위 (1박스 100개 가정, 1.8×)">✈️ 항공</button>
+          <button class="cp-ship-opt" data-mode="EMS" onclick="cpSetShipMode('EMS')" title="EMS 소량 개별 발송 (분담 가장 큼, 2.5×)">📮 EMS/소량</button>
+        </span>
+        <button class="cp-btn cp-btn-primary" id="cp-apply-rec-all" style="font-size:11px;padding:4px 10px;" onclick="cpApplyAllRec()" title="자동 산출된 권장 현지가를 모든 국가의 확정 현지가에 한 번에 적용">↓ 권장값 일괄 적용</button>
+        <button class="cp-btn cp-btn-ghost" id="cp-formula-toggle" style="font-size:11px;padding:4px 10px;" onclick="cpToggleManualMode()" title="자동 산식이 부적절한 특수 케이스 — 모든 변수 직접 수정 가능">🔧 수동 모드</button>
+      </span>
+    </h4>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
+      <b>새 산식</b>: <code>(KR가 + 카테고리배송비×국가배수 + 인증비) × (1+HS관세) × (1+VAT) ÷ 환율</code> → 통화별 라운딩.
+      관세는 HS×국가 매트릭스 / 배송비는 카테고리 기반 / 인증비는 제품명·카테고리 매칭 자동.
+      <span id="cp-formula-warn" style="color:var(--danger);display:none;">⚠️ <b>카테고리 미입력</b> — 기타(7%/5,000원) 적용. 정확한 산정을 위해 카테고리 선택 필수</span>
+    </p>
     <div class="table-wrap"><table class="cp-country-table">
       <thead><tr>
         <th style="text-align:left;">국가</th>
         <th style="text-align:left;">통화</th>
         <th>환율(1=KRW)</th>
         <th>기준환산</th>
-        <th>관세%</th>
+        <th>관세%<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">(HS매트릭스)</span></th>
         <th>VAT%</th>
         <th>배송비<br>(개당,KRW)</th>
+        <th>인증비<br>(KRW)</th>
         <th>수익률 유지 최저가</th>
         <th>확정 현지가</th>
         <th>확정가(KRW)</th>
         <th>최저가 대비</th>
+        <th>마진율<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">(한국→수출)</span></th>
       </tr></thead>
       <tbody id="cp-country-tbody"></tbody>
     </table></div>
@@ -2684,11 +2706,52 @@ function cpFmtInput(el){
   el.value = parts.length>1 ? intPart+'.'+parts[1] : intPart;
 }
 
+
+// HS 매트릭스 재검토 알람 (6개월 주기)
+function cpCheckTariffReview(){
+  const meta = CP_PRESETS && CP_PRESETS.newFormula && CP_PRESETS.newFormula.tariffMeta;
+  const badge = document.getElementById('cp-tariff-review-badge');
+  if (!meta || !meta.lastReviewedAt || !badge) return;
+  const last = new Date(meta.lastReviewedAt);
+  if (isNaN(last.getTime())) return;
+  const cycleMs = (meta.reviewCycleMonths || 6) * 30 * 24 * 3600 * 1000;
+  const elapsedMs = Date.now() - last.getTime();
+  const monthsElapsed = Math.floor(elapsedMs / (30 * 24 * 3600 * 1000));
+  if (elapsedMs >= cycleMs) {
+    badge.style.display = 'inline-block';
+    badge.textContent = '⚠️ 매트릭스 ' + monthsElapsed + '개월 경과';
+    badge.title = `HS 관세 매트릭스 마지막 검토: ${meta.lastReviewedAt}\n${monthsElapsed}개월 경과 — 권장 재검토 주기(${meta.reviewCycleMonths}개월) 초과\n관세 변동(FTA·무역분쟁) 반영 필요할 수 있음 → server.js NEW_FORMULA_TARIFF 검토 후 lastReviewedAt 업데이트`;
+    badge.style.background = '#fee2e2';
+    badge.style.color = '#991b1b';
+  } else {
+    const remainingMs = cycleMs - elapsedMs;
+    const remainingMonths = Math.ceil(remainingMs / (30 * 24 * 3600 * 1000));
+    if (remainingMonths <= 1) {
+      // 1개월 이내 검토 임박
+      badge.style.display = 'inline-block';
+      badge.textContent = '🟡 매트릭스 검토 임박';
+      badge.title = `다음 권장 검토일까지 ${remainingMonths}개월 남음 (마지막 검토: ${meta.lastReviewedAt})`;
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
 async function cpInit(){
   try{
     const r = await fetch('/api/consumer-pricing/presets');
     CP_PRESETS = await r.json();
-    CP_COUNTRIES = JSON.parse(JSON.stringify(CP_PRESETS.countries));
+    // 4-28 새 산식 8국 (KR/TW/HK/CN/TH/US/JP/IDN) 우선 사용
+    if (CP_PRESETS.newFormula && Array.isArray(CP_PRESETS.newFormula.countries)) {
+      CP_COUNTRIES = CP_PRESETS.newFormula.countries.map(c => Object.assign({}, c, {
+        rate: null, certKRW: null, shipKRW: null, tariffPct: null, finalLocal: null, manualOverride: {}
+      }));
+      // HS 매트릭스 6개월 재검토 알람
+      cpCheckTariffReview();
+    } else {
+      // fallback (구 7국)
+      CP_COUNTRIES = JSON.parse(JSON.stringify(CP_PRESETS.countries));
+    }
     cpRenderCountryTable();
   }catch(e){console.error('[CP] presets 로드 실패',e);}
   await cpLoadEmployees();
@@ -3047,6 +3110,13 @@ function cpResetProductImage(){
 }
 
 function cpNewProject(){
+  // 4-28 새 산식 — manual override 리셋
+  CP_MANUAL_MODE = false;
+  CP_MANUAL_CERT_PCT = null;
+  CP_SHIP_MODE = 'LCL';
+  // UI 토글 동기화
+  document.querySelectorAll('.cp-ship-opt').forEach(b => b.classList.toggle('active', b.dataset.mode === 'LCL'));
+  CP_COUNTRIES.forEach(c => { c.tariffPct = null; c.shipKRW = null; c.finalLocal = null; if (c.code !== 'KR') c.rate = null; });
   CP_CURRENT = null;
   // 복수 제품 견적서 체인 리셋
   window._cpMultiQuote = null;
@@ -3102,6 +3172,9 @@ function cpNewProject(){
 }
 
 async function cpLoadProject(id){
+  // 4-28 새 산식 — manual override 리셋
+  CP_MANUAL_MODE = false;
+  CP_MANUAL_CERT_PCT = null;
   try{
     const r = await fetch('/api/consumer-pricing/'+id);
     const it = await r.json();
@@ -3423,6 +3496,7 @@ function cpRecalc(){
   const profit = revenue - totalCost;
   const rate = revenue>0 ? profit/revenue : 0;
   const unitAll = qty>0 ? totalCost/qty : unit;
+  _cpUnitAllKRW = (unit > 0 && unitAll > 0) ? unitAll : null;  // cpRenderCountryTable에서 마진 계산에 사용
 
   document.getElementById('cp-m-unit').textContent = unit>0?cpFmtKRW(unitAll):'-';
   document.getElementById('cp-m-total').textContent = totalCost>0?cpFmtKRW(totalCost):'-';
@@ -3461,55 +3535,290 @@ function cpRecalc(){
   cpRenderCountryTable();
 }
 
-// ━━━ 국가별 소비자가 ━━━
+// ━━━ 국가별 소비자가 (4-28 새 산식) ━━━
+let CP_MANUAL_MODE = false;  // 🔧 수동 모드 토글 (모든 input 직접 수정 가능)
+let CP_SHIP_MODE = 'LCL';    // 📦 배송 시나리오: 'LCL' | 'AIR' | 'EMS'
+const CP_SHIP_MULTIPLIER = { LCL: 1.0, AIR: 1.8, EMS: 2.5 };
+const CP_SHIP_LABEL = { LCL: '📦 LCL/선박 (디폴트, 컨테이너)', AIR: '✈️ 항공 (박스 단위)', EMS: '📮 EMS/소량 (개별 발송)' };
+
+function cpSetShipMode(mode){
+  if (!CP_SHIP_MULTIPLIER[mode]) return;
+  CP_SHIP_MODE = mode;
+  document.querySelectorAll('.cp-ship-opt').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  cpRenderCountryTable();
+  showToast(CP_SHIP_LABEL[mode] + ' (배수 ' + CP_SHIP_MULTIPLIER[mode].toFixed(1) + '×)');
+}
+let CP_MANUAL_CERT_PCT = null;  // 사용자가 ✏️로 직접 입력한 인증비% (자동값 덮어쓰기)
+let _cpUnitAllKRW = null;     // 마진율 갭 시각화용 — cpRecalcMargin이 매번 갱신 (개당 총원가 KRW)
+
+// 카테고리 배송비 그룹 (서버 NEW_FORMULA_CATEGORY_SHIPPING과 동일)
+const CP_CATEGORY_SHIPPING = {
+  '키링/잡화':       { pct: 5, min: 1000 },
+  '프린트/스티커':   { pct: 5, min: 1000 },
+  '문구':            { pct: 5, min: 1000 },
+  '모바일 악세사리': { pct: 5, min: 1000 },
+  '피규어/토이':     { pct: 5, min: 1000 },
+  '의류':            { pct: 6, min: 2500 },
+  '홈리빙':          { pct: 6, min: 2500 },
+  '인형':            { pct: 6, min: 2500 },
+  '기타':            { pct: 7, min: 5000 }
+};
+
+// 인증비 자동 매칭 (제품명 키워드 + 카테고리 fallback) — 서버 newFormulaCertPct 미러
+function cpAutoCertPct(productName, category) {
+  const n = String(productName || '');
+  if (/Mood\s*light|Incense|무드라이트|무드\s*라이트|인센스|캔들|Candle/i.test(n)) return 5;
+  if (/Plush|Mug|Glass\s*Cup|Figure|인형|머그|유리컵|피규어/i.test(n)) return 3;
+  if (category === '인형' || category === '피규어/토이') return 3;
+  return 0;
+}
+
+// HS 매트릭스 lookup (서버 newFormulaLookupTariff 미러)
+function cpLookupTariff(hsRaw, country) {
+  const matrix = (CP_PRESETS && CP_PRESETS.newFormula && CP_PRESETS.newFormula.tariffMatrix) || {};
+  const hs = String(hsRaw || '').replace(/[^0-9.]/g, '').slice(0, 7);
+  if (matrix[hs]) return matrix[hs][country];
+  const prefix5 = hs.slice(0, 5);
+  for (const k of Object.keys(matrix)) {
+    if (k.startsWith(prefix5)) return matrix[k][country];
+  }
+  return (matrix._DEFAULT_ && matrix._DEFAULT_[country]) || 0;
+}
+
+// 통화별 ceil 라운딩 (서버 newFormulaRoundLocal 미러)
+function cpRoundLocal(local, round) {
+  if (!round || round <= 0) return local;
+  const ceiled = Math.ceil(local / round) * round;
+  return round === 0.5 ? Math.round(ceiled * 10) / 10 : Math.round(ceiled);
+}
+
 function cpRenderCountryTable(){
   const tb = document.getElementById('cp-country-tbody');
   if(!tb||!CP_COUNTRIES.length){if(tb)tb.innerHTML='';return;}
   const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
   const fx = (CP_PRESETS&&CP_PRESETS.fx)||{};
+  const productName = (document.getElementById('cp-name')?.value||'').trim();
+  const category = document.getElementById('cp-category')?.value || '';
+  const hsCode = document.getElementById('cp-hs')?.value || '';
+
+  // 카테고리 미입력 경고 토글
+  const warnEl = document.getElementById('cp-formula-warn');
+  if (warnEl) warnEl.style.display = (target > 0 && !category) ? 'inline' : 'none';
+
+  // 카테고리 배송비 그룹 (없으면 기타 fallback)
+  const grp = CP_CATEGORY_SHIPPING[category] || CP_CATEGORY_SHIPPING['기타'];
+
+  // 인증비 % (사용자 ✏️ 우선 → 자동 매칭)
+  const certPct = (CP_MANUAL_CERT_PCT != null) ? CP_MANUAL_CERT_PCT : cpAutoCertPct(productName, category);
+  const certKRW = target > 0 ? Math.round(target * certPct / 100) : 0;
+
   tb.innerHTML = CP_COUNTRIES.map((c,i)=>{
-    const rate = c.rate != null ? c.rate : (c.code==='KR'?1:(fx[c.currency]||null));
-    c.rate = rate;
-    const baseLocal = (rate && target) ? (target/rate) : null;
-    const tariff = (c.tariffPct||0)/100;
-    const vat = (c.vatPct||0)/100;
-    const shipKRW = c.shippingKRW||0;
-    const shipLocal = rate ? shipKRW/rate : 0;
-    // 권장 현지가 = (기준환산 + 현지배송비) × (1+관세) × (1+VAT)
-    const recommendLocal = baseLocal!=null ? (baseLocal+shipLocal) * (1+tariff) * (1+vat) : null;
-    const recRound = recommendLocal!=null ? Math.round(recommendLocal*100)/100 : null;
-    // 자동복사 제거: 사용자가 직접 "↓적용" 버튼을 눌러야 finalLocal 세팅
-    const finalLocal = c.finalLocal;
-    const finalKRW = (finalLocal!=null && rate) ? finalLocal*rate : null;
-    const recTitle = recommendLocal!=null ? `계산: (${baseLocal.toFixed(2)} + ${shipLocal.toFixed(2)}) × ${(1+tariff).toFixed(3)} × ${(1+vat).toFixed(3)}` : '';
-    // 수익률 유지 최저가 = target × (1+관세)(1+VAT) + 배송비
-    // 한국은 관세 없고 VAT 이미 한국가에 포함 → 비교 불필요(-)
     const isKR = (c.code === 'KR');
-    const recKRW = (recommendLocal != null && rate) ? recommendLocal * rate : null;
+    // 환율
+    const rate = c.rate != null ? c.rate : (isKR ? 1 : (fx[c.currency] || null));
+    c.rate = rate;
+    // 기준환산
+    const baseLocal = (rate && target) ? (target / rate) : null;
+    // 배송비 (KRW) = max(KR가×pct%, min) × 국가배수 × 운송시나리오배수
+    const baseShipKRW = target > 0 ? Math.max(target * grp.pct / 100, grp.min) : 0;
+    const shipScenarioMult = CP_SHIP_MULTIPLIER[CP_SHIP_MODE] || 1.0;
+    const shipKRW = c.shipKRW != null && CP_MANUAL_MODE ? c.shipKRW : Math.round(baseShipKRW * (c.shipMult || 1.0) * shipScenarioMult);
+    c.shipKRW = shipKRW;
+    // 관세 % (HS × 국가 매트릭스)
+    const tariffPct = c.tariffPct != null && CP_MANUAL_MODE ? c.tariffPct : cpLookupTariff(hsCode, c.code);
+    c.tariffPct = tariffPct;
+    // VAT (국가 고정)
+    const vatPct = c.vatPct != null ? c.vatPct : 0;
+    // 인증비 (자동 산출 KRW — 모든 국가 동일)
+    c.certKRW = certKRW;
+
+    const tariff = (tariffPct || 0) / 100;
+    const vat = (vatPct || 0) / 100;
+    // 수익률 유지 최저가 (KRW) = (KR가 + 배송비 + 인증비) × (1+관세) × (1+VAT)
+    const minKRW = (target > 0) ? (target + shipKRW + certKRW) * (1 + tariff) * (1 + vat) : null;
+    // 권장 현지가 = minKRW / 환율 → 라운딩
+    const recLocal = (minKRW != null && rate) ? cpRoundLocal(minKRW / rate, c.round) : null;
+    // 한국은 권장가 = KR가 그대로 (관세·VAT 이미 포함된 한국 타겟가)
+    const recLocalDisplay = isKR ? target : recLocal;
+    const recKRW = (recLocal != null && rate) ? recLocal * rate : null;
+
+    // 사용자 확정가
+    const finalLocal = c.finalLocal;
+    const finalKRW = (finalLocal != null && rate) ? finalLocal * rate : (isKR && finalLocal != null ? finalLocal : null);
+    // 수익률 미달 검사
     const isLoss = !isKR && (finalKRW != null && recKRW != null && finalKRW < recKRW);
-    // '최저가 대비' — 확정가가 '수익률 유지 최저가' 대비 몇 % 차이 (음수면 수익률 미달)
-    const diff = (!isKR && finalKRW!=null && recKRW!=null && recKRW>0) ? ((finalKRW/recKRW)-1)*100 : null;
-    const diffCls = diff==null?'':(diff>=0?'cp-diff-plus':'cp-diff-minus');
-    const diffTxt = diff==null?'-':(diff>=0?'+':'')+diff.toFixed(1)+'%';
+    const diff = (!isKR && finalKRW != null && recKRW != null && recKRW > 0) ? ((finalKRW / recKRW) - 1) * 100 : null;
+    const diffCls = diff == null ? '' : (diff >= 0 ? 'cp-diff-plus' : 'cp-diff-minus');
+    const diffTxt = diff == null ? '-' : (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%';
+
+    // 산식 분해 tooltip (수익률 유지 최저가 셀) — 항목명 + 숫자 함께 표시
+    const recTitle = (target > 0 && !isKR)
+      ? `🇰🇷 한국가 ${cpFmtKRW(target)} + 🚚 배송 ${cpFmtKRW(shipKRW)} + 🏷️ 인증 ${cpFmtKRW(certKRW)} = ${cpFmtKRW(target+shipKRW+certKRW)}\n× (1 + 🏛️ 관세 ${tariffPct.toFixed(1)}%) × (1 + 📜 VAT ${vatPct}%)\n÷ 💱 환율 ${rate} (1${c.currency}=${cpFmtKRW(rate)})\n= ${recLocal != null ? cpFmtLocal(recLocal, c.currency) : '-'}`
+      : '';
+    const shipTitle = `🇰🇷 한국가 ${target>0?cpFmtKRW(target):'0'} × 📦 카테고리(${category||'기타'}) ${grp.pct}% (최소 ${cpFmtKRW(grp.min)}) × 🌐 ${c.code} 배수 ${(c.shipMult||1.0).toFixed(1)} × ${CP_SHIP_LABEL[CP_SHIP_MODE].split(' ')[0]} ${shipScenarioMult.toFixed(1)} = 🚚 배송 ${cpFmtKRW(shipKRW)}`;
+    const certTitle = `🇰🇷 한국가 ${target>0?cpFmtKRW(target):'0'} × 🏷️ 인증비율 ${certPct}% = ${cpFmtKRW(certKRW)} ${certPct === 0 ? '(매칭 없음 — 인증 불필요 카테고리)' : (CP_MANUAL_CERT_PCT != null ? '(✏️ 직접 입력)' : '(자동 매칭)')}`;
+
+    // 인증비 컬럼: 0번째 row(KR)에만 ✏️ 버튼 (모든 국가 동일값이라 한 곳에서 편집)
+    const certCell = i === 0
+      ? `<td title="${escapeHtml(certTitle)}" rowspan="${CP_COUNTRIES.length}" style="vertical-align:middle;text-align:center;background:rgba(124,58,237,.05);border-left:1px solid rgba(124,58,237,.2);">
+          <div style="font-weight:600;">${cpFmtKRW(certKRW)}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${certPct}% ${CP_MANUAL_CERT_PCT != null ? '<b style=\"color:var(--primary);\">✏️</b>' : ''}</div>
+          <button class="cp-btn cp-btn-ghost" style="font-size:10px;padding:2px 8px;margin-top:4px;" onclick="cpEditCertPct()" title="인증비 % 직접 입력 (현재: ${certPct}%)">✏️ 수정</button>
+        </td>`
+      : '';
+
+    // input 모드 (관세/VAT/배송비)
+    const tariffCell = CP_MANUAL_MODE
+      ? `<td><input type="number" step="0.1" value="${tariffPct}" onchange="cpCountryEdit(${i},'tariffPct',this.value)"></td>`
+      : `<td title="HS ${hsCode||'(미정)'} × ${c.code}">${tariffPct.toFixed(1)}</td>`;
+    const vatCell = CP_MANUAL_MODE
+      ? `<td><input type="number" step="0.1" value="${vatPct}" onchange="cpCountryEdit(${i},'vatPct',this.value)"></td>`
+      : `<td>${vatPct}</td>`;
+    const shipCell = CP_MANUAL_MODE
+      ? `<td><input type="number" step="100" value="${shipKRW}" onchange="cpCountryEdit(${i},'shipKRW',this.value)"></td>`
+      : `<td title="${escapeHtml(shipTitle)}">${cpFmtKRW(shipKRW)}</td>`;
+    const rateCell = CP_MANUAL_MODE
+      ? `<td><input type="number" step="0.001" value="${rate||''}" onchange="cpCountryEdit(${i},'rate',this.value)" ${isKR?'disabled':''}></td>`
+      : `<td>${rate != null ? rate : '-'}</td>`;
+
+    // 권장값 적용 버튼
+    const recApplyBtn = (!isKR && recLocal != null) ? `<button class="cp-rec-apply" onclick="cpApplyRec(${i},${recLocal})" title="이 권장값을 확정 현지가에 적용">↓</button>` : '';
+
+    // ━━ 마진율 갭 계산 ━━
+    // 한국 마진% = (target - unitAll) / target  (cpRecalcMargin이 _cpUnitAllKRW 에 보관)
+    // 수출 후 마진% = (실수령KRW - unitAll) / 실수령KRW
+    //   실수령KRW = priceKRW / (1+VAT) / (1+관세) - 배송비 - 인증비
+    //   priceKRW = finalKRW (사용자 확정) 또는 recKRW (권장값)
+    let marginCell = '<td style="color:var(--text-muted);font-size:11px;">-</td>';
+    const unitAll = _cpUnitAllKRW;
+    if (unitAll && target > 0) {
+      const krMargin = (target - unitAll) / target;  // 한국 마진율 (decimal)
+      if (isKR) {
+        // 한국 행: 한국 마진만 표시 (수출 행은 의미 없음)
+        const krCls = krMargin >= 0.30 ? 'color:var(--success);font-weight:600;' : krMargin >= 0.15 ? 'color:var(--warning);font-weight:600;' : 'color:var(--danger);font-weight:600;';
+        marginCell = `<td title="한국 매출 대비 마진율" style="${krCls}">한국 ${(krMargin*100).toFixed(1)}%</td>`;
+      } else {
+        // 수출 행: 한국 → 수출 비교
+        const priceKRW = finalKRW != null ? finalKRW : recKRW;
+        if (priceKRW != null && priceKRW > 0) {
+          const recovered = priceKRW / (1 + vat) / (1 + tariff) - shipKRW - certKRW;
+          const exMargin = recovered > 0 ? (recovered - unitAll) / recovered : null;
+          if (exMargin != null) {
+            const gap = exMargin - krMargin;
+            const gapPct = gap * 100;
+            const gapCls = gapPct >= 0 ? 'cp-diff-plus' : (gapPct >= -2 ? 'color:var(--warning);font-weight:600;' : 'cp-diff-minus');
+            const gapTxt = (gapPct >= 0 ? '+' : '') + gapPct.toFixed(1) + '%';
+            const usingFinal = finalKRW != null;
+            const noteTxt = usingFinal ? '확정가 기준' : '권장값 기준';
+            const titleTxt = `한국 ${(krMargin*100).toFixed(1)}% → 수출 ${(exMargin*100).toFixed(1)}% (${noteTxt})\n실수령 ${cpFmtKRW(Math.round(recovered))} = ${cpFmtKRW(priceKRW)} ÷ ${(1+vat).toFixed(3)} ÷ ${(1+tariff).toFixed(3)} - 배송 ${cpFmtKRW(shipKRW)} - 인증 ${cpFmtKRW(certKRW)}`;
+            const indClass = gapPct >= 0 ? 'cp-diff-plus' : 'cp-diff-minus';
+            marginCell = `<td title="${escapeHtml(titleTxt)}" style="text-align:right;font-size:11px;line-height:1.4;">
+              <div style="color:var(--text-muted);">한국 ${(krMargin*100).toFixed(1)}%</div>
+              <div class="${indClass}" style="font-weight:600;font-size:13px;">→ ${(exMargin*100).toFixed(1)}%</div>
+              <div class="${gapCls.startsWith('color')?'':gapCls}" style="${gapCls.startsWith('color')?gapCls:'font-size:10px;'}">${gapTxt}${usingFinal?'':' <span style=\'color:var(--text-muted);font-weight:400;\'>(권장)</span>'}</div>
+            </td>`;
+          }
+        }
+      }
+    }
+
     return `<tr>
-      <td><span class="cp-flag">${CP_FLAGS[c.code]||''}</span><b>${escapeHtml(c.name)}</b>${c.note?`<div style="font-size:10px;color:var(--text-muted);">${escapeHtml(c.note)}</div>`:''}</td>
+      <td><span class="cp-flag">${c.flag||CP_FLAGS[c.code]||''}</span><b>${escapeHtml(c.name)}</b>${c.note?`<div style="font-size:10px;color:var(--text-muted);">${escapeHtml(c.note)}</div>`:''}</td>
       <td>${c.currency}</td>
-      <td><input type="number" step="0.001" value="${c.rate!=null?c.rate:''}" onchange="cpCountryEdit(${i},'rate',this.value)" ${c.code==='KR'?'disabled':''}></td>
+      ${rateCell}
       <td>${baseLocal!=null?cpFmtLocal(baseLocal,c.currency):'-'}</td>
-      <td><input type="number" step="0.1" value="${c.tariffPct||0}" onchange="cpCountryEdit(${i},'tariffPct',this.value)"></td>
-      <td><input type="number" step="0.1" value="${c.vatPct||0}" onchange="cpCountryEdit(${i},'vatPct',this.value)"></td>
-      <td><input type="number" step="100" value="${c.shippingKRW||0}" onchange="cpCountryEdit(${i},'shippingKRW',this.value)"></td>
-      <td title="${escapeHtml(recTitle)}">${(isKR || recommendLocal == null) ? '-' : cpFmtLocal(recommendLocal, c.currency)}</td>
-      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${(isKR||recRound==null)?'':recRound}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
+      ${tariffCell}
+      ${vatCell}
+      ${shipCell}
+      ${certCell}
+      <td title="${escapeHtml(recTitle)}" style="font-weight:600;">
+        ${isKR ? cpFmtLocal(target, c.currency) : (recLocal != null ? cpFmtLocal(recLocal, c.currency) + ' ' + recApplyBtn : '-')}
+      </td>
+      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${(isKR||recLocal==null)?'':recLocal}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
       <td class="cp-final" style="${isLoss?'color:var(--danger);font-weight:700;':''}">${finalKRW!=null?(isLoss?'🔴 ':'')+cpFmtKRW(finalKRW):'-'}${isLoss?'<div style="font-size:10px;color:var(--danger);font-weight:400;">수익률 미달</div>':''}</td>
       <td class="${diffCls}">${diffTxt}</td>
+      ${marginCell}
     </tr>`;
   }).join('');
 }
+
 function cpApplyRec(i, value){
   CP_COUNTRIES[i].finalLocal = value;
   cpRenderCountryTable();
 }
+
+// 모든 국가에 권장값 일괄 적용
+function cpApplyAllRec(){
+  if (!confirm('모든 국가의 확정 현지가에 자동 산출된 권장값을 적용합니다. 계속할까요?')) return;
+  const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
+  const productName = (document.getElementById('cp-name')?.value||'').trim();
+  const category = document.getElementById('cp-category')?.value || '';
+  const hsCode = document.getElementById('cp-hs')?.value || '';
+  const grp = CP_CATEGORY_SHIPPING[category] || CP_CATEGORY_SHIPPING['기타'];
+  const certPct = (CP_MANUAL_CERT_PCT != null) ? CP_MANUAL_CERT_PCT : cpAutoCertPct(productName, category);
+  const certKRW = target > 0 ? Math.round(target * certPct / 100) : 0;
+  const fx = (CP_PRESETS&&CP_PRESETS.fx)||{};
+  let applied = 0;
+  CP_COUNTRIES.forEach(c => {
+    const isKR = c.code === 'KR';
+    if (isKR) { c.finalLocal = target; applied++; return; }
+    const rate = c.rate != null ? c.rate : (fx[c.currency] || null);
+    if (!rate || target <= 0) return;
+    const shipKRW = Math.round(Math.max(target * grp.pct / 100, grp.min) * (c.shipMult || 1.0) * (CP_SHIP_MULTIPLIER[CP_SHIP_MODE] || 1.0));
+    const tariffPct = cpLookupTariff(hsCode, c.code);
+    const tariff = (tariffPct || 0) / 100;
+    const vat = (c.vatPct || 0) / 100;
+    const minKRW = (target + shipKRW + certKRW) * (1 + tariff) * (1 + vat);
+    const recLocal = cpRoundLocal(minKRW / rate, c.round);
+    c.finalLocal = recLocal;
+    applied++;
+  });
+  cpRenderCountryTable();
+  showToast(`✅ ${applied}개국 권장값 적용 완료`);
+}
+
+// 🔧 수동 모드 토글
+function cpToggleManualMode(){
+  CP_MANUAL_MODE = !CP_MANUAL_MODE;
+  const btn = document.getElementById('cp-formula-toggle');
+  if (btn) {
+    btn.textContent = CP_MANUAL_MODE ? '🤖 자동 모드로 복귀' : '🔧 수동 모드';
+    btn.classList.toggle('cp-btn-ghost', !CP_MANUAL_MODE);
+    btn.classList.toggle('cp-btn-primary', CP_MANUAL_MODE);
+  }
+  if (CP_MANUAL_MODE) {
+    showToast('🔧 수동 모드 — 관세/VAT/배송비/환율 직접 수정 가능');
+  } else {
+    // 자동 모드 복귀 시 사용자 입력값 초기화 (자동 산출 재적용)
+    CP_COUNTRIES.forEach(c => { c.tariffPct = null; c.shipKRW = null; if (c.code !== 'KR') c.rate = null; });
+    showToast('🤖 자동 모드 — 모든 변수 자동 산출');
+  }
+  cpRenderCountryTable();
+}
+
+// ✏️ 인증비 % 직접 입력
+function cpEditCertPct(){
+  const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
+  const productName = (document.getElementById('cp-name')?.value||'').trim();
+  const category = document.getElementById('cp-category')?.value || '';
+  const auto = cpAutoCertPct(productName, category);
+  const current = CP_MANUAL_CERT_PCT != null ? CP_MANUAL_CERT_PCT : auto;
+  const v = prompt(`인증비율(%) 입력\n자동 매칭값: ${auto}% (제품명·카테고리 기반)\n빈 값으로 두면 자동값 사용`, current);
+  if (v === null) return;  // 취소
+  if (v === '') {
+    CP_MANUAL_CERT_PCT = null;
+    showToast('🤖 자동 인증비율로 복귀: ' + auto + '%');
+  } else {
+    const n = parseFloat(v);
+    if (isNaN(n) || n < 0 || n > 100) { showToast('0~100 사이 숫자 입력'); return; }
+    CP_MANUAL_CERT_PCT = n;
+    showToast('✏️ 인증비율 ' + n + '%로 직접 설정');
+  }
+  cpRenderCountryTable();
+}
+
 function cpCountryEdit(i,key,val){
   const num = val===''?null:Number(val);
   CP_COUNTRIES[i][key] = num;
@@ -4029,6 +4338,8 @@ function cpOnNameInput(){
     window._cpHSConfirmed = false;
     if (typeof cpUpdateHSConfirmBadge === 'function') cpUpdateHSConfirmBadge();
   }
+  // 인증비 자동 매칭이 제품명 키워드에 의존 → 즉시 재계산 (디바운스 없이 가벼운 클라 계산)
+  cpRenderCountryTable();
   clearTimeout(CP_HS_DEBOUNCE);
   CP_HS_DEBOUNCE = setTimeout(cpAutoHSSoon, 1500);
 }
