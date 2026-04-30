@@ -1539,33 +1539,154 @@ app.get('/api/consumer-pricing/employees', (req, res) => {
 });
 app.get('/api/consumer-pricing/catalog', async (req, res) => {
   if (!notion) return res.json({ items: [] });
+  // ?all=1 → 전체 페이지(179건). 미지정시 호환성으로 50건만 반환
+  const all = String(req.query.all || '') === '1';
   try {
-    const resp = await notion.databases.query({
-      database_id: PRODUCT_CATALOG_DB_ID,
-      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
-      page_size: 50
-    });
-    const items = resp.results.map(p => {
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+        page_size: 100,
+        ...(cursor ? { start_cursor: cursor } : {})
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+      if (!all) break;  // 호환성: all=1 아니면 첫 페이지만
+    } while (cursor);
+    const sliced = all ? allPages : allPages.slice(0, 50);
+    const items = sliced.map(p => {
       const pr = p.properties || {};
       const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
       const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t=>t.plain_text||'').join('');
       const getSel = k => pr[k] && pr[k].select ? pr[k].select.name : null;
+      const getUrl = k => pr[k]?.url || '';
+      const cpIdRaw = getText('소비자가_산정_ID');
+      const imgId = cpIdRaw ? cpImageId(cpIdRaw) : '';
+      const hasLocalImage = imgId ? !!findCatalogImage(imgId) : false;
       return {
         id: p.id,
         productName: getText('Product Name'),
         hsCode: getText('HS_Code'),
+        category: getSel('Category'),
+        imageUrl: getUrl('Image_URL'),
+        imageId: imgId,
+        hasLocalImage,
         costKRW: getNum('원가_KRW'),
         retailKR: getNum('Retail_KR_KRW'),
         판매상태: getSel('판매상태'),
         작성자: getSel('작성자'),
         원가율: getNum('원가율'),
         등록일: pr['등록일']?.date?.start || null,
-        cpId: getText('소비자가_산정_ID')
+        cpId: cpIdRaw
       };
     });
-    res.json({ items });
+    res.json({ items, total: allPages.length });
   } catch (e) {
     console.error('[카탈로그 조회 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 카테고리 일괄 분류 등에 사용한 9개 카테고리 화이트리스트
+const CATALOG_CATEGORIES = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타'];
+
+// 카탈로그 항목 PATCH — Product Name / Category / 판매상태
+app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const b = req.body || {};
+    const props = {};
+    if (typeof b.productName === 'string' && b.productName.trim()) {
+      props['Product Name'] = { title: [{ text: { content: b.productName.trim() } }] };
+    }
+    if (typeof b.category === 'string' && CATALOG_CATEGORIES.includes(b.category)) {
+      props['Category'] = { select: { name: b.category } };
+    }
+    if (typeof b.판매상태 === 'string' && b.판매상태) {
+      props['판매상태'] = { select: { name: b.판매상태 } };
+    }
+    if (typeof b.hsCode === 'string') {
+      props['HS_Code'] = { rich_text: [{ text: { content: b.hsCode } }] };
+    }
+    if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
+    const updated = await notion.pages.update({ page_id: req.params.id, properties: props });
+    res.json({ success: true, id: updated.id });
+  } catch (e) {
+    console.error('[카탈로그 PATCH 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 카탈로그 항목 DELETE (archive)
+app.delete('/api/consumer-pricing/catalog/:id', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    await notion.pages.update({ page_id: req.params.id, archived: true });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[카탈로그 DELETE 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 카탈로그 이미지 업로드 — base64/dataURL 받아 CATALOG_IMAGE_DIR 에 저장 + Image_URL 갱신
+app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const { dataUrl, ext } = req.body || {};
+    if (!dataUrl) return res.status(400).json({ error: 'dataUrl 누락' });
+    // 카탈로그 페이지에서 cpId(소비자가_산정_ID) 또는 새 ID 생성
+    const page = await notion.pages.retrieve({ page_id: req.params.id });
+    const pr = page.properties || {};
+    const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t=>t.plain_text||'').join('');
+    let cpIdRaw = getText('소비자가_산정_ID');
+    let imgId;
+    if (cpIdRaw) {
+      imgId = cpImageId(cpIdRaw);
+    } else {
+      // 카탈로그 자체 ID 기반 (예: BoxHero import 분 같이 cpId 없는 항목)
+      imgId = 'cat_' + String(req.params.id || '').replace(/-/g, '').slice(0, 24);
+    }
+    const decoded = decodeImagePayload(dataUrl, ext);
+    if (!decoded) return res.status(400).json({ error: '이미지 디코딩 실패' });
+    // 옛 파일·썸네일 정리 후 새로 저장
+    removeCatalogImagesById(imgId);
+    const fname = `${imgId}.${decoded.ext}`;
+    const fpath = path.join(CATALOG_IMAGE_DIR, fname);
+    fs.writeFileSync(fpath, decoded.buf);
+    const url = (process.env.PUBLIC_BASE_URL || '') + '/api/catalog-image/' + imgId;
+    await notion.pages.update({
+      page_id: req.params.id,
+      properties: { 'Image_URL': { url } }
+    });
+    res.json({ success: true, imageUrl: url, imageId: imgId });
+  } catch (e) {
+    console.error('[카탈로그 이미지 업로드 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 두 카탈로그 항목의 Image_URL 만 swap (사진 잘못 매칭된 케이스용)
+app.post('/api/consumer-pricing/catalog/swap-images', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const { idA, idB } = req.body || {};
+    if (!idA || !idB) return res.status(400).json({ error: 'idA·idB 둘 다 필요' });
+    const [pa, pb] = await Promise.all([
+      notion.pages.retrieve({ page_id: idA }),
+      notion.pages.retrieve({ page_id: idB })
+    ]);
+    const urlA = pa.properties?.['Image_URL']?.url || null;
+    const urlB = pb.properties?.['Image_URL']?.url || null;
+    await Promise.all([
+      notion.pages.update({ page_id: idA, properties: { 'Image_URL': { url: urlB } } }),
+      notion.pages.update({ page_id: idB, properties: { 'Image_URL': { url: urlA } } })
+    ]);
+    res.json({ success: true, swapped: { [idA]: urlB, [idB]: urlA } });
+  } catch (e) {
+    console.error('[카탈로그 swap-images 실패]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

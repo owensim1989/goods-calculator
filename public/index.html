@@ -1136,11 +1136,106 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </div>
     </div>
 
-    <div style="margin-top:16px;padding:14px 16px;background:var(--card);border:1px dashed var(--border);border-radius:10px;font-size:12px;color:var(--text-muted);line-height:1.6;">
-      💡 <b>향후 추가 예정</b>: 카탈로그 검색·인라인 편집 · 이미지 일괄 업로드 · 카테고리별 그룹 보기 · 누락 필드 점검센터
+  </div>
+
+  <!-- 인라인 편집 섹션 (2026-04-30 신규) -->
+  <div class="cp-section" style="margin-top:16px;">
+    <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      📋 인라인 편집
+      <span id="cat-count" style="font-size:11px;color:var(--text-muted);font-weight:400;margin-left:auto;">불러오는 중…</span>
+    </h3>
+    <p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin:6px 0 12px;">
+      검색·필터로 항목 좁히고 카테고리 인라인 변경 / 이미지 업로드 / 사진 swap / 항목 삭제 가능. 변경은 즉시 Notion 카탈로그 DB 에 반영.
+    </p>
+
+    <!-- 필터 바 -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+      <input id="cat-search" type="text" placeholder="🔍 제품명·HS Code·작성자 검색…" oninput="catRender()" style="flex:1;min-width:220px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;">
+      <select id="cat-filter-category" onchange="catRender()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;">
+        <option value="">전체 카테고리</option>
+        <option value="피규어/토이">피규어/토이</option>
+        <option value="키링/잡화">키링/잡화</option>
+        <option value="인형">인형</option>
+        <option value="문구">문구</option>
+        <option value="홈리빙">홈리빙</option>
+        <option value="프린트/스티커">프린트/스티커</option>
+        <option value="모바일 악세사리">모바일 악세사리</option>
+        <option value="의류">의류</option>
+        <option value="기타">⚠️ 기타 (재배치 필요)</option>
+        <option value="(없음)">(카테고리 없음)</option>
+      </select>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음만</span>
+      </label>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catReload()">🔄 새로고침</button>
+    </div>
+
+    <!-- swap 모드 안내 -->
+    <div id="cat-swap-hint" style="display:none;background:rgba(124,58,237,.1);border:1px solid #a78bfa;color:#7c3aed;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px;">
+      🔄 <b>이미지 swap 모드</b> — <span id="cat-swap-from-name">선택됨</span>. 사진을 바꿀 다른 제품의 🔄 버튼을 누르세요. <button onclick="catSwapCancel()" style="margin-left:auto;background:none;border:none;color:#7c3aed;cursor:pointer;font-size:11px;text-decoration:underline;">취소</button>
+    </div>
+
+    <!-- 리스트 -->
+    <div id="cat-rows" style="font-size:12px;display:flex;flex-direction:column;gap:6px;max-height:640px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--input-bg);">
+      <div style="text-align:center;padding:30px;color:var(--text-muted);">불러오는 중…</div>
     </div>
   </div>
 </div>
+
+<!-- 카탈로그 이미지 업로드 모달 -->
+<div id="cat-img-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:12px;padding:20px 24px;max-width:520px;width:92%;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h3 style="margin:0;font-size:15px;">📷 이미지 업로드 — <span id="cat-img-target-name" style="color:var(--primary);font-weight:600;"></span></h3>
+      <button style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);" onclick="catImgClose()">✕</button>
+    </div>
+    <div id="cat-img-current" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"></div>
+    <div id="cat-img-drop" onclick="document.getElementById('cat-img-file').click()" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:10px;cursor:pointer;">
+      <div style="font-size:28px;">📎</div>
+      <div style="font-size:12px;margin-top:4px;">클릭 또는 드래그해서 이미지 업로드 (JPG·PNG·WebP)</div>
+    </div>
+    <input type="file" id="cat-img-file" accept="image/*" style="display:none;" onchange="catImgPicked(this.files[0])">
+    <div id="cat-img-preview" style="display:none;text-align:center;margin-bottom:10px;"><img id="cat-img-preview-tag" style="max-width:200px;max-height:200px;border:1px solid var(--border);border-radius:6px;"></div>
+    <div id="cat-img-status" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="catImgClose()">취소</button>
+      <button class="cp-btn cp-btn-primary" id="cat-img-save" style="font-size:12px;" onclick="catImgSave()" disabled>💾 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 카탈로그 이름 수정 모달 -->
+<div id="cat-rename-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:12px;padding:20px 24px;max-width:480px;width:92%;">
+    <h3 style="margin:0 0 12px 0;font-size:15px;">✏️ 제품명 수정</h3>
+    <input id="cat-rename-input" type="text" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:14px;margin-bottom:12px;">
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="catRenameClose()">취소</button>
+      <button class="cp-btn cp-btn-primary" style="font-size:12px;" onclick="catRenameSave()">💾 저장</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.cat-row{display:grid;grid-template-columns:60px 1fr 160px 130px;gap:10px;align-items:center;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;}
+.cat-row.swap-source{outline:2px solid #a78bfa;outline-offset:-2px;background:rgba(124,58,237,.05);}
+.cat-thumb{width:54px;height:54px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border);font-size:18px;color:var(--text-muted);}
+.cat-thumb img{width:100%;height:100%;object-fit:cover;}
+.cat-row .name{font-weight:500;font-size:13px;color:var(--text);line-height:1.3;}
+.cat-row .meta{font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.3;}
+.cat-row select.cat-select{padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px;width:100%;}
+.cat-row .actions{display:flex;gap:3px;justify-content:flex-end;}
+.cat-row .actions button{padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;}
+.cat-row .actions button:hover{background:var(--bg);}
+.cat-row .actions button.danger{color:var(--danger);border-color:rgba(239,68,68,.3);}
+.cat-row .actions button.danger:hover{background:rgba(239,68,68,.1);}
+.cat-empty-cat{color:var(--danger);font-weight:600;}
+@media(max-width:680px){
+  .cat-row{grid-template-columns:50px 1fr;gap:6px;}
+  .cat-row .cat-select-wrap{grid-column:span 2;}
+  .cat-row .actions{grid-column:span 2;justify-content:flex-start;}
+}
+</style>
 
 <!-- 탭6: 📨 견적 인박스 (Drive 자동 파싱 검수) — 화려 UI v2 -->
 <div class="tab-page inbox-page" id="page-ai-review">
@@ -1654,6 +1749,10 @@ function switchPage(item){
   // customs 진입 시 데이터 로드
   if(item.dataset.page==='customs'){
     if(typeof custInit==='function') custInit();
+  }
+  // catalog 진입 시 데이터 로드
+  if(item.dataset.page==='catalog'){
+    if(typeof catInit==='function') catInit();
   }
 }
 function toggleSidebar(){
@@ -5476,6 +5575,321 @@ async function custDelete(id){
     showToast('삭제 실패: ' + e.message, 'warn');
   }
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📋 카탈로그 인라인 편집 (2026-04-30 신규)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let _catItems = [];
+let _catInited = false;
+let _catSwapFromId = null;
+let _catImgTargetId = null;
+let _catImgDataUrl = null;
+let _catRenameTargetId = null;
+
+async function catInit(){
+  if (!_catInited) { _catInited = true; }
+  catReload();
+}
+
+async function catReload(){
+  const rowsEl = document.getElementById('cat-rows');
+  const countEl = document.getElementById('cat-count');
+  if (rowsEl) rowsEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">불러오는 중…</div>';
+  if (countEl) countEl.textContent = '불러오는 중…';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog?all=1');
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    _catItems = d.items || [];
+    if (countEl) countEl.textContent = `${d.total||_catItems.length}건 (전체 표시 ${_catItems.length}건)`;
+    catRender();
+  } catch (e) {
+    if (rowsEl) rowsEl.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">조회 실패: ${escapeHtml(e.message)}</div>`;
+    if (countEl) countEl.textContent = '조회 실패';
+  }
+}
+
+function catRender(){
+  const rowsEl = document.getElementById('cat-rows');
+  if (!rowsEl) return;
+  const q = (document.getElementById('cat-search')?.value || '').trim().toLowerCase();
+  const cat = document.getElementById('cat-filter-category')?.value || '';
+  const noimg = document.getElementById('cat-filter-noimg')?.checked || false;
+  let list = _catItems.slice();
+  if (q) list = list.filter(x =>
+    (x.productName||'').toLowerCase().includes(q) ||
+    (x.hsCode||'').toLowerCase().includes(q) ||
+    (x.작성자||'').toLowerCase().includes(q)
+  );
+  if (cat === '(없음)') list = list.filter(x => !x.category);
+  else if (cat) list = list.filter(x => x.category === cat);
+  if (noimg) list = list.filter(x => !x.imageUrl && !x.hasLocalImage);
+
+  if (!list.length) {
+    rowsEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">조건에 맞는 항목 없음</div>';
+    return;
+  }
+
+  rowsEl.innerHTML = list.map(it => {
+    const isSwapSource = _catSwapFromId === it.id;
+    const thumb = (it.imageUrl || (it.hasLocalImage ? `/api/catalog-image/${escapeHtml(it.imageId||'')}` : ''));
+    const thumbHtml = thumb
+      ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" onerror="this.parentElement.textContent='📷';">`
+      : '<span title="사진 없음">📷</span>';
+    const catVal = it.category || '';
+    const catLabel = catVal || '<span class="cat-empty-cat">⚠️ 미분류</span>';
+    const opts = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타']
+      .map(c => `<option value="${c}"${c===catVal?' selected':''}>${c}</option>`).join('');
+    return `
+      <div class="cat-row${isSwapSource ? ' swap-source' : ''}" data-id="${it.id}">
+        <div class="cat-thumb">${thumbHtml}</div>
+        <div>
+          <div class="name">${escapeHtml(it.productName || '(이름없음)')}</div>
+          <div class="meta">HS ${escapeHtml(it.hsCode || '-')} · ₩${(it.retailKR||0).toLocaleString('ko-KR')} · ${escapeHtml(it.작성자 || '-')} · ${escapeHtml(it.등록일 || '-')}</div>
+        </div>
+        <div class="cat-select-wrap">
+          <select class="cat-select" onchange="catChangeCategory('${it.id}', this.value, this)">
+            <option value="">— 카테고리 선택 —</option>
+            ${opts}
+          </select>
+          ${!catVal ? '<div style="font-size:10px;color:var(--danger);margin-top:2px;">⚠️ 미분류</div>' : ''}
+        </div>
+        <div class="actions">
+          <button onclick="catImgOpen('${it.id}')" title="이미지 업로드/변경">📷</button>
+          <button onclick="catSwapClick('${it.id}')" title="이미지 swap (다른 항목과 사진 교환)">🔄</button>
+          <button onclick="catRenameOpen('${it.id}')" title="이름 수정">✏️</button>
+          <button class="danger" onclick="catDelete('${it.id}')" title="삭제 (archive)">🗑</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function catChangeCategory(id, newCat, selEl){
+  if (!newCat) return;
+  const it = _catItems.find(x => x.id === id);
+  if (!it) return;
+  const prev = it.category || '';
+  if (prev === newCat) return;
+  selEl.disabled = true;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: newCat })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    it.category = newCat;
+    showToast(`✅ "${it.productName}" → ${newCat}`, 'success');
+  } catch (e) {
+    showToast('변경 실패: ' + e.message, 'warn');
+    selEl.value = prev;
+  } finally {
+    selEl.disabled = false;
+  }
+}
+
+async function catDelete(id){
+  const it = _catItems.find(x => x.id === id);
+  if (!it) return;
+  if (!confirm(`"${it.productName}" 카탈로그에서 삭제할까요?\n(Notion archive — 복원 가능. 사업성 검토 DB 의 원본은 그대로 보존)`)) return;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(id), { method: 'DELETE' });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    _catItems = _catItems.filter(x => x.id !== id);
+    showToast('🗑 삭제됨', 'success');
+    catRender();
+  } catch (e) {
+    showToast('삭제 실패: ' + e.message, 'warn');
+  }
+}
+
+// ━━ swap mode ━━
+function catSwapClick(id){
+  if (!_catSwapFromId) {
+    // 첫 번째 선택
+    const it = _catItems.find(x => x.id === id);
+    _catSwapFromId = id;
+    document.getElementById('cat-swap-hint').style.display = 'flex';
+    document.getElementById('cat-swap-from-name').textContent = it ? it.productName : '선택됨';
+    catRender();
+    return;
+  }
+  if (_catSwapFromId === id) {
+    catSwapCancel();
+    return;
+  }
+  // 두 번째 선택 → swap 실행
+  catSwapExecute(_catSwapFromId, id);
+}
+function catSwapCancel(){
+  _catSwapFromId = null;
+  const hint = document.getElementById('cat-swap-hint');
+  if (hint) hint.style.display = 'none';
+  catRender();
+}
+async function catSwapExecute(idA, idB){
+  const itA = _catItems.find(x => x.id === idA);
+  const itB = _catItems.find(x => x.id === idB);
+  if (!itA || !itB) return;
+  if (!confirm(`두 제품의 사진을 swap 할까요?\n\n• ${itA.productName}\n• ${itB.productName}`)) {
+    catSwapCancel();
+    return;
+  }
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/swap-images', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idA, idB })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    // 로컬 상태 갱신
+    const tmp = itA.imageUrl;
+    itA.imageUrl = itB.imageUrl;
+    itB.imageUrl = tmp;
+    showToast('🔄 사진 swap 완료', 'success');
+  } catch (e) {
+    showToast('swap 실패: ' + e.message, 'warn');
+  } finally {
+    catSwapCancel();
+  }
+}
+
+// ━━ 이미지 업로드 ━━
+function catImgOpen(id){
+  const it = _catItems.find(x => x.id === id);
+  if (!it) return;
+  _catImgTargetId = id;
+  _catImgDataUrl = null;
+  document.getElementById('cat-img-target-name').textContent = it.productName;
+  const cur = document.getElementById('cat-img-current');
+  if (it.imageUrl || it.hasLocalImage) {
+    const url = it.imageUrl || ('/api/catalog-image/' + (it.imageId||''));
+    cur.innerHTML = `현재: <a href="${escapeHtml(url)}" target="_blank" style="color:var(--primary);">${escapeHtml(url)}</a>`;
+  } else {
+    cur.textContent = '현재: 사진 없음';
+  }
+  document.getElementById('cat-img-preview').style.display = 'none';
+  document.getElementById('cat-img-status').textContent = '';
+  document.getElementById('cat-img-save').disabled = true;
+  document.getElementById('cat-img-modal').style.display = 'flex';
+}
+function catImgClose(){
+  document.getElementById('cat-img-modal').style.display = 'none';
+  _catImgTargetId = null;
+  _catImgDataUrl = null;
+  document.getElementById('cat-img-file').value = '';
+}
+function catImgPicked(file){
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { showToast('이미지 파일만 가능', 'warn'); return; }
+  if (file.size > 10 * 1024 * 1024) { showToast('10MB 이하만 가능', 'warn'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _catImgDataUrl = e.target.result;
+    document.getElementById('cat-img-preview-tag').src = _catImgDataUrl;
+    document.getElementById('cat-img-preview').style.display = 'block';
+    document.getElementById('cat-img-save').disabled = false;
+    document.getElementById('cat-img-status').textContent = `${file.name} · ${(file.size/1024).toFixed(0)}KB`;
+  };
+  reader.readAsDataURL(file);
+}
+async function catImgSave(){
+  if (!_catImgTargetId || !_catImgDataUrl) return;
+  const id = _catImgTargetId;
+  const btn = document.getElementById('cat-img-save');
+  btn.disabled = true;
+  btn.textContent = '업로드 중…';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(id)+'/image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl: _catImgDataUrl })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    const it = _catItems.find(x => x.id === id);
+    if (it) {
+      it.imageUrl = d.imageUrl;
+      it.imageId = d.imageId;
+      it.hasLocalImage = true;
+    }
+    showToast('📷 이미지 업로드 완료', 'success');
+    catRender();
+    catImgClose();
+  } catch (e) {
+    showToast('업로드 실패: ' + e.message, 'warn');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 저장';
+  }
+}
+
+// ━━ 이름 수정 ━━
+function catRenameOpen(id){
+  const it = _catItems.find(x => x.id === id);
+  if (!it) return;
+  _catRenameTargetId = id;
+  document.getElementById('cat-rename-input').value = it.productName || '';
+  document.getElementById('cat-rename-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('cat-rename-input').focus(), 50);
+}
+function catRenameClose(){
+  document.getElementById('cat-rename-modal').style.display = 'none';
+  _catRenameTargetId = null;
+}
+async function catRenameSave(){
+  if (!_catRenameTargetId) return;
+  const newName = document.getElementById('cat-rename-input').value.trim();
+  if (!newName) { showToast('이름을 입력하세요', 'warn'); return; }
+  const id = _catRenameTargetId;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productName: newName })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    const it = _catItems.find(x => x.id === id);
+    if (it) it.productName = newName;
+    showToast('✏️ 이름 수정됨', 'success');
+    catRenameClose();
+    catRender();
+  } catch (e) {
+    showToast('수정 실패: ' + e.message, 'warn');
+  }
+}
+
+// ESC 키로 모달 닫기
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('cat-img-modal')?.style.display === 'flex') catImgClose();
+    if (document.getElementById('cat-rename-modal')?.style.display === 'flex') catRenameClose();
+  }
+});
+
+// 드래그 앤 드롭
+window.addEventListener('DOMContentLoaded', () => {
+  const drop = document.getElementById('cat-img-drop');
+  if (drop) {
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor = 'var(--primary)'; });
+    drop.addEventListener('dragleave', () => { drop.style.borderColor = 'var(--border)'; });
+    drop.addEventListener('drop', e => {
+      e.preventDefault();
+      drop.style.borderColor = 'var(--border)';
+      if (e.dataTransfer.files[0]) catImgPicked(e.dataTransfer.files[0]);
+    });
+  }
+});
 </script>
 
 <!-- 견적서 업로드 모달 -->
