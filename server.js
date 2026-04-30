@@ -1668,6 +1668,142 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
   }
 });
 
+// 카탈로그 다수 항목 일괄 PATCH (카테고리 변경 등)
+app.post('/api/consumer-pricing/catalog/bulk-patch', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const { ids, category, productName } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids 배열 필요' });
+    if (ids.length > 50) return res.status(400).json({ error: '최대 50개씩만 처리' });
+    const props = {};
+    if (typeof category === 'string' && CATALOG_CATEGORIES.includes(category)) {
+      props['Category'] = { select: { name: category } };
+    }
+    if (typeof productName === 'string' && productName.trim()) {
+      props['Product Name'] = { title: [{ text: { content: productName.trim() } }] };
+    }
+    if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
+    const results = [];
+    for (const id of ids) {
+      try {
+        await notion.pages.update({ page_id: id, properties: props });
+        results.push({ id, ok: true });
+      } catch (e) {
+        results.push({ id, ok: false, error: e.message });
+      }
+    }
+    const ok = results.filter(r => r.ok).length;
+    res.json({ success: true, ok, fail: results.length - ok, results });
+  } catch (e) {
+    console.error('[bulk-patch 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 카탈로그 다수 항목 일괄 DELETE (archive)
+app.post('/api/consumer-pricing/catalog/bulk-delete', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids 배열 필요' });
+    if (ids.length > 50) return res.status(400).json({ error: '최대 50개씩만 처리' });
+    const results = [];
+    for (const id of ids) {
+      try {
+        await notion.pages.update({ page_id: id, archived: true });
+        results.push({ id, ok: true });
+      } catch (e) {
+        results.push({ id, ok: false, error: e.message });
+      }
+    }
+    const ok = results.filter(r => r.ok).length;
+    res.json({ success: true, ok, fail: results.length - ok, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 사전 협의된 패턴 일괄 fix (2026-04-30 1회 사용)
+//   - Acrylic stand → 홈리빙
+//   - 마우스패드 → 문구
+//   - Tray → 홈리빙
+//   - Cap → 의류
+//   - Blanket 사진 (Image_URL) 비우기
+//   - Mood light Sofa → archive
+app.post('/api/consumer-pricing/catalog/apply-prefix-fixes', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  const dryRun = String(req.body?.dryRun || '') === '1' || req.body?.dryRun === true;
+  const RULES = [
+    { match: /acrylic\s*stand/i,                           action: 'category', value: '홈리빙', desc: 'Acrylic stand → 홈리빙' },
+    { match: /mouse\s*pad|마우스\s*패드/i,                  action: 'category', value: '문구',   desc: '마우스패드 → 문구' },
+    { match: /^tray\s*-|^tray\b/i,                         action: 'category', value: '홈리빙', desc: 'Tray → 홈리빙' },
+    { match: /^cap[_\s\-]/i,                                action: 'category', value: '의류',   desc: 'Cap → 의류' },
+    { match: /^blanket[\s\-]/i,                             action: 'clear-image',                desc: 'Blanket 사진 비우기' },
+    { match: /(mood\s*light|무드\s*라이트).*sofa|sofa.*무드/i, action: 'archive',                  desc: 'Mood light Sofa → archive' }
+  ];
+  try {
+    const allPages = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        page_size: 100,
+        ...(cursor ? { start_cursor: cursor } : {})
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const _gText = (pr, k) => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t=>t.plain_text||'').join('');
+    const _gSel  = (pr, k) => pr[k] && pr[k].select ? pr[k].select.name : null;
+    const summary = { matched: 0, applied: 0, ruleHits: {} };
+    const detail = [];
+
+    for (const p of allPages) {
+      if (p.archived) continue;
+      const pr = p.properties || {};
+      const name = _gText(pr, 'Product Name');
+      if (!name) continue;
+      for (const rule of RULES) {
+        if (!rule.match.test(name)) continue;
+        summary.matched++;
+        summary.ruleHits[rule.desc] = (summary.ruleHits[rule.desc] || 0) + 1;
+        const before = { category: _gSel(pr, 'Category'), imageUrl: pr['Image_URL']?.url || null };
+        let action;
+        if (rule.action === 'category') {
+          action = { type: 'category', from: before.category, to: rule.value };
+          if (!dryRun) {
+            await notion.pages.update({
+              page_id: p.id,
+              properties: { 'Category': { select: { name: rule.value } } }
+            });
+          }
+        } else if (rule.action === 'clear-image') {
+          action = { type: 'clear-image', from: before.imageUrl };
+          if (!dryRun) {
+            await notion.pages.update({
+              page_id: p.id,
+              properties: { 'Image_URL': { url: null } }
+            });
+          }
+        } else if (rule.action === 'archive') {
+          action = { type: 'archive' };
+          if (!dryRun) {
+            await notion.pages.update({ page_id: p.id, archived: true });
+          }
+        }
+        if (!dryRun) summary.applied++;
+        detail.push({ id: p.id, productName: name, rule: rule.desc, action });
+        break;  // 한 항목당 룰 1개만 매칭
+      }
+    }
+    res.json({ success: true, dryRun, summary, detail });
+  } catch (e) {
+    console.error('[apply-prefix-fixes 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 두 카탈로그 항목의 Image_URL 만 swap (사진 잘못 매칭된 케이스용)
 app.post('/api/consumer-pricing/catalog/swap-images', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -3244,6 +3380,65 @@ app.delete('/api/customs-observations/:id', (req, res) => {
   if (db.observations.length === before) return res.status(404).json({ error: '없음' });
   saveCustomsObservations(db);
   res.json({ ok: true });
+});
+
+// AI 분석 — 통관 영수증·관세 명세서·인보이스 → 자동 추출
+app.post('/api/customs-observations/ai-analyze', async (req, res) => {
+  const { kind, data, mime, text } = req.body || {};
+  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+  try {
+    const ask = `CRITICAL: Return ONLY valid JSON, no markdown.
+
+다음 통관 관련 자료 (영수증·관세 명세서·인보이스·세관 신고서·에이전시 견적 등) 에서 정보를 추출하세요. 없는 필드는 null.
+
+{
+  "hsCode": "9503.00",
+  "country": "TW|HK|CN|TH|US|JP|IDN",
+  "productName": "제품명 (간단히)",
+  "actualTariffPct": 6.5,
+  "actualCertLocal": 2400,
+  "certCurrency": "TWD|HKD|CNY|THB|USD|JPY|IDR",
+  "source": "서류통관|에이전시견적|관세청조회|기타",
+  "observedDate": "YYYY-MM-DD",
+  "memo": "신고서 #, 적용 케이스 등"
+}
+
+규칙:
+- country 는 7개국 코드 중 하나 (KR 은 거부, 수출국만)
+- actualTariffPct 는 % 숫자 (예: "6.5%" → 6.5)
+- actualCertLocal 은 인증·통관 수수료 현지통화 금액 (관세 자체와 다름)
+- certCurrency 는 country 에 맞는 디폴트 (TW→TWD 등). 영수증에 명시되어 있으면 우선
+- source: 서류 통관 영수증 / 현지 에이전시 견적 / 관세청 공식 조회 / 기타 중 가장 가까운 것
+- observedDate: 영수증의 통관일 또는 발행일. 없으면 today
+- memo: 신고서 번호, 제품 수량, 특이사항 등 자유 기록`;
+
+    let content;
+    if (kind === 'text' || text) {
+      content = [{ type: 'text', text: ask + '\n\n자료 내용:\n' + (text || '') }];
+    } else if (kind === 'pdf' && data) {
+      content = [
+        { type: 'document', source: { type: 'base64', media_type: mime || 'application/pdf', data } },
+        { type: 'text', text: ask }
+      ];
+    } else if (kind === 'image' && data) {
+      content = [
+        { type: 'image', source: { type: 'base64', media_type: mime || 'image/png', data } },
+        { type: 'text', text: ask }
+      ];
+    } else {
+      return res.status(400).json({ error: 'kind(text/pdf/image) + data 또는 text 누락' });
+    }
+    const out = await callClaude([{ role: 'user', content }], { max_tokens: 1500 });
+    const parsed = extractJSON(out);
+    if (!parsed) {
+      console.error('[customs ai-analyze] 파싱 실패. Claude 원문:', out.slice(0, 1500));
+      return res.status(500).json({ error: '파싱 실패 — Claude 응답이 JSON이 아님', raw: out.slice(0, 1200) });
+    }
+    res.json({ success: true, ...parsed });
+  } catch (e) {
+    console.error('[customs ai-analyze]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 매트릭스 강화 후보 — HS prefix(4자리) × 국가 별 평균 관세 + 카운트

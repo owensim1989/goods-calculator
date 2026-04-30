@@ -688,7 +688,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="sidebar-group-title">미스터두낫띵</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
-      <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">통관 데이터</button>
     </div>
     <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">사업화</div>
@@ -698,6 +697,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div class="sidebar-group">
       <div class="sidebar-group-title">기타</div>
       <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">견적 인박스 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
+      <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">통관 데이터</button>
     </div>
     <div class="sidebar-group sidebar-group-soon">
       <div class="sidebar-group-title">Phase 3 (예정)</div>
@@ -1124,7 +1124,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
       <div style="font-weight:600;font-size:14px;margin-bottom:8px;">⚙️ 일괄 보정 도구 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 자주 쓰지 않음</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         <button class="cp-btn cp-btn-ghost" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;" onclick="cpAssignCategories()" title="HS Code/Product Name 기반 자동 분류">
           🏷️ <b>카테고리 일괄 분류</b><br>
           <span style="font-size:11px;color:var(--text-muted);font-weight:400;">Category 필드를 HS Code/Product Name 기반으로 자동 분류</span>
@@ -1132,6 +1132,10 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <button class="cp-btn cp-btn-ghost" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;" onclick="cpMigrateFOB()" title="FOB·CIF 일괄 채움">
           🔄 <b>FOB 일괄 채움</b><br>
           <span style="font-size:11px;color:var(--text-muted);font-weight:400;">FOB_KRW·CIF_KRW_asia가 비어있는 제품을 KR Retail × (1−할인율) 공식으로 일괄</span>
+        </button>
+        <button class="cp-btn" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;background:#7c3aed;color:#fff;border:none;" onclick="catApplyPrefixFixes()" title="협의된 6개 패턴 일괄 적용 (Acrylic stand→홈리빙, 마우스패드→문구, Tray→홈리빙, Cap→의류, Blanket 사진 비우기, Mood light Sofa archive)">
+          🔧 <b>사전 협의 일괄 fix</b><br>
+          <span style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:400;">6개 패턴 자동 처리 — DRY-RUN 먼저 보고 → 실제 적용</span>
         </button>
       </div>
     </div>
@@ -1173,6 +1177,34 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <!-- swap 모드 안내 -->
     <div id="cat-swap-hint" style="display:none;background:rgba(124,58,237,.1);border:1px solid #a78bfa;color:#7c3aed;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:10px;">
       🔄 <b>이미지 swap 모드</b> — <span id="cat-swap-from-name">선택됨</span>. 사진을 바꿀 다른 제품의 🔄 버튼을 누르세요. <button onclick="catSwapCancel()" style="margin-left:auto;background:none;border:none;color:#7c3aed;cursor:pointer;font-size:11px;text-decoration:underline;">취소</button>
+    </div>
+
+    <!-- 다수 선택 액션 바 (선택 시에만 노출) -->
+    <div id="cat-bulk-bar" style="display:none;align-items:center;gap:10px;background:linear-gradient(90deg,rgba(96,165,250,.15),rgba(124,58,237,.12));border:1px solid var(--primary);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;flex-wrap:wrap;">
+      <b style="color:var(--primary);"><span id="cat-bulk-count">0</span>개 선택됨</b>
+      <span style="color:var(--text-muted);">— 일괄 액션:</span>
+      <select id="cat-bulk-cat" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px;">
+        <option value="">— 카테고리 변경 —</option>
+        <option value="피규어/토이">피규어/토이</option>
+        <option value="키링/잡화">키링/잡화</option>
+        <option value="인형">인형</option>
+        <option value="문구">문구</option>
+        <option value="홈리빙">홈리빙</option>
+        <option value="프린트/스티커">프린트/스티커</option>
+        <option value="모바일 악세사리">모바일 악세사리</option>
+        <option value="의류">의류</option>
+        <option value="기타">기타</option>
+      </select>
+      <button class="cp-btn cp-btn-primary" style="font-size:11px;padding:5px 12px;" onclick="catBulkChangeCategory()">🏷️ 적용</button>
+      <button class="cp-btn" style="font-size:11px;padding:5px 12px;background:transparent;border:1px solid var(--danger);color:var(--danger);" onclick="catBulkDelete()">🗑 일괄 삭제</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:11px;padding:5px 12px;margin-left:auto;" onclick="catSelectClear()">선택 취소</button>
+    </div>
+
+    <!-- 리스트 헤더: 전체선택 -->
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11px;color:var(--text-muted);">
+      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="cat-select-all" onchange="catSelectAll(this.checked)"> <span>현재 화면 전체 선택</span>
+      </label>
     </div>
 
     <!-- 리스트 -->
@@ -1217,8 +1249,10 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 </div>
 
 <style>
-.cat-row{display:grid;grid-template-columns:60px 1fr 160px 130px;gap:10px;align-items:center;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;}
+.cat-row{display:grid;grid-template-columns:24px 60px 1fr 160px 130px;gap:10px;align-items:center;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;}
+.cat-row.selected{background:rgba(96,165,250,0.08);border-color:var(--primary);}
 .cat-row.swap-source{outline:2px solid #a78bfa;outline-offset:-2px;background:rgba(124,58,237,.05);}
+.cat-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--primary);}
 .cat-thumb{width:54px;height:54px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--border);font-size:18px;color:var(--text-muted);}
 .cat-thumb img{width:100%;height:100%;object-fit:cover;}
 .cat-row .name{font-weight:500;font-size:13px;color:var(--text);line-height:1.3;}
@@ -1318,9 +1352,32 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div style="display:grid;grid-template-columns:1fr;gap:16px;">
+    <!-- 🤖 AI 자동 추출 -->
+    <div class="cp-section" style="padding:20px;background:linear-gradient(135deg,rgba(124,58,237,.08),rgba(96,165,250,.06));">
+      <h3 style="margin:0 0 4px 0;font-size:15px;display:flex;align-items:center;gap:8px;">🤖 AI 자동 추출 <span class="auto-tag" style="background:#7c3aed;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;">Claude Haiku</span></h3>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.55;">통관 영수증·관세 명세서·인보이스 PDF·이미지·스캔본을 올리거나 텍스트 붙여넣기. AI 가 HS·국가·관세율·인증비 자동 추출 후 폼을 채웁니다.</p>
+
+      <div id="cust-ai-drop" onclick="document.getElementById('cust-ai-file').click()" style="border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;margin-bottom:10px;cursor:pointer;">
+        <div style="font-size:24px;">📎</div>
+        <div style="font-size:12px;margin-top:4px;">클릭 또는 드래그 — PDF · PNG · JPG · WebP</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">최대 20MB</div>
+      </div>
+      <input type="file" id="cust-ai-file" accept=".pdf,.png,.jpg,.jpeg,.webp" style="display:none;" onchange="custAiPicked(this.files[0])">
+
+      <div id="cust-ai-filename" style="font-size:11px;color:var(--primary);margin-bottom:8px;display:none;"></div>
+
+      <textarea id="cust-ai-text" rows="3" placeholder="또는 텍스트를 그대로 붙여넣기 (관세 통보서·메일·메시지 등)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:12px;font-family:inherit;margin-bottom:10px;resize:vertical;"></textarea>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <span id="cust-ai-status" style="font-size:11px;color:var(--text-muted);margin-right:auto;"></span>
+        <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="custAiClear()">↺ 비우기</button>
+        <button class="cp-btn" id="cust-ai-go" style="background:#7c3aed;color:#fff;border:none;font-size:12px;" onclick="custAiAnalyze()">🤖 AI 분석</button>
+      </div>
+    </div>
+
     <!-- 입력 폼 -->
     <div class="cp-section" style="padding:20px;">
-      <h3 style="margin:0 0 12px 0;font-size:15px;">새 관측 기록</h3>
+      <h3 style="margin:0 0 12px 0;font-size:15px;">새 관측 기록 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— AI 분석 결과 자동 반영, 직접 수정 가능</span></h3>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
         <div class="cp-field">
           <label>HS Code <span style="color:var(--danger);">*</span></label>
@@ -5561,6 +5618,101 @@ async function custLoadList(){
   }
 }
 
+// ━━ AI 자동 추출 ━━
+let _custAiFile = null;       // { kind, data, mime, fileName }
+function custAiClear(){
+  _custAiFile = null;
+  document.getElementById('cust-ai-file').value = '';
+  document.getElementById('cust-ai-text').value = '';
+  document.getElementById('cust-ai-filename').style.display = 'none';
+  document.getElementById('cust-ai-status').textContent = '';
+}
+function custAiPicked(file){
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) { showToast('20MB 이하만', 'warn'); return; }
+  const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+  const isImg = /^image\//.test(file.type);
+  if (!isPdf && !isImg) { showToast('PDF·이미지만 가능', 'warn'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) { showToast('파일 읽기 실패', 'warn'); return; }
+    _custAiFile = {
+      kind: isPdf ? 'pdf' : 'image',
+      mime: m[1],
+      data: m[2],
+      fileName: file.name
+    };
+    const fnEl = document.getElementById('cust-ai-filename');
+    fnEl.style.display = 'block';
+    fnEl.textContent = '📎 ' + file.name + ' (' + (file.size/1024).toFixed(0) + 'KB)';
+  };
+  reader.readAsDataURL(file);
+}
+async function custAiAnalyze(){
+  const txt = (document.getElementById('cust-ai-text').value || '').trim();
+  if (!_custAiFile && !txt) { showToast('파일 또는 텍스트가 필요합니다', 'warn'); return; }
+  const btn = document.getElementById('cust-ai-go');
+  const status = document.getElementById('cust-ai-status');
+  btn.disabled = true; btn.textContent = '🤖 분석 중…';
+  status.textContent = '';
+  try {
+    const body = _custAiFile
+      ? { kind: _custAiFile.kind, data: _custAiFile.data, mime: _custAiFile.mime, text: txt || undefined }
+      : { kind: 'text', text: txt };
+    const r = await fetch('/api/customs-observations/ai-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) {
+      let msg = '실패: ' + (d.error || 'HTTP ' + r.status);
+      status.style.color = 'var(--danger)';
+      status.textContent = msg;
+      return;
+    }
+    // 폼 자동 채움
+    const setIfEmpty = (id, val) => {
+      const el = document.getElementById(id);
+      if (!el || val == null || val === '') return;
+      if (el.value && !confirm(`"${id}" 에 이미 입력값이 있습니다. AI 결과로 덮어쓸까요?\n현재: ${el.value}\n새값: ${val}`)) return;
+      el.value = val;
+    };
+    setIfEmpty('cust-hs', d.hsCode || '');
+    if (d.country) document.getElementById('cust-country').value = d.country;
+    setIfEmpty('cust-product', d.productName || '');
+    setIfEmpty('cust-tariff', d.actualTariffPct != null ? d.actualTariffPct : '');
+    setIfEmpty('cust-cert', d.actualCertLocal != null ? d.actualCertLocal : '');
+    setIfEmpty('cust-cert-cur', d.certCurrency || '');
+    setIfEmpty('cust-date', d.observedDate || '');
+    setIfEmpty('cust-memo', d.memo || '');
+    // 출처 chip 자동 선택
+    if (d.source) {
+      const allowed = ['서류통관','에이전시견적','관세청조회','기타'];
+      if (allowed.includes(d.source)) {
+        const chip = document.querySelector(`#cust-source-row .cust-src-chip[data-src="${d.source}"]`);
+        if (chip) custSelectSrc(chip);
+      }
+    }
+    status.style.color = 'var(--success)';
+    status.textContent = '✅ 분석 완료 — 폼이 자동으로 채워졌습니다. 검토 후 저장하세요.';
+    showToast('🤖 AI 분석 완료', 'success');
+    // 폼 영역으로 부드럽게 스크롤
+    setTimeout(() => {
+      document.getElementById('cust-hs')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+  } catch (e) {
+    status.style.color = 'var(--danger)';
+    status.textContent = '오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🤖 AI 분석';
+  }
+}
+
 async function custDelete(id){
   if (!confirm('이 관측 기록을 삭제할까요?')) return;
   try {
@@ -5585,6 +5737,8 @@ let _catSwapFromId = null;
 let _catImgTargetId = null;
 let _catImgDataUrl = null;
 let _catRenameTargetId = null;
+let _catSelected = new Set();
+let _catVisibleIds = [];   // 현재 필터로 노출 중인 ID 목록
 
 async function catInit(){
   if (!_catInited) { _catInited = true; }
@@ -5626,23 +5780,27 @@ function catRender(){
   else if (cat) list = list.filter(x => x.category === cat);
   if (noimg) list = list.filter(x => !x.imageUrl && !x.hasLocalImage);
 
+  _catVisibleIds = list.map(x => x.id);
+
   if (!list.length) {
     rowsEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">조건에 맞는 항목 없음</div>';
+    catUpdateBulkBar();
     return;
   }
 
   rowsEl.innerHTML = list.map(it => {
     const isSwapSource = _catSwapFromId === it.id;
+    const isSelected = _catSelected.has(it.id);
     const thumb = (it.imageUrl || (it.hasLocalImage ? `/api/catalog-image/${escapeHtml(it.imageId||'')}` : ''));
     const thumbHtml = thumb
       ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" onerror="this.parentElement.textContent='📷';">`
       : '<span title="사진 없음">📷</span>';
     const catVal = it.category || '';
-    const catLabel = catVal || '<span class="cat-empty-cat">⚠️ 미분류</span>';
     const opts = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타']
       .map(c => `<option value="${c}"${c===catVal?' selected':''}>${c}</option>`).join('');
     return `
-      <div class="cat-row${isSwapSource ? ' swap-source' : ''}" data-id="${it.id}">
+      <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}">
+        <div><input type="checkbox" ${isSelected?'checked':''} onchange="catToggleSelect('${it.id}', this.checked)"></div>
         <div class="cat-thumb">${thumbHtml}</div>
         <div>
           <div class="name">${escapeHtml(it.productName || '(이름없음)')}</div>
@@ -5663,6 +5821,138 @@ function catRender(){
         </div>
       </div>`;
   }).join('');
+  catUpdateBulkBar();
+}
+
+// ━━ 다수 선택 ━━
+function catToggleSelect(id, checked){
+  if (checked) _catSelected.add(id); else _catSelected.delete(id);
+  // row 시각 업데이트 (전체 재렌더 없이)
+  const row = document.querySelector(`.cat-row[data-id="${id}"]`);
+  if (row) row.classList.toggle('selected', checked);
+  catUpdateBulkBar();
+}
+function catSelectAll(checked){
+  if (checked) _catVisibleIds.forEach(id => _catSelected.add(id));
+  else _catVisibleIds.forEach(id => _catSelected.delete(id));
+  catRender();
+}
+function catSelectClear(){
+  _catSelected.clear();
+  document.getElementById('cat-select-all').checked = false;
+  catRender();
+}
+function catUpdateBulkBar(){
+  const bar = document.getElementById('cat-bulk-bar');
+  const cntEl = document.getElementById('cat-bulk-count');
+  const allCk = document.getElementById('cat-select-all');
+  if (!bar) return;
+  const n = _catSelected.size;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  if (cntEl) cntEl.textContent = n;
+  if (allCk && _catVisibleIds.length) {
+    const allChecked = _catVisibleIds.every(id => _catSelected.has(id));
+    allCk.checked = allChecked;
+  }
+}
+async function catBulkChangeCategory(){
+  const sel = document.getElementById('cat-bulk-cat');
+  const newCat = sel.value;
+  if (!newCat) { showToast('카테고리를 선택하세요', 'warn'); return; }
+  const ids = Array.from(_catSelected);
+  if (!ids.length) return;
+  if (!confirm(`선택한 ${ids.length}개 항목의 카테고리를 "${newCat}" 로 변경할까요?`)) return;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/bulk-patch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, category: newCat })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    showToast(`✅ ${d.ok}개 변경 완료${d.fail?` / ${d.fail}건 실패`:''}`, d.fail ? 'warn' : 'success');
+    // 로컬 상태 업데이트
+    for (const id of ids) {
+      const it = _catItems.find(x => x.id === id);
+      if (it) it.category = newCat;
+    }
+    _catSelected.clear();
+    sel.value = '';
+    catRender();
+  } catch (e) {
+    showToast('일괄 변경 실패: ' + e.message, 'warn');
+  }
+}
+async function catBulkDelete(){
+  const ids = Array.from(_catSelected);
+  if (!ids.length) return;
+  if (!confirm(`선택한 ${ids.length}개 항목을 카탈로그에서 일괄 삭제(archive)할까요?\n(Notion 에서 복원 가능. 사업성 검토 DB 원본은 보존)`)) return;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    showToast(`🗑 ${d.ok}개 삭제 완료${d.fail?` / ${d.fail}건 실패`:''}`, d.fail ? 'warn' : 'success');
+    // 로컬 제거
+    _catItems = _catItems.filter(x => !ids.includes(x.id));
+    _catSelected.clear();
+    catRender();
+  } catch (e) {
+    showToast('일괄 삭제 실패: ' + e.message, 'warn');
+  }
+}
+
+// ━━ 사전 협의된 6개 패턴 일괄 fix ━━
+async function catApplyPrefixFixes(){
+  // 1) DRY-RUN 먼저
+  if (!confirm('🔧 사전 협의된 6개 패턴을 DRY-RUN 으로 미리보기 합니다.\n\n• Acrylic stand → 홈리빙\n• 마우스패드 → 문구\n• Tray → 홈리빙\n• Cap → 의류\n• Blanket 사진 → 비우기 (재업로드 필요)\n• Mood light Sofa → archive\n\nDRY-RUN 결과 확인 후 실제 적용 여부를 다시 묻습니다.')) return;
+  let dry;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/apply-prefix-fixes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dryRun: true })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    dry = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(dry.error || 'HTTP ' + r.status);
+  } catch (e) {
+    showToast('DRY-RUN 실패: ' + e.message, 'warn');
+    return;
+  }
+  // 결과 요약 표시
+  const summary = dry.summary || {};
+  const detail = dry.detail || [];
+  const lines = [
+    `매칭: ${summary.matched || 0} 항목`,
+    '',
+    '룰별 매칭:',
+    ...Object.entries(summary.ruleHits || {}).map(([k, v]) => `  • ${k}: ${v}건`),
+    '',
+    '상세 (앞 20건):',
+    ...detail.slice(0, 20).map(d => `  • ${d.productName} [${d.rule}]`)
+  ];
+  if (!confirm('🔧 DRY-RUN 결과:\n\n' + lines.join('\n') + (detail.length>20?`\n  …외 ${detail.length-20}건`:'') + '\n\n실제로 적용할까요?')) return;
+  // 2) 실제 적용
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/apply-prefix-fixes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dryRun: false })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    showToast(`✅ 사전 fix 적용 완료 — ${d.summary?.applied || 0}건 처리`, 'success');
+    catReload();
+  } catch (e) {
+    showToast('적용 실패: ' + e.message, 'warn');
+  }
 }
 
 async function catChangeCategory(id, newCat, selEl){
@@ -5683,6 +5973,11 @@ async function catChangeCategory(id, newCat, selEl){
     if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
     it.category = newCat;
     showToast(`✅ "${it.productName}" → ${newCat}`, 'success');
+    // 현재 필터(예: "기타") 와 새 카테고리가 다르면 행이 자동으로 사라지도록 재렌더
+    const curFilter = document.getElementById('cat-filter-category')?.value || '';
+    if (curFilter && curFilter !== newCat) {
+      catRender();
+    }
   } catch (e) {
     showToast('변경 실패: ' + e.message, 'warn');
     selEl.value = prev;
