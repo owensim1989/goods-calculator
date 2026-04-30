@@ -258,6 +258,7 @@ app.use((req, res, next) => {
   // 가드 대상: 미스터두낫띵·사업화 전용 데이터 API
   if (p.startsWith('/api/consumer-pricing') ||
       p.startsWith('/api/parsed-quotes') ||
+      p.startsWith('/api/customs-observations') ||
       p === '/api/catalog-image-debug') {
     return auth.requireRestrictedAccess(req, res, next);
   }
@@ -275,6 +276,7 @@ app.use((req, res, next) => {
   // 가드 대상: 미스터두낫띵·사업화 전용 데이터 API
   if (p.startsWith('/api/consumer-pricing') ||
       p.startsWith('/api/parsed-quotes') ||
+      p.startsWith('/api/customs-observations') ||
       p === '/api/catalog-image-debug') {
     return auth.requireRestrictedAccess(req, res, next);
   }
@@ -2983,16 +2985,18 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
       c.width = widths[i] || 11;
     });
 
-    // 마진갭 컬럼 색상 코딩 (4-29 추가): >= 0 녹색 / -2~0 노랑 / < -2 빨강
+    // 마진갭 컬럼 색상 코딩 (4-30 신제품 폼 UI와 통일): gap≥-3 녹색 / -7~-3 노랑 / <-7 빨강. 수출 마진 자체 음수면 무조건 빨강
     const gapCol = cols.indexOf('마진갭pct') + 1;
     const krMarginCol = cols.indexOf('한국마진pct') + 1;
     const exMarginCol = cols.indexOf('수출후마진pct') + 1;
     for (let i = 2; i <= ws.rowCount; i++) {
-      const v = ws.getRow(i).getCell(gapCol).value;
-      if (typeof v === 'number') {
-        let bg = 'FFC6E0B4';  // 녹색 (>= 0)
-        if (v < -5) bg = 'FFFFC7CE';  // 빨강 (< -5%)
-        else if (v < 0) bg = 'FFFFEB9C';  // 노랑 (-5 ~ 0)
+      const gapVal = ws.getRow(i).getCell(gapCol).value;
+      const exVal = ws.getRow(i).getCell(exMarginCol).value;
+      if (typeof gapVal === 'number') {
+        let bg = 'FFC6E0B4';  // 녹색 (gap ≥ -3)
+        if (typeof exVal === 'number' && exVal < 0) bg = 'FFFFC7CE';  // 수출 마진 자체 음수 = 빨강
+        else if (gapVal < -7) bg = 'FFFFC7CE';
+        else if (gapVal < -3) bg = 'FFFFEB9C';
         ws.getRow(i).getCell(gapCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
         ws.getRow(i).getCell(exMarginCol).fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
       }
@@ -3031,6 +3035,127 @@ app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) =
     console.error('[preview-recalc-2026-04-28]', e);
     res.status(500).json({ error: e.message });
   }
+});
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  통관 데이터 입력 채널 (2026-04-30 신설) — 약한 셀 갱신 채널
+//   사업화팀이 실 통관 후 받은 영수증·관세 명세를 입력 → HS×국가 매트릭스 강화
+//   data/customs-observations.json 에 누적 저장
+//   POST /api/customs-observations  → 새 관측 기록
+//   GET  /api/customs-observations  → 전체 조회 (옵션: ?country=&hs=)
+//   DELETE /api/customs-observations/:id → 삭제
+//   GET  /api/customs-observations/summary → HS×국가별 평균/카운트 (매트릭스 강화 후보)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const CUSTOMS_OBS_PATH = path.join(__dirname, 'data', 'customs-observations.json');
+function loadCustomsObservations() {
+  try {
+    if (fs.existsSync(CUSTOMS_OBS_PATH)) {
+      return JSON.parse(fs.readFileSync(CUSTOMS_OBS_PATH, 'utf8'));
+    }
+  } catch (e) {
+    console.error('[customs-observations 로드]', e.message);
+  }
+  return { observations: [] };
+}
+function saveCustomsObservations(db) {
+  try {
+    const dir = path.dirname(CUSTOMS_OBS_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(CUSTOMS_OBS_PATH, JSON.stringify(db, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[customs-observations 저장]', e.message);
+  }
+}
+
+app.get('/api/customs-observations', (req, res) => {
+  const db = loadCustomsObservations();
+  let list = (db.observations || []).slice();
+  if (req.query.country) list = list.filter(o => o.country === req.query.country);
+  if (req.query.hs) list = list.filter(o => String(o.hsCode || '').startsWith(req.query.hs));
+  list.sort((a, b) => String(b.observedDate||'').localeCompare(String(a.observedDate||'')));
+  res.json({ observations: list, total: list.length });
+});
+
+app.post('/api/customs-observations', (req, res) => {
+  const b = req.body || {};
+  const hsCode = String(b.hsCode || '').trim();
+  const country = String(b.country || '').trim().toUpperCase();
+  const ALLOWED_COUNTRIES = ['TW','HK','CN','TH','US','JP','IDN'];
+  if (!hsCode) return res.status(400).json({ error: 'HS Code 필수' });
+  if (!ALLOWED_COUNTRIES.includes(country)) return res.status(400).json({ error: '국가 코드 필수 (TW/HK/CN/TH/US/JP/IDN)' });
+  const tariffPct = b.actualTariffPct != null ? Number(b.actualTariffPct) : null;
+  if (tariffPct != null && (isNaN(tariffPct) || tariffPct < 0 || tariffPct > 100)) {
+    return res.status(400).json({ error: '실 관세율은 0~100 사이' });
+  }
+  const certLocal = b.actualCertLocal != null && String(b.actualCertLocal).trim() !== '' ? Number(b.actualCertLocal) : null;
+  if (certLocal != null && (isNaN(certLocal) || certLocal < 0)) {
+    return res.status(400).json({ error: '인증비는 0 이상' });
+  }
+  const ALLOWED_SOURCES = ['서류통관','에이전시견적','관세청조회','기타'];
+  const source = ALLOWED_SOURCES.includes(b.source) ? b.source : '기타';
+  const obs = {
+    id: 'co_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+    hsCode,
+    country,
+    productName: String(b.productName || '').trim(),
+    actualTariffPct: tariffPct,
+    actualCertLocal: certLocal,
+    certCurrency: String(b.certCurrency || '').trim().toUpperCase(),
+    source,
+    memo: String(b.memo || '').trim(),
+    observedDate: String(b.observedDate || new Date().toISOString().slice(0,10)),
+    recordedBy: req.user?.name || req.user?.displayName || '(미상)',
+    createdAt: new Date().toISOString()
+  };
+  const db = loadCustomsObservations();
+  db.observations = db.observations || [];
+  db.observations.push(obs);
+  saveCustomsObservations(db);
+  res.json({ ok: true, observation: obs });
+});
+
+app.delete('/api/customs-observations/:id', (req, res) => {
+  const id = String(req.params.id || '');
+  const db = loadCustomsObservations();
+  const before = (db.observations || []).length;
+  db.observations = (db.observations || []).filter(o => o.id !== id);
+  if (db.observations.length === before) return res.status(404).json({ error: '없음' });
+  saveCustomsObservations(db);
+  res.json({ ok: true });
+});
+
+// 매트릭스 강화 후보 — HS prefix(4자리) × 국가 별 평균 관세 + 카운트
+app.get('/api/customs-observations/summary', (req, res) => {
+  const db = loadCustomsObservations();
+  const list = db.observations || [];
+  const grouped = {};   // key = `${hs4}|${country}`
+  for (const o of list) {
+    if (o.actualTariffPct == null) continue;
+    const hs4 = String(o.hsCode || '').replace(/[^0-9.]/g,'').slice(0, 4);
+    if (!hs4) continue;
+    const k = `${hs4}|${o.country}`;
+    if (!grouped[k]) grouped[k] = { hs4, country: o.country, count: 0, sumTariff: 0, sumCertLocal: 0, certCount: 0, latestDate: '', items: [] };
+    grouped[k].count++;
+    grouped[k].sumTariff += Number(o.actualTariffPct);
+    if (o.actualCertLocal != null) {
+      grouped[k].sumCertLocal += Number(o.actualCertLocal);
+      grouped[k].certCount++;
+    }
+    if (String(o.observedDate||'') > grouped[k].latestDate) grouped[k].latestDate = o.observedDate;
+    grouped[k].items.push({ id: o.id, observedDate: o.observedDate, tariff: o.actualTariffPct, cert: o.actualCertLocal, productName: o.productName });
+  }
+  const cells = Object.values(grouped).map(g => ({
+    hs4: g.hs4,
+    country: g.country,
+    count: g.count,
+    avgTariffPct: Number((g.sumTariff / g.count).toFixed(2)),
+    avgCertLocal: g.certCount > 0 ? Number((g.sumCertLocal / g.certCount).toFixed(0)) : null,
+    latestDate: g.latestDate,
+    items: g.items
+  }));
+  cells.sort((a, b) => b.count - a.count);
+  res.json({ cells, total: list.length });
 });
 
 

@@ -688,6 +688,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="sidebar-group-title">미스터두낫띵</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
+      <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">🛃 통관 데이터</button>
     </div>
     <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">사업화</div>
@@ -1204,6 +1205,117 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 </div>
 
+<!-- 탭7: 🛃 통관 데이터 입력 채널 (2026-04-30 신설) -->
+<div class="tab-page" id="page-customs">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:16px;flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0 0 4px 0;font-size:20px;font-weight:600;">🛃 통관 데이터 입력</h2>
+      <div style="color:var(--text-muted);font-size:13px;line-height:1.55;max-width:680px;">
+        실 통관 후 받은 관세 명세서·인증서·인보이스를 입력해 HS×국가 매트릭스를 강화시킵니다.<br>
+        한 번 입력될 때마다 그 셀의 신뢰도가 올라가고, 다음 신제품 폼·카탈로그 재계산에 자동 반영됩니다.
+      </div>
+    </div>
+    <div id="cust-stat-box" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:12px;line-height:1.6;min-width:200px;">
+      <div style="color:var(--text-muted);">누적 입력</div>
+      <div style="font-size:22px;font-weight:700;color:var(--primary);" id="cust-stat-total">—</div>
+      <div style="color:var(--text-muted);">강화된 셀: <span id="cust-stat-cells" style="color:var(--text);font-weight:600;">—</span></div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr;gap:16px;">
+    <!-- 입력 폼 -->
+    <div class="cp-section" style="padding:20px;">
+      <h3 style="margin:0 0 12px 0;font-size:15px;">새 관측 기록</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="cp-field">
+          <label>HS Code <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="cust-hs" placeholder="예: 9503.00">
+        </div>
+        <div class="cp-field">
+          <label>국가 <span style="color:var(--danger);">*</span></label>
+          <select id="cust-country">
+            <option value="">선택...</option>
+            <option value="TW">대만 (TW)</option>
+            <option value="HK">홍콩 (HK)</option>
+            <option value="CN">중국 (CN)</option>
+            <option value="TH">태국 (TH)</option>
+            <option value="US">미국 (US)</option>
+            <option value="JP">일본 (JP)</option>
+            <option value="IDN">인도네시아 (IDN)</option>
+          </select>
+        </div>
+        <div class="cp-field">
+          <label>품목 (자유 입력)</label>
+          <input type="text" id="cust-product" placeholder="예: 아크릴 키링">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div class="cp-field">
+          <label>실 관세율 (%)</label>
+          <input type="number" id="cust-tariff" step="0.1" min="0" max="100" placeholder="6.5">
+        </div>
+        <div class="cp-field">
+          <label>인증비 (현지통화)</label>
+          <input type="number" id="cust-cert" step="1" min="0" placeholder="2400">
+        </div>
+        <div class="cp-field">
+          <label>통화</label>
+          <input type="text" id="cust-cert-cur" placeholder="TWD" maxlength="6" style="text-transform:uppercase;">
+        </div>
+        <div class="cp-field">
+          <label>통관 일자</label>
+          <input type="date" id="cust-date">
+        </div>
+      </div>
+      <div class="cp-field" style="margin-bottom:12px;">
+        <label>출처</label>
+        <div id="cust-source-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+          <button type="button" class="cust-src-chip active" data-src="서류통관" onclick="custSelectSrc(this)">서류통관 영수증</button>
+          <button type="button" class="cust-src-chip" data-src="에이전시견적" onclick="custSelectSrc(this)">에이전시 견적</button>
+          <button type="button" class="cust-src-chip" data-src="관세청조회" onclick="custSelectSrc(this)">관세청 조회</button>
+          <button type="button" class="cust-src-chip" data-src="기타" onclick="custSelectSrc(this)">기타</button>
+        </div>
+      </div>
+      <div class="cp-field" style="margin-bottom:12px;">
+        <label>메모</label>
+        <textarea id="cust-memo" rows="2" placeholder="신고서 #, 통관 시 적용 케이스 등"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <span id="cust-save-hint" style="font-size:11px;color:var(--text-muted);"></span>
+        <button class="cp-btn cp-btn-primary" onclick="custSave()">셀 강화 + 저장</button>
+      </div>
+    </div>
+
+    <!-- 강화된 셀 요약 -->
+    <div class="cp-section" style="padding:20px;">
+      <h3 style="margin:0 0 12px 0;font-size:15px;">📊 강화된 셀 — HS prefix(4자리) × 국가별 평균</h3>
+      <div id="cust-summary-body" style="font-size:12px;color:var(--text-muted);">불러오는 중…</div>
+    </div>
+
+    <!-- 최근 입력 리스트 -->
+    <div class="cp-section" style="padding:20px;">
+      <h3 style="margin:0 0 12px 0;font-size:15px;">📜 누적 입력 (최근순)</h3>
+      <div id="cust-list-body" style="font-size:12px;">불러오는 중…</div>
+    </div>
+  </div>
+</div>
+
+<style>
+.cust-src-chip{font-size:12px;padding:6px 14px;border-radius:14px;background:var(--bg);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;font-family:inherit;transition:.15s;}
+.cust-src-chip:hover{background:var(--card);}
+.cust-src-chip.active{background:var(--primary-light);border-color:var(--primary);color:var(--primary);font-weight:600;}
+#cust-list-body table{width:100%;border-collapse:collapse;font-size:12px;}
+#cust-list-body th{text-align:left;padding:8px 6px;color:var(--text-muted);font-weight:500;font-size:11px;border-bottom:1px solid var(--border);}
+#cust-list-body td{padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;}
+#cust-list-body tr:hover{background:var(--bg);}
+.cust-cell-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;}
+.cust-cell{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.cust-cell .hs{font-size:11px;color:var(--text-muted);font-family:var(--font-mono,monospace);}
+.cust-cell .country{font-weight:700;font-size:14px;margin-top:2px;}
+.cust-cell .tariff{font-size:18px;font-weight:700;color:var(--primary);margin-top:4px;}
+.cust-cell .meta{font-size:10px;color:var(--text-muted);margin-top:4px;}
+</style>
+
   </main>
 </div>
 
@@ -1514,9 +1626,9 @@ async function doGoodsLogout(){
 
 // 사이드바 페이지 전환
 function switchPage(item){
-  // 권한 체크 — 미스터두낫띵 그룹(consumer/catalog)은 사업화팀·두낫띵팀·관리자만
+  // 권한 체크 — 미스터두낫띵 그룹(consumer/catalog/customs)은 사업화팀·두낫띵팀·관리자만
   const _page = item && item.dataset ? (item.dataset.page || '') : '';
-  if (['consumer','catalog'].indexOf(_page) >= 0 && !_hasRestrictedAccess(window._goodsUser)) {
+  if (['consumer','catalog','customs'].indexOf(_page) >= 0 && !_hasRestrictedAccess(window._goodsUser)) {
     if (typeof showToast === 'function') showToast('이 메뉴는 사업화팀·두낫띵팀·관리자만 접근 가능합니다', 'warn');
     return;
   }
@@ -1538,6 +1650,10 @@ function switchPage(item){
       document.querySelectorAll('#page-ai-review .ai-modal-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.status==='pending'));
       switchParsedTab('pending');
     }
+  }
+  // customs 진입 시 데이터 로드
+  if(item.dataset.page==='customs'){
+    if(typeof custInit==='function') custInit();
   }
 }
 function toggleSidebar(){
@@ -3686,38 +3802,61 @@ function cpRenderCountryTable(){
     // 권장값 적용 버튼
     const recApplyBtn = (!isKR && recLocal != null) ? `<button class="cp-rec-apply" onclick="cpApplyRec(${i},${recLocal})" title="이 권장값을 확정 현지가에 적용">↓</button>` : '';
 
-    // ━━ 마진율 갭 계산 ━━
+    // ━━ 마진율 갭 계산 (B+A 결합: 미니 바 + Δ%p 텍스트) ━━
     // 한국 마진% = (target - unitAll) / target  (cpRecalcMargin이 _cpUnitAllKRW 에 보관)
     // 수출 후 마진% = (실수령KRW - unitAll) / 실수령KRW
     //   실수령KRW = priceKRW / (1+VAT) / (1+관세) - 배송비 - 인증비
     //   priceKRW = finalKRW (사용자 확정) 또는 recKRW (권장값)
-    let marginCell = '<td style="color:var(--text-muted);font-size:11px;">-</td>';
+    let marginCell = '<td style="color:var(--text-muted);font-size:11px;text-align:center;">-<div style="font-size:9px;">생산단가 입력 시 표시</div></td>';
     const unitAll = _cpUnitAllKRW;
+    const BAR_MAX_PCT = 50;  // 마진 50%를 풀 바 길이로 가정 (100% 기준)
     if (unitAll && target > 0) {
       const krMargin = (target - unitAll) / target;  // 한국 마진율 (decimal)
+      const krMarginPct = krMargin * 100;
+      const krBarW = Math.max(0, Math.min(100, (krMarginPct / BAR_MAX_PCT) * 100));
+      const krLvlColor = krMarginPct >= 30 ? 'var(--success)' : krMarginPct >= 15 ? 'var(--warning)' : 'var(--danger)';
       if (isKR) {
-        // 한국 행: 한국 마진만 표시 (수출 행은 의미 없음)
-        const krCls = krMargin >= 0.30 ? 'color:var(--success);font-weight:600;' : krMargin >= 0.15 ? 'color:var(--warning);font-weight:600;' : 'color:var(--danger);font-weight:600;';
-        marginCell = `<td title="한국 매출 대비 마진율" style="${krCls}">한국 ${(krMargin*100).toFixed(1)}%</td>`;
+        // 한국 행: KR 마진만 미니 바로 표시 (수출 행은 의미 없음)
+        marginCell = `<td title="한국 매출 대비 마진율 (생산단가 ${cpFmtKRW(Math.round(unitAll))} 기준)" style="text-align:right;font-size:11px;line-height:1.3;padding:6px 8px;">
+          <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;">
+            <span style="color:var(--text-muted);min-width:18px;font-size:10px;">KR</span>
+            <div style="width:52px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;">
+              <div style="height:100%;width:${krBarW.toFixed(0)}%;background:#7F77DD;"></div>
+            </div>
+            <span style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right;font-weight:700;color:${krLvlColor};">${krMarginPct.toFixed(1)}%</span>
+          </div>
+        </td>`;
       } else {
-        // 수출 행: 한국 → 수출 비교
+        // 수출 행: 한국 vs 수출 비교 + Δ%p
         const priceKRW = finalKRW != null ? finalKRW : recKRW;
         if (priceKRW != null && priceKRW > 0) {
           const recovered = priceKRW / (1 + vat) / (1 + tariff) - shipKRW - certKRW;
           const exMargin = recovered > 0 ? (recovered - unitAll) / recovered : null;
           if (exMargin != null) {
-            const gap = exMargin - krMargin;
-            const gapPct = gap * 100;
-            const gapCls = gapPct >= 0 ? 'cp-diff-plus' : (gapPct >= -2 ? 'color:var(--warning);font-weight:600;' : 'cp-diff-minus');
-            const gapTxt = (gapPct >= 0 ? '+' : '') + gapPct.toFixed(1) + '%';
+            const exMarginPct = exMargin * 100;
+            const exBarW = Math.max(0, Math.min(100, (exMarginPct / BAR_MAX_PCT) * 100));
+            const gapPct = exMarginPct - krMarginPct;
+            // 갭 신호등: ≥-3%p 녹색, -3 ~ -7%p 황색, <-7%p 또는 음수 마진 빨강
+            const gapColor = (exMarginPct < 0) ? 'var(--danger)' : (gapPct >= -3 ? 'var(--success)' : (gapPct >= -7 ? 'var(--warning)' : 'var(--danger)'));
+            const gapTxt = 'Δ ' + (gapPct >= 0 ? '+' : '') + gapPct.toFixed(1) + '%p';
             const usingFinal = finalKRW != null;
-            const noteTxt = usingFinal ? '확정가 기준' : '권장값 기준';
-            const titleTxt = `한국 ${(krMargin*100).toFixed(1)}% → 수출 ${(exMargin*100).toFixed(1)}% (${noteTxt})\n실수령 ${cpFmtKRW(Math.round(recovered))} = ${cpFmtKRW(priceKRW)} ÷ ${(1+vat).toFixed(3)} ÷ ${(1+tariff).toFixed(3)} - 배송 ${cpFmtKRW(shipKRW)} - 인증 ${cpFmtKRW(certKRW)}`;
-            const indClass = gapPct >= 0 ? 'cp-diff-plus' : 'cp-diff-minus';
-            marginCell = `<td title="${escapeHtml(titleTxt)}" style="text-align:right;font-size:11px;line-height:1.4;">
-              <div style="color:var(--text-muted);">한국 ${(krMargin*100).toFixed(1)}%</div>
-              <div class="${indClass}" style="font-weight:600;font-size:13px;">→ ${(exMargin*100).toFixed(1)}%</div>
-              <div class="${gapCls.startsWith('color')?'':gapCls}" style="${gapCls.startsWith('color')?gapCls:'font-size:10px;'}">${gapTxt}${usingFinal?'':' <span style=\'color:var(--text-muted);font-weight:400;\'>(권장)</span>'}</div>
+            const titleTxt = `한국 ${krMarginPct.toFixed(1)}% → ${c.code} ${exMarginPct.toFixed(1)}% (${usingFinal?'확정가':'권장값'} 기준)\n갭 ${gapTxt}\n실수령 ${cpFmtKRW(Math.round(recovered))} = ${cpFmtKRW(Math.round(priceKRW))} ÷ VAT ${(1+vat).toFixed(3)} ÷ 관세 ${(1+tariff).toFixed(3)} − 배송 ${cpFmtKRW(shipKRW)} − 인증 ${cpFmtKRW(certKRW)}\n생산단가 ${cpFmtKRW(Math.round(unitAll))}`;
+            marginCell = `<td title="${escapeHtml(titleTxt)}" style="text-align:right;font-size:11px;line-height:1.3;padding:6px 8px;">
+              <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;">
+                <span style="color:var(--text-muted);min-width:18px;font-size:10px;">KR</span>
+                <div style="width:52px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;">
+                  <div style="height:100%;width:${krBarW.toFixed(0)}%;background:#7F77DD;"></div>
+                </div>
+                <span style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right;color:var(--text-muted);">${krMarginPct.toFixed(1)}%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;margin-top:3px;justify-content:flex-end;">
+                <span style="color:var(--text-muted);min-width:18px;font-size:10px;">${c.code}</span>
+                <div style="width:52px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;">
+                  <div style="height:100%;width:${exBarW.toFixed(0)}%;background:${gapColor};"></div>
+                </div>
+                <span style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right;font-weight:700;color:${gapColor};">${exMarginPct.toFixed(1)}%</span>
+              </div>
+              <div style="margin-top:3px;font-size:10px;font-weight:600;color:${gapColor};">${gapTxt}${usingFinal?'':' <span style=\'color:var(--text-muted);font-weight:400;font-size:9px;\'>(권장)</span>'}</div>
             </td>`;
           }
         }
@@ -5111,6 +5250,175 @@ async function runInboxNow(dryRun){
 // 초기 로드 + 60초마다 폴링
 loadParsedSummary();
 setInterval(loadParsedSummary, 60 * 1000);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🛃 통관 데이터 입력 채널 (2026-04-30 신설)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let _custInited = false;
+let _custSelectedSrc = '서류통관';
+const COUNTRY_CUR_DEFAULT = { TW:'TWD', HK:'HKD', CN:'CNY', TH:'THB', US:'USD', JP:'JPY', IDN:'IDR' };
+
+function custInit(){
+  if (_custInited) return;
+  _custInited = true;
+  // 통관 일자 디폴트 = 오늘
+  const dateEl = document.getElementById('cust-date');
+  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0,10);
+  // 국가 변경 시 통화 자동 채움
+  const countryEl = document.getElementById('cust-country');
+  if (countryEl) countryEl.addEventListener('change', () => {
+    const c = countryEl.value;
+    const curEl = document.getElementById('cust-cert-cur');
+    if (c && curEl && !curEl.value) curEl.value = COUNTRY_CUR_DEFAULT[c] || '';
+  });
+  custLoadAll();
+}
+
+function custSelectSrc(btn){
+  document.querySelectorAll('#cust-source-row .cust-src-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _custSelectedSrc = btn.dataset.src || '기타';
+}
+
+async function custSave(){
+  const hsCode = (document.getElementById('cust-hs').value || '').trim();
+  const country = (document.getElementById('cust-country').value || '').trim();
+  const productName = (document.getElementById('cust-product').value || '').trim();
+  const tariffStr = (document.getElementById('cust-tariff').value || '').trim();
+  const certStr = (document.getElementById('cust-cert').value || '').trim();
+  const certCur = (document.getElementById('cust-cert-cur').value || '').trim().toUpperCase();
+  const memo = (document.getElementById('cust-memo').value || '').trim();
+  const observedDate = document.getElementById('cust-date').value || new Date().toISOString().slice(0,10);
+
+  if (!hsCode) { showToast('HS Code 입력 필수', 'warn'); return; }
+  if (!country) { showToast('국가 선택 필수', 'warn'); return; }
+  if (!tariffStr && !certStr) { showToast('실 관세 또는 인증비 중 최소 하나는 입력해주세요', 'warn'); return; }
+
+  const body = {
+    hsCode,
+    country,
+    productName,
+    actualTariffPct: tariffStr === '' ? null : Number(tariffStr),
+    actualCertLocal: certStr === '' ? null : Number(certStr),
+    certCurrency: certCur,
+    source: _custSelectedSrc,
+    memo,
+    observedDate
+  };
+  const hint = document.getElementById('cust-save-hint');
+  if (hint) { hint.textContent = '저장 중…'; hint.style.color = 'var(--text-muted)'; }
+  try {
+    const r = await fetch('/api/customs-observations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '저장 실패');
+    showToast('✅ ' + country + ' × HS ' + hsCode + ' 셀 강화됨', 'success');
+    if (hint) { hint.textContent = '✓ 저장됨 — 다음 신제품 폼에서 자동 반영'; hint.style.color = 'var(--success)'; }
+    // 폼 일부 리셋 (HS·국가는 유지해서 연속 입력 편리)
+    document.getElementById('cust-product').value = '';
+    document.getElementById('cust-tariff').value = '';
+    document.getElementById('cust-cert').value = '';
+    document.getElementById('cust-memo').value = '';
+    custLoadAll();
+  } catch (e) {
+    showToast('저장 실패: ' + e.message, 'warn');
+    if (hint) { hint.textContent = '✗ ' + e.message; hint.style.color = 'var(--danger)'; }
+  }
+}
+
+async function custLoadAll(){
+  await Promise.all([custLoadSummary(), custLoadList()]);
+}
+
+function escapeHtmlBasic(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function custLoadSummary(){
+  const body = document.getElementById('cust-summary-body');
+  const totalEl = document.getElementById('cust-stat-total');
+  const cellsEl = document.getElementById('cust-stat-cells');
+  if (!body) return;
+  try {
+    const r = await fetch('/api/customs-observations/summary');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '조회 실패');
+    if (totalEl) totalEl.textContent = (d.total || 0) + '건';
+    if (cellsEl) cellsEl.textContent = (d.cells || []).length + '개';
+    if (!d.cells || !d.cells.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">아직 데이터 없음 — 첫 관측을 입력해주세요</div>';
+      return;
+    }
+    body.innerHTML = '<div class="cust-cell-grid">' + d.cells.map(c => `
+      <div class="cust-cell" title="${escapeHtmlBasic(c.items.map(it => `${it.observedDate}: ${it.tariff}% (${it.productName||'-'})`).join('\n'))}">
+        <div class="hs">HS ${escapeHtmlBasic(c.hs4)}.xx</div>
+        <div class="country">${escapeHtmlBasic(c.country)}</div>
+        <div class="tariff">${c.avgTariffPct.toFixed(1)}<span style="font-size:11px;color:var(--text-muted);font-weight:400;">%</span></div>
+        <div class="meta">${c.count}건 평균 · 최근 ${escapeHtmlBasic(c.latestDate||'-')}</div>
+        ${c.avgCertLocal != null ? `<div class="meta">인증비 ≈ ${c.avgCertLocal.toLocaleString()}</div>` : ''}
+      </div>
+    `).join('') + '</div>';
+  } catch (e) {
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">조회 실패: ' + escapeHtmlBasic(e.message) + '</div>';
+  }
+}
+
+async function custLoadList(){
+  const body = document.getElementById('cust-list-body');
+  if (!body) return;
+  try {
+    const r = await fetch('/api/customs-observations');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '조회 실패');
+    if (!d.observations || !d.observations.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">아직 누적 입력 없음</div>';
+      return;
+    }
+    const rows = d.observations.slice(0, 50).map(o => `
+      <tr>
+        <td><b>${escapeHtmlBasic(o.country)}</b></td>
+        <td style="font-family:var(--font-mono,monospace);">${escapeHtmlBasic(o.hsCode)}</td>
+        <td>${escapeHtmlBasic(o.productName || '-')}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">${o.actualTariffPct != null ? o.actualTariffPct.toFixed(1)+'%' : '-'}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">${o.actualCertLocal != null ? o.actualCertLocal.toLocaleString() + ' ' + escapeHtmlBasic(o.certCurrency||'') : '-'}</td>
+        <td style="font-size:11px;">${escapeHtmlBasic(o.source)}</td>
+        <td style="font-size:11px;">${escapeHtmlBasic(o.observedDate)}</td>
+        <td style="font-size:11px;color:var(--text-muted);">${escapeHtmlBasic(o.recordedBy)}</td>
+        <td style="text-align:right;"><button class="cp-btn cp-btn-ghost" style="font-size:10px;padding:2px 8px;" onclick="custDelete('${escapeHtmlBasic(o.id)}')">🗑</button></td>
+      </tr>
+    `).join('');
+    body.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>국가</th><th>HS</th><th>품목</th><th style="text-align:right;">관세</th><th style="text-align:right;">인증비</th>
+          <th>출처</th><th>일자</th><th>입력자</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${d.observations.length > 50 ? `<div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;">최근 50건만 표시 (전체 ${d.observations.length}건)</div>` : ''}
+    `;
+  } catch (e) {
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">조회 실패: ' + escapeHtmlBasic(e.message) + '</div>';
+  }
+}
+
+async function custDelete(id){
+  if (!confirm('이 관측 기록을 삭제할까요?')) return;
+  try {
+    const r = await fetch('/api/customs-observations/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || '삭제 실패');
+    }
+    showToast('삭제됨', 'success');
+    custLoadAll();
+  } catch (e) {
+    showToast('삭제 실패: ' + e.message, 'warn');
+  }
+}
 </script>
 
 <!-- 견적서 업로드 모달 -->
