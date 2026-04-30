@@ -4497,7 +4497,13 @@ async function cpAutoHSSoon(force){
       method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ productName: name, category: document.getElementById('cp-category').value, spec: '' })
     });
-    const d = await r.json();
+    // 세션 만료 → 로그인 유도
+    if (r.status === 401) {
+      _cpHandleAuthExpired();
+      hsInput.placeholder = orig;
+      return;
+    }
+    const d = await r.json().catch(()=>({}));
     if(r.ok && d.candidates && d.candidates.length){
       const top = d.candidates[0];
       hsInput.value = top.code || '';
@@ -4510,10 +4516,54 @@ async function cpAutoHSSoon(force){
       window._cpHSCache = d.candidates;
       window._cpHSConfirmed = false;
       cpUpdateHSConfirmBadge();
+      _cpShowHSManualHint(false);
     } else {
       hsInput.placeholder = orig;
+      // 503 (API 키 없음) / 500 (파싱 실패) / 기타 — 사용자에게 명시적 fallback 안내
+      const reason = d && d.error ? d.error : ('HTTP ' + r.status);
+      _cpShowHSManualHint(true, reason);
     }
-  }catch(e){ hsInput.placeholder = orig; console.warn('[AutoHS]',e); }
+  }catch(e){
+    hsInput.placeholder = orig;
+    console.warn('[AutoHS]',e);
+    _cpShowHSManualHint(true, e.message || '네트워크 오류');
+  }
+}
+
+// 401 세션 만료 공통 처리 — 토스트 + 로그인 화면 자동 이동
+function _cpHandleAuthExpired(){
+  if (window._cpAuthExpiredShown) return;
+  window._cpAuthExpiredShown = true;
+  showToast('🔐 세션이 만료되었습니다 — 다시 로그인해주세요', 'warn');
+  setTimeout(() => { window.location.href = '/login.html'; }, 1800);
+}
+
+// HS Code 자동 추천 실패 시 수동 검색 안내 박스 토글
+function _cpShowHSManualHint(show, reason){
+  let hint = document.getElementById('cp-hs-manual-hint');
+  if (!hint && show) {
+    const fld = document.getElementById('cp-hs')?.closest('.cp-field');
+    if (!fld) return;
+    hint = document.createElement('div');
+    hint.id = 'cp-hs-manual-hint';
+    hint.style.cssText = 'margin-top:6px;padding:8px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:6px;font-size:11px;line-height:1.55;color:var(--text);';
+    fld.appendChild(hint);
+  }
+  if (hint) {
+    if (show) {
+      hint.style.display = 'block';
+      hint.innerHTML = `<b style="color:var(--danger);">⚠️ AI 자동 추천 실패</b> <span style="color:var(--text-muted);">${escapeHtml(reason||'')}</span><br>
+        <span style="color:var(--text-muted);">→ 다음 방법으로 직접 찾아주세요:</span>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <button class="cp-btn cp-btn-ghost" style="font-size:11px;padding:3px 10px;" onclick="cpForceRefreshHS()">🔄 AI 재시도</button>
+          <button class="cp-btn cp-btn-ghost" style="font-size:11px;padding:3px 10px;" onclick="cpHSSearch('customs')">🏛️ 관세청 UNI-PASS</button>
+          <button class="cp-btn cp-btn-ghost" style="font-size:11px;padding:3px 10px;" onclick="cpHSSearch('google')">🔎 구글 검색</button>
+          <span style="font-size:10px;color:var(--text-muted);align-self:center;">또는 HS Code 직접 입력 ↑</span>
+        </div>`;
+    } else {
+      hint.style.display = 'none';
+    }
+  }
 }
 
 
@@ -4614,7 +4664,14 @@ async function cpSubmitQuote(){
       method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
-    const d = await r.json();
+    // 세션 만료 → 로그인 유도
+    if (r.status === 401) {
+      resEl.style.display='block';
+      resEl.innerHTML = `<b style="color:var(--danger);">🔐 세션 만료</b><div style="margin-top:6px;font-size:12px;color:var(--text-muted);">다시 로그인이 필요합니다. 1.5초 후 자동으로 로그인 화면으로 이동합니다…</div>`;
+      _cpHandleAuthExpired();
+      return;
+    }
+    const d = await r.json().catch(()=>({}));
     if(!r.ok||d.error){
       resEl.style.display='block';
       let msg = `<b style="color:var(--danger);">실패:</b> ${escapeHtml(d.error||r.status)}`;
