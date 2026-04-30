@@ -587,17 +587,17 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cp-verdict.good{background:rgba(16,185,129,.1);color:var(--success);border:1px solid var(--success);}
 .cp-verdict.warn{background:rgba(245,158,11,.1);color:var(--warning);border:1px solid var(--warning);}
 .cp-verdict.bad{background:rgba(239,68,68,.1);color:var(--danger);border:1px solid var(--danger);}
-.cp-country-table{width:100%;border-collapse:collapse;font-size:13px;}
-.cp-country-table th{background:var(--bg);padding:10px 8px;text-align:right;font-size:11px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;}
+.cp-country-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;}
+.cp-country-table th{background:var(--bg);padding:6px 4px;text-align:right;font-size:10px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;line-height:1.25;}
 .cp-country-table th:first-child,.cp-country-table th:nth-child(2){text-align:left;}
-.cp-country-table td{padding:8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+.cp-country-table td{padding:5px 4px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
 .cp-country-table td:first-child,.cp-country-table td:nth-child(2){text-align:left;}
-.cp-country-table input{width:70px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:right;background:var(--input-bg);color:var(--text);}
-.cp-country-table input.wide{width:90px;}
-.cp-country-table .cp-final{font-weight:700;color:var(--primary);font-size:14px;}
+.cp-country-table input{width:54px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;font-size:11px;text-align:right;background:var(--input-bg);color:var(--text);}
+.cp-country-table input.wide{width:68px;}
+.cp-country-table .cp-final{font-weight:700;color:var(--primary);font-size:12px;}
 .cp-country-table .cp-diff-plus{color:var(--success);font-weight:600;}
 .cp-country-table .cp-diff-minus{color:var(--danger);font-weight:600;}
-.cp-flag{font-size:16px;margin-right:4px;}
+.cp-flag{font-size:13px;margin-right:3px;}
 .cp-list-item{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;}
 .cp-list-item:hover{background:var(--primary-light);}
 .cp-list-item .cp-li-name{font-weight:600;}
@@ -688,7 +688,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="sidebar-group-title">미스터두낫띵</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
-      <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">🛃 통관 데이터</button>
+      <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">통관 데이터</button>
     </div>
     <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">사업화</div>
@@ -1057,17 +1057,17 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <thead><tr>
         <th style="text-align:left;">국가</th>
         <th style="text-align:left;">통화</th>
-        <th>환율(1=KRW)</th>
-        <th>기준환산</th>
-        <th>관세%<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">(HS매트릭스)</span></th>
+        <th>환율</th>
+        <th>환산</th>
+        <th>관세%<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">HS</span></th>
         <th>VAT%</th>
-        <th>배송비<br>(개당,KRW)</th>
-        <th>인증비<br>(KRW)</th>
-        <th>수익률 유지 최저가</th>
-        <th>확정 현지가</th>
-        <th>확정가(KRW)</th>
-        <th>최저가 대비</th>
-        <th>마진율<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">(한국→수출)</span></th>
+        <th>배송<br>KRW</th>
+        <th>인증<br>KRW</th>
+        <th>권장<br>최저가</th>
+        <th>확정<br>현지가</th>
+        <th>확정<br>KRW</th>
+        <th>vs최저</th>
+        <th>마진<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">KR→수출</span></th>
       </tr></thead>
       <tbody id="cp-country-tbody"></tbody>
     </table></div>
@@ -3817,13 +3817,13 @@ function cpRenderCountryTable(){
       const krLvlColor = krMarginPct >= 30 ? 'var(--success)' : krMarginPct >= 15 ? 'var(--warning)' : 'var(--danger)';
       if (isKR) {
         // 한국 행: KR 마진만 미니 바로 표시 (수출 행은 의미 없음)
-        marginCell = `<td title="한국 매출 대비 마진율 (생산단가 ${cpFmtKRW(Math.round(unitAll))} 기준)" style="text-align:right;font-size:11px;line-height:1.3;padding:6px 8px;">
+        marginCell = `<td title="한국 매출 대비 마진율 (생산단가 ${cpFmtKRW(Math.round(unitAll))} 기준)" style="text-align:right;font-size:10px;line-height:1.25;padding:4px 5px;">
           <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;">
             <span style="color:var(--text-muted);min-width:18px;font-size:10px;">KR</span>
-            <div style="width:52px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;">
+            <div style="width:36px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;">
               <div style="height:100%;width:${krBarW.toFixed(0)}%;background:#7F77DD;"></div>
             </div>
-            <span style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right;font-weight:700;color:${krLvlColor};">${krMarginPct.toFixed(1)}%</span>
+            <span style="font-variant-numeric:tabular-nums;min-width:34px;text-align:right;font-weight:700;color:${krLvlColor};font-size:10px;">${krMarginPct.toFixed(1)}%</span>
           </div>
         </td>`;
       } else {
@@ -3841,22 +3841,22 @@ function cpRenderCountryTable(){
             const gapTxt = 'Δ ' + (gapPct >= 0 ? '+' : '') + gapPct.toFixed(1) + '%p';
             const usingFinal = finalKRW != null;
             const titleTxt = `한국 ${krMarginPct.toFixed(1)}% → ${c.code} ${exMarginPct.toFixed(1)}% (${usingFinal?'확정가':'권장값'} 기준)\n갭 ${gapTxt}\n실수령 ${cpFmtKRW(Math.round(recovered))} = ${cpFmtKRW(Math.round(priceKRW))} ÷ VAT ${(1+vat).toFixed(3)} ÷ 관세 ${(1+tariff).toFixed(3)} − 배송 ${cpFmtKRW(shipKRW)} − 인증 ${cpFmtKRW(certKRW)}\n생산단가 ${cpFmtKRW(Math.round(unitAll))}`;
-            marginCell = `<td title="${escapeHtml(titleTxt)}" style="text-align:right;font-size:11px;line-height:1.3;padding:6px 8px;">
+            marginCell = `<td title="${escapeHtml(titleTxt)}" style="text-align:right;font-size:10px;line-height:1.25;padding:4px 5px;">
               <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;">
                 <span style="color:var(--text-muted);min-width:18px;font-size:10px;">KR</span>
-                <div style="width:52px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;">
+                <div style="width:36px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;">
                   <div style="height:100%;width:${krBarW.toFixed(0)}%;background:#7F77DD;"></div>
                 </div>
-                <span style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right;color:var(--text-muted);">${krMarginPct.toFixed(1)}%</span>
+                <span style="font-variant-numeric:tabular-nums;min-width:34px;text-align:right;color:var(--text-muted);font-size:10px;">${krMarginPct.toFixed(1)}%</span>
               </div>
-              <div style="display:flex;align-items:center;gap:5px;margin-top:3px;justify-content:flex-end;">
+              <div style="display:flex;align-items:center;gap:4px;margin-top:2px;justify-content:flex-end;">
                 <span style="color:var(--text-muted);min-width:18px;font-size:10px;">${c.code}</span>
-                <div style="width:52px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0;">
+                <div style="width:36px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0;">
                   <div style="height:100%;width:${exBarW.toFixed(0)}%;background:${gapColor};"></div>
                 </div>
-                <span style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right;font-weight:700;color:${gapColor};">${exMarginPct.toFixed(1)}%</span>
+                <span style="font-variant-numeric:tabular-nums;min-width:34px;text-align:right;font-weight:700;color:${gapColor};font-size:10px;">${exMarginPct.toFixed(1)}%</span>
               </div>
-              <div style="margin-top:3px;font-size:10px;font-weight:600;color:${gapColor};">${gapTxt}${usingFinal?'':' <span style=\'color:var(--text-muted);font-weight:400;font-size:9px;\'>(권장)</span>'}</div>
+              <div style="margin-top:2px;font-size:9px;font-weight:600;color:${gapColor};">${gapTxt}${usingFinal?'':' <span style=\'color:var(--text-muted);font-weight:400;font-size:9px;\'>(권장)</span>'}</div>
             </td>`;
           }
         }
