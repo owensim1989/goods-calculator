@@ -133,7 +133,8 @@ const TEAM_COLORS = {
   '영상·마케팅':'var(--success)',
   '사업화지원':'var(--warning)'
 };
-const STORAGE_KEY = 'goods_saved_login';
+const STORAGE_KEY = 'goods_remember_v1';
+const LEGACY_KEY = 'goods_saved_login'; // 옛 평문 비밀번호 저장 (자동 정리 대상)
 
 let selectedName = '';
 
@@ -182,6 +183,7 @@ async function doLogin(){
   if (!selectedName) { showErr('직원을 선택해주세요'); return; }
   const pw = $('loginPw').value;
   if (!pw) { showErr('비밀번호를 입력해주세요'); return; }
+  const remember = $('rememberMe').checked;
   const btn = $('submitBtn');
   btn.disabled = true; btn.textContent = '확인 중...';
   try {
@@ -189,13 +191,23 @@ async function doLogin(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       credentials:'same-origin',
-      body: JSON.stringify({ name: selectedName, password: pw })
+      body: JSON.stringify({ name: selectedName, password: pw, remember: remember })
     });
     const j = await r.json().catch(() => ({}));
     if (r.ok && j.ok) {
-      if ($('rememberMe').checked) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: selectedName, pw })); } catch(e){}
+      if (remember && j.rememberToken) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            name: selectedName,
+            token: j.rememberToken,
+            expiresAt: j.rememberExpiresAt || 0
+          }));
+        } catch(e){}
+      } else {
+        try { localStorage.removeItem(STORAGE_KEY); } catch(e){}
       }
+      // 옛 평문 비밀번호 저장 잔재 정리
+      try { localStorage.removeItem(LEGACY_KEY); } catch(e){}
       location.replace('/');
       return;
     }
@@ -223,22 +235,50 @@ function showNormalLogin(){
   setTimeout(() => $('loginPw').focus(), 60);
 }
 function clearSavedLogin(){
+  // 서버에 토큰 무효화 요청 (best-effort)
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (saved && saved.token) {
+      fetch('/api/logout', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify({ token: saved.token })
+      }).catch(()=>{});
+    }
+  } catch(e){}
   try { localStorage.removeItem(STORAGE_KEY); } catch(e){}
+  try { localStorage.removeItem(LEGACY_KEY); } catch(e){}
   showNormalLogin();
 }
 async function autoLogin(){
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e){}
-  if (!saved || !saved.name || !saved.pw) { clearSavedLogin(); return; }
-  selectedName = saved.name;
-  $('loginPw').value = saved.pw;
-  $('rememberMe').checked = true;
-  await doLogin();
+  if (!saved || !saved.name || !saved.token) { clearSavedLogin(); return; }
+  const btn = $('submitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '자동 로그인 중...'; }
+  try {
+    const r = await fetch('/api/login/auto', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body: JSON.stringify({ name: saved.name, token: saved.token })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) { location.replace('/'); return; }
+  } catch(e){}
+  // 토큰 만료/무효 → 정리
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e){}
+  if (btn) { btn.disabled = false; btn.textContent = '로그인'; }
+  showNormalLogin();
+  showErr('자동 로그인 토큰이 만료됐습니다. 다시 로그인해주세요.');
 }
 function checkSavedLogin(){
+  // 옛 평문 비밀번호 저장 자동 정리 (보안 마이그레이션 — 2026-04-30)
+  try { localStorage.removeItem(LEGACY_KEY); } catch(e){}
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e){}
-  if (!saved || !saved.name) { showNormalLogin(); return; }
+  if (!saved || !saved.name || !saved.token) { showNormalLogin(); return; }
   const emp = EMPLOYEES.find(e => e.name === saved.name);
   if (!emp) { clearSavedLogin(); return; }
   showSavedLogin(emp);
