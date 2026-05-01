@@ -1109,35 +1109,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       신제품 사업성 검토에서 <b>승인</b>된 프로젝트가 자동 등록됩니다. 이 화면에서는 카탈로그 전체에 대한 일괄 도구를 사용할 수 있습니다.
     </p>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:6px;">📥 제품리스트</div>
-        <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">FOB·CIF 22열 포맷 + 이미지 임베드. 해외 바이어에게 보내는 표준 카탈로그 엑셀.</div>
-        <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()">📥 다운로드</button>
-      </div>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:6px;">📤 엑셀 일괄 Import</div>
-        <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">기존 엑셀 파일을 업로드해서 카탈로그 DB에 일괄 등록 (바코드 중복 자동 skip).</div>
-        <button class="cp-btn cp-btn-ghost" onclick="cpOpenBulkImport()">📤 엑셀 업로드</button>
-      </div>
-    </div>
-
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;">
-      <div style="font-weight:600;font-size:14px;margin-bottom:8px;">⚙️ 일괄 보정 도구 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 자주 쓰지 않음</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-        <button class="cp-btn cp-btn-ghost" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;" onclick="cpAssignCategories()" title="HS Code/Product Name 기반 자동 분류">
-          🏷️ <b>카테고리 일괄 분류</b><br>
-          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">Category 필드를 HS Code/Product Name 기반으로 자동 분류</span>
-        </button>
-        <button class="cp-btn cp-btn-ghost" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;" onclick="cpMigrateFOB()" title="FOB·CIF 일괄 채움">
-          🔄 <b>FOB 일괄 채움</b><br>
-          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">FOB_KRW·CIF_KRW_asia가 비어있는 제품을 KR Retail × (1−할인율) 공식으로 일괄</span>
-        </button>
-        <button class="cp-btn" style="text-align:left;justify-content:flex-start;padding:12px 14px;line-height:1.5;height:auto;background:#7c3aed;color:#fff;border:none;" onclick="catApplyPrefixFixes()" title="협의된 6개 패턴 일괄 적용 (Acrylic stand→홈리빙, 마우스패드→문구, Tray→홈리빙, Cap→의류, Blanket 사진 비우기, Mood light Sofa archive)">
-          🔧 <b>사전 협의 일괄 fix</b><br>
-          <span style="font-size:11px;color:rgba(255,255,255,0.8);font-weight:400;">6개 패턴 자동 처리 — DRY-RUN 먼저 보고 → 실제 적용</span>
-        </button>
-      </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+      <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()" title="FOB·CIF 22열 포맷 + 이미지 임베드. 해외 바이어 발송용">📥 바이어 엑셀 다운로드</button>
     </div>
 
   </div>
@@ -1165,8 +1138,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <option value="프린트/스티커">프린트/스티커</option>
         <option value="모바일 악세사리">모바일 악세사리</option>
         <option value="의류">의류</option>
-        <option value="기타">⚠️ 기타 (재배치 필요)</option>
-        <option value="(없음)">(카테고리 없음)</option>
+        <option value="기타">기타</option>
       </select>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
         <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음만</span>
@@ -5739,6 +5711,21 @@ let _catImgDataUrl = null;
 let _catRenameTargetId = null;
 let _catSelected = new Set();
 let _catVisibleIds = [];   // 현재 필터로 노출 중인 ID 목록
+let _catLastClickIdx = -1; // shift-click 범위 선택용 anchor
+
+// 정렬 우선순위 — 카테고리 9개 고정 순서, 그 외(미분류 포함)는 마지막
+const CAT_SORT_ORDER = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타'];
+function _catSortKey(it){
+  const i = CAT_SORT_ORDER.indexOf(it.category || '');
+  return i === -1 ? 999 : i;
+}
+function _catSortItems(arr){
+  arr.sort((a, b) => {
+    const ai = _catSortKey(a), bi = _catSortKey(b);
+    if (ai !== bi) return ai - bi;
+    return (a.productName || '').localeCompare(b.productName || '', 'ko');
+  });
+}
 
 async function catInit(){
   if (!_catInited) { _catInited = true; }
@@ -5756,6 +5743,7 @@ async function catReload(){
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
     _catItems = d.items || [];
+    _catSortItems(_catItems);  // 카테고리 순 → 이름순 기본 정렬
     if (countEl) countEl.textContent = `${d.total||_catItems.length}건 (전체 표시 ${_catItems.length}건)`;
     catRender();
   } catch (e) {
@@ -5776,8 +5764,7 @@ function catRender(){
     (x.hsCode||'').toLowerCase().includes(q) ||
     (x.작성자||'').toLowerCase().includes(q)
   );
-  if (cat === '(없음)') list = list.filter(x => !x.category);
-  else if (cat) list = list.filter(x => x.category === cat);
+  if (cat) list = list.filter(x => x.category === cat);
   if (noimg) list = list.filter(x => !x.imageUrl && !x.hasLocalImage);
 
   _catVisibleIds = list.map(x => x.id);
@@ -5788,7 +5775,7 @@ function catRender(){
     return;
   }
 
-  rowsEl.innerHTML = list.map(it => {
+  rowsEl.innerHTML = list.map((it, idx) => {
     const isSwapSource = _catSwapFromId === it.id;
     const isSelected = _catSelected.has(it.id);
     const thumb = (it.imageUrl || (it.hasLocalImage ? `/api/catalog-image/${escapeHtml(it.imageId||'')}` : ''));
@@ -5799,21 +5786,21 @@ function catRender(){
     const opts = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타']
       .map(c => `<option value="${c}"${c===catVal?' selected':''}>${c}</option>`).join('');
     return `
-      <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}">
-        <div><input type="checkbox" ${isSelected?'checked':''} onchange="catToggleSelect('${it.id}', this.checked)"></div>
+      <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}" data-idx="${idx}" onclick="catRowClick(event, '${it.id}', ${idx})" style="cursor:pointer;">
+        <div><input type="checkbox" ${isSelected?'checked':''} onclick="event.preventDefault();" tabindex="-1" style="pointer-events:none;"></div>
         <div class="cat-thumb">${thumbHtml}</div>
         <div>
           <div class="name">${escapeHtml(it.productName || '(이름없음)')}</div>
           <div class="meta">HS ${escapeHtml(it.hsCode || '-')} · ₩${(it.retailKR||0).toLocaleString('ko-KR')} · ${escapeHtml(it.작성자 || '-')} · ${escapeHtml(it.등록일 || '-')}</div>
         </div>
-        <div class="cat-select-wrap">
+        <div class="cat-select-wrap" onclick="event.stopPropagation();">
           <select class="cat-select" onchange="catChangeCategory('${it.id}', this.value, this)">
             <option value="">— 카테고리 선택 —</option>
             ${opts}
           </select>
           ${!catVal ? '<div style="font-size:10px;color:var(--danger);margin-top:2px;">⚠️ 미분류</div>' : ''}
         </div>
-        <div class="actions">
+        <div class="actions" onclick="event.stopPropagation();">
           <button onclick="catImgOpen('${it.id}')" title="이미지 업로드/변경">📷</button>
           <button onclick="catSwapClick('${it.id}')" title="이미지 swap (다른 항목과 사진 교환)">🔄</button>
           <button onclick="catRenameOpen('${it.id}')" title="이름 수정">✏️</button>
@@ -5822,6 +5809,25 @@ function catRender(){
       </div>`;
   }).join('');
   catUpdateBulkBar();
+}
+
+// 카드 몸통 클릭 시 체크박스 토글 + Shift+클릭 범위 선택
+function catRowClick(ev, id, idx){
+  // 액션 버튼·셀렉트·input 클릭은 위에서 stopPropagation 이라 여기 안 옴
+  if (ev.shiftKey && _catLastClickIdx >= 0 && _catLastClickIdx !== idx) {
+    // 범위 선택 — anchor 부터 현재까지 모두 선택 (Gmail 방식)
+    const lo = Math.min(_catLastClickIdx, idx);
+    const hi = Math.max(_catLastClickIdx, idx);
+    for (let i = lo; i <= hi; i++) {
+      if (_catVisibleIds[i]) _catSelected.add(_catVisibleIds[i]);
+    }
+  } else {
+    // 단일 토글
+    if (_catSelected.has(id)) _catSelected.delete(id);
+    else _catSelected.add(id);
+  }
+  _catLastClickIdx = idx;
+  catRender();
 }
 
 // ━━ 다수 선택 ━━
