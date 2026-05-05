@@ -1631,6 +1631,71 @@ app.delete('/api/consumer-pricing/catalog/:id', async (req, res) => {
   }
 });
 
+// 카탈로그 항목 ARCHIVE (브라우저 GET 가능, barcode 또는 page_id 둘 다 지원)
+// 사용: GET /api/admin/catalog/archive?barcode=8809946778743&confirm=1
+//      GET /api/admin/catalog/archive?id={pageId}&dryRun=1
+// 인증: 관리자 SSO 세션 또는 ADMIN_PASSWORD 파라미터
+app.get('/api/admin/catalog/archive', async (req, res) => {
+  // 인증: 관리자 SSO 또는 ADMIN_PASSWORD
+  const sessionAdmin = req.user && req.user.role === '관리자';
+  const adminPwSet = !!(process.env.ADMIN_PASSWORD || '').trim();
+  const passwordOK = adminPwSet && (req.query.password || '') === process.env.ADMIN_PASSWORD;
+  const noPasswordFallback = !adminPwSet;
+  if (!sessionAdmin && !passwordOK && !noPasswordFallback) {
+    return res.status(403).json({ error: 'unauthorized — 관리자 SSO 로그인 또는 password 파라미터 필요' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+
+  const isDry = req.query.dryRun === '1';
+  const isConfirm = req.query.confirm === '1';
+  if (!isDry && !isConfirm) return res.status(400).json({ error: 'must specify ?dryRun=1 or ?confirm=1' });
+
+  try {
+    let pageId = (req.query.id || '').trim();
+    let foundByBarcode = null;
+    if (!pageId && req.query.barcode) {
+      const barcode = String(req.query.barcode).trim();
+      // barcode → pageId 매핑
+      let cursor = undefined;
+      do {
+        const resp = await notion.databases.query({
+          database_id: PRODUCT_CATALOG_DB_ID,
+          start_cursor: cursor, page_size: 100
+        });
+        for (const p of resp.results) {
+          const bc = (p.properties?.Barcode?.rich_text || []).map(t => t.plain_text || '').join('').trim();
+          if (bc === barcode && !p.archived) { foundByBarcode = p; break; }
+        }
+        if (foundByBarcode) break;
+        cursor = resp.has_more ? resp.next_cursor : undefined;
+      } while (cursor);
+      if (!foundByBarcode) return res.status(404).json({ error: `barcode not found: ${barcode}` });
+      pageId = foundByBarcode.id;
+    }
+    if (!pageId) return res.status(400).json({ error: 'id 또는 barcode 파라미터 필요' });
+
+    // 미리 페이지 정보 조회 (응답에 포함)
+    const page = foundByBarcode || await notion.pages.retrieve({ page_id: pageId });
+    const pr = page.properties || {};
+    const name = (pr['Product Name']?.title || []).map(t => t.plain_text || '').join('');
+    const barcode = (pr.Barcode?.rich_text || []).map(t => t.plain_text || '').join('');
+
+    if (isDry) {
+      return res.json({ ok: true, mode: 'DRY_RUN', target: { page_id: pageId, name, barcode, already_archived: !!page.archived }, note: '실제 archive 는 ?confirm=1' });
+    }
+
+    if (page.archived) {
+      return res.json({ ok: true, mode: 'CONFIRMED', already_archived: true, target: { page_id: pageId, name, barcode } });
+    }
+
+    await notion.pages.update({ page_id: pageId, archived: true });
+    res.json({ ok: true, mode: 'CONFIRMED', archived: true, target: { page_id: pageId, name, barcode } });
+  } catch (e) {
+    console.error('[archive 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 카탈로그 이미지 업로드 — base64/dataURL 받아 CATALOG_IMAGE_DIR 에 저장 + Image_URL 갱신
 app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -3656,8 +3721,15 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     let imagesEmbedded = 0;
     let imageErrors = [];
 
-    for (let idx = 0; idx < allPages.length; idx++) {
-      const p = allPages[idx];
+    // 2026-05-05 — 단종/Out of stock 항목은 바이어 엑셀에서 제외 (제품리스트 다운로드 정합성)
+    const _gSelStatus = (p) => (p.properties?.판매상태?.select?.name) || null;
+    const visiblePages = allPages.filter(p => {
+      const s = _gSelStatus(p);
+      return s !== '단종' && s !== 'Out of stock';
+    });
+
+    for (let idx = 0; idx < visiblePages.length; idx++) {
+      const p = visiblePages[idx];
       const pr = p.properties || {};
       const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
       const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
@@ -3728,7 +3800,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       }
     }
 
-    console.log(`[바이어 엑셀] 이미지 임베드: ${imagesEmbedded}/${allPages.length}, 에러: ${imageErrors.length}`);
+    console.log(`[바이어 엑셀] 이미지 임베드: ${imagesEmbedded}/${visiblePages.length}, 에러: ${imageErrors.length} (전체 ${allPages.length} 중 단종/품절 ${allPages.length - visiblePages.length} 제외)`);
     const buf = await workbook.xlsx.writeBuffer();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const filename = `Mr.Donothing_Product_List_${today}.xlsx`;
