@@ -2715,8 +2715,13 @@ app.get('/api/admin/pricing-audit/markup-report', async (req, res) => {
 });
 
 app.get('/api/admin/pricing-audit/apply', async (req, res) => {
-  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
-    return res.status(403).json({ error: 'unauthorized' });
+  // 관리자 SSO(Owen 등) 또는 ADMIN_PASSWORD 둘 중 하나로 인증
+  const sessionAdmin = req.user && req.user.role === '관리자';
+  const adminPwSet = !!(process.env.ADMIN_PASSWORD || '').trim();
+  const passwordOK = adminPwSet && (req.query.password || '') === process.env.ADMIN_PASSWORD;
+  const noPasswordFallback = !adminPwSet; // env 미설정 시 기존 동작 유지(빈 문자열 통과)
+  if (!sessionAdmin && !passwordOK && !noPasswordFallback) {
+    return res.status(403).json({ error: 'unauthorized — 관리자 SSO 로그인 또는 password 파라미터 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
 
