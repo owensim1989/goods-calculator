@@ -1,0 +1,326 @@
+{
+  "generated_at": "2026-05-05",
+  "source": "마스터엑셀(1. Mr.Donothing - Product list_FOB-CIF.xlsx) — Owen 보유 정본",
+  "scope": "대만 기존 노출가 보존 정책. 마스터 TW 값 ≠ Notion TW 값인 34건 복원",
+  "policy": {
+    "근거": "대만 시장 이미 오픈 → 기존 제품 TW 가격 동결",
+    "복원": "Notion Retail_TW_TWD를 마스터엑셀 값으로 PATCH"
+  },
+  "country_field_map": {
+    "KR": "Retail_KR_KRW",
+    "TW": "Retail_TW_TWD",
+    "HK": "Retail_HK_HKD",
+    "CN": "Retail_CN_CNY",
+    "TH": "Retail_TH_THB",
+    "US": "Retail_US_USD",
+    "JP": "Retail_JP_JPY"
+  },
+  "items": [
+    {
+      "barcode": "8809946776381",
+      "country": "TW",
+      "final": 230,
+      "name": "Hand Mirror - Entryway life",
+      "category": "Home & Living",
+      "current_in_catalog": 250,
+      "restore_to_master": 230
+    },
+    {
+      "barcode": "8809946776350",
+      "country": "TW",
+      "final": 230,
+      "name": "Hand Mirror - Party is over",
+      "category": "Home & Living",
+      "current_in_catalog": 250,
+      "restore_to_master": 230
+    },
+    {
+      "barcode": "8809946776367",
+      "country": "TW",
+      "final": 230,
+      "name": "Hand Mirror - Spring cleaning",
+      "category": "Home & Living",
+      "current_in_catalog": 250,
+      "restore_to_master": 230
+    },
+    {
+      "barcode": "8809946776374",
+      "country": "TW",
+      "final": 230,
+      "name": "Hand Mirror - Work hour",
+      "category": "Home & Living",
+      "current_in_catalog": 250,
+      "restore_to_master": 230
+    },
+    {
+      "barcode": "8809946773298",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Angel",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809434919115",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Bath tub",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778088",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Camper",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778095",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Chilling",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809434919153",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Chips",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946773281",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Devil",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778040",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Fired",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809434919160",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Grey pillow",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778057",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - January 3rd",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946773304",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Laptop",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946773328",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Left behind",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809434919122",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - No plan society",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809434919108",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Not welcome",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778118",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Office life",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778101",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Playground",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946773311",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Sofa",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778064",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Swimming",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946778071",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Wine",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946773335",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - Work hour",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809434919092",
+      "country": "TW",
+      "final": 220,
+      "name": "Keyring Acrylic - horror movie",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 260,
+      "restore_to_master": 220
+    },
+    {
+      "barcode": "8809946775940",
+      "country": "TW",
+      "final": 490,
+      "name": "Keyring PVC - Bed",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 510,
+      "restore_to_master": 490
+    },
+    {
+      "barcode": "8809946775933",
+      "country": "TW",
+      "final": 490,
+      "name": "Keyring PVC - Sofa",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 510,
+      "restore_to_master": 490
+    },
+    {
+      "barcode": "8809946775926",
+      "country": "TW",
+      "final": 490,
+      "name": "Keyring PVC - Way to work",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 510,
+      "restore_to_master": 490
+    },
+    {
+      "barcode": "8809946776343",
+      "country": "TW",
+      "final": 160,
+      "name": "Stamp_Entryway life",
+      "category": "Stationery",
+      "current_in_catalog": 190,
+      "restore_to_master": 160
+    },
+    {
+      "barcode": "8809946776329",
+      "country": "TW",
+      "final": 160,
+      "name": "Stamp_Lazy camper",
+      "category": "Stationery",
+      "current_in_catalog": 190,
+      "restore_to_master": 160
+    },
+    {
+      "barcode": "8809946776336",
+      "country": "TW",
+      "final": 160,
+      "name": "Stamp_Playground",
+      "category": "Stationery",
+      "current_in_catalog": 190,
+      "restore_to_master": 160
+    },
+    {
+      "barcode": "8809946776312",
+      "country": "TW",
+      "final": 160,
+      "name": "Stamp_Sofa",
+      "category": "Stationery",
+      "current_in_catalog": 190,
+      "restore_to_master": 160
+    },
+    {
+      "barcode": "8809946778835",
+      "country": "TW",
+      "final": 330,
+      "name": "Stand Acrylic - January 3rd",
+      "category": "Home & Living",
+      "current_in_catalog": 350,
+      "restore_to_master": 330
+    },
+    {
+      "barcode": "8809946778842",
+      "country": "TW",
+      "final": 330,
+      "name": "Stand Acrylic - Night in Taiwan",
+      "category": "Home & Living",
+      "current_in_catalog": 350,
+      "restore_to_master": 330
+    },
+    {
+      "barcode": "8809946775919",
+      "country": "TW",
+      "final": 330,
+      "name": "Stand Acrylic - Office life",
+      "category": "Keyrings & Accessories",
+      "current_in_catalog": 350,
+      "restore_to_master": 330
+    }
+  ]
+}
