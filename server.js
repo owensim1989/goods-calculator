@@ -3753,6 +3753,13 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       sheet.getRow(rowNum).height = 80;
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
       sheet.getCell(`O${rowNum}`).numFmt = '0%';
+      // 천단위 콤마 — 가격·수량·금액 컬럼 일괄 적용 (2026-05-05)
+      // G:KR / H:TW / J:TH / K:HK / L:CN / M:ID / N:FOB / P:CIF / U:발주수량 / V:Total — 정수형 #,##0
+      // I:US — 0.5 라운딩이라 소수점 1자리 #,##0.0
+      ['G','H','J','K','L','M','N','P','U','V'].forEach(col => {
+        sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
+      });
+      sheet.getCell(`I${rowNum}`).numFmt = '#,##0.0';
 
       // 이미지 임베드: 바코드 우선, 없으면 Image_URL의 cp_{id} fallback
       let imgKey = barcode;
