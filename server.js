@@ -1367,23 +1367,57 @@ function normalizeQuoteType(v) {
   return '일반';
 }
 
+// ━━━ 옵션 B Step 2 — parent_quote_id 기반 dedupe 헬퍼 (2026-05-08) ━━━
+// 같은 parent_quote_id(상위견적ID) 그룹은 1건으로 카운트
+// 그룹 내 우선순위: ① 채택 row (있으면) ② 가장 최근 row (날짜 내림차순)
+// parent_quote_id 없는 legacy row는 자기 id를 키로 사용 → 그대로 1건씩 카운트
+function dedupeByParent(rows) {
+  const groups = new Map(); // key=parentQuoteId, value=row
+  for (const r of rows) {
+    const key = r.parent_quote_id || r.id;
+    const cur = groups.get(key);
+    if (!cur) {
+      groups.set(key, r);
+      continue;
+    }
+    // 우선순위: 채택 > 미채택/대기 / 같은 상태면 최근 날짜
+    const priority = (st) => st === '채택' ? 3 : (st === '미채택' ? 2 : 1);
+    const pCur = priority(cur.상태);
+    const pNew = priority(r.상태);
+    if (pNew > pCur) {
+      groups.set(key, r);
+    } else if (pNew === pCur) {
+      const dCur = cur.날짜 || '';
+      const dNew = r.날짜 || '';
+      if (dNew > dCur) groups.set(key, r);
+    }
+  }
+  return Array.from(groups.values());
+}
+
 // 견적 채택 데이터 목록
 app.get('/api/adoption', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   const data = loadAdoption();
   const year = req.query.year || new Date().getFullYear().toString();
+  const dedupeFlag = req.query.dedupe !== '0'; // 기본 ON, ?dedupe=0 으로 끄기 가능 (legacy 호환)
   const filtered = data.filter(d => d.날짜 && d.날짜.startsWith(year));
 
   // 일반 견적만 채택률 통계에 집계 (선급금·장기는 큰 금액으로 통계 왜곡 → 별도 분리)
-  const standard = filtered.filter(d => normalizeQuoteType(d.견적유형) === '일반');
-  const advance  = filtered.filter(d => normalizeQuoteType(d.견적유형) === '선급금');
-  const longTerm = filtered.filter(d => normalizeQuoteType(d.견적유형) === '장기');
+  let standardRaw = filtered.filter(d => normalizeQuoteType(d.견적유형) === '일반');
+  let advanceRaw  = filtered.filter(d => normalizeQuoteType(d.견적유형) === '선급금');
+  let longTermRaw = filtered.filter(d => normalizeQuoteType(d.견적유형) === '장기');
+
+  // 옵션 B Step 2 — 채택률 통계는 parent_quote_id 기반 dedupe (v1·v2 같은 견적은 1건)
+  const standard = dedupeFlag ? dedupeByParent(standardRaw) : standardRaw;
+  const advance  = dedupeFlag ? dedupeByParent(advanceRaw)  : advanceRaw;
+  const longTerm = dedupeFlag ? dedupeByParent(longTermRaw) : longTermRaw;
 
   const adopted = standard.filter(d => d.상태 === '채택');
   const rejected = standard.filter(d => d.상태 === '미채택');
   const pending = standard.filter(d => d.상태 === '대기');
 
-  // 월별 통계 (일반 견적만)
+  // 월별 통계 (일반 견적만, dedupe된 후)
   const monthly = {};
   standard.forEach(d => {
     const m = d.날짜 ? d.날짜.substring(0, 7) : 'unknown';
@@ -1395,6 +1429,7 @@ app.get('/api/adoption', (req, res) => {
   });
 
   // 응답 내역에는 정규화된 견적유형 포함 (기존 데이터도 '일반' 채워서 반환)
+  // 내역은 dedupe 안 됨 — 모든 row 표시 (사용자가 v1·v2 둘 다 보고 관리할 수 있게)
   const 내역 = filtered
     .map(d => ({ ...d, 견적유형: normalizeQuoteType(d.견적유형) }))
     .sort((a, b) => (b.날짜 || '').localeCompare(a.날짜 || ''));
@@ -1434,6 +1469,10 @@ app.post('/api/adoption', (req, res) => {
   item.날짜 = item.날짜 || new Date().toISOString().split('T')[0];
   item.상태 = item.상태 || '대기';
   item.견적유형 = normalizeQuoteType(item.견적유형);    // default '일반'
+  // 옵션 B Step 2 — parent_quote_id (선택). v1=자기id 또는 mydesk Notion page id
+  if (item.parent_quote_id !== undefined) {
+    item.parent_quote_id = String(item.parent_quote_id || '').trim() || null;
+  }
   data.push(item);
   saveAdoption(data);
   res.json({ success: true, item });
@@ -1448,6 +1487,9 @@ app.patch('/api/adoption/:id', (req, res) => {
   // 견적유형 변경도 허용 — 정규화 적용
   const patch = { ...req.body };
   if (patch.견적유형 !== undefined) patch.견적유형 = normalizeQuoteType(patch.견적유형);
+  if (patch.parent_quote_id !== undefined) {
+    patch.parent_quote_id = String(patch.parent_quote_id || '').trim() || null;
+  }
   Object.assign(data[idx], patch);
   saveAdoption(data);
   res.json({ success: true, item: data[idx] });
