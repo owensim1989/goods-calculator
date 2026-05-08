@@ -1453,6 +1453,17 @@ app.patch('/api/adoption/:id', (req, res) => {
   res.json({ success: true, item: data[idx] });
 });
 
+// 견적 row 삭제 (점검·실수 등록 보정용)
+app.delete('/api/adoption/:id', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const data = loadAdoption();
+  const idx = data.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const removed = data.splice(idx, 1)[0];
+  saveAdoption(data);
+  res.json({ success: true, removed });
+});
+
 // ━━━ 소비자가 산정 API (Notion DB: 016ec336fe324fc29f6590017ee3f023) ━━━
 // ━━━ 4-28 새 산식 — 신제품 사업성 검토 폼 (cpRenderCountryTable) 용 ━━━
 // 카탈로그 일괄 재계산(preview-recalc-2026-04-28)와 동일 매트릭스. TW만 추가됨 (preview는 6국, 신제품 폼은 8국).
