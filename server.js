@@ -1355,6 +1355,18 @@ function saveAdoption(data) {
   fs.writeFileSync(ADOPTION_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
+// 견적유형 정규화 헬퍼 — 기존 데이터 호환 (필드 없으면 '일반'으로 처리)
+const VALID_QUOTE_TYPES = ['일반', '선급금', '장기'];
+function normalizeQuoteType(v) {
+  if (!v) return '일반';
+  const s = String(v).trim();
+  if (VALID_QUOTE_TYPES.includes(s)) return s;
+  // 호환: '선급금/가수금', '가수금', '장기 계약' 등 변형 입력 처리
+  if (/선급금|가수금|advance/i.test(s)) return '선급금';
+  if (/장기|long.?term/i.test(s)) return '장기';
+  return '일반';
+}
+
 // 견적 채택 데이터 목록
 app.get('/api/adoption', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
@@ -1362,13 +1374,18 @@ app.get('/api/adoption', (req, res) => {
   const year = req.query.year || new Date().getFullYear().toString();
   const filtered = data.filter(d => d.날짜 && d.날짜.startsWith(year));
 
-  const adopted = filtered.filter(d => d.상태 === '채택');
-  const rejected = filtered.filter(d => d.상태 === '미채택');
-  const pending = filtered.filter(d => d.상태 === '대기');
+  // 일반 견적만 채택률 통계에 집계 (선급금·장기는 큰 금액으로 통계 왜곡 → 별도 분리)
+  const standard = filtered.filter(d => normalizeQuoteType(d.견적유형) === '일반');
+  const advance  = filtered.filter(d => normalizeQuoteType(d.견적유형) === '선급금');
+  const longTerm = filtered.filter(d => normalizeQuoteType(d.견적유형) === '장기');
 
-  // 월별 통계
+  const adopted = standard.filter(d => d.상태 === '채택');
+  const rejected = standard.filter(d => d.상태 === '미채택');
+  const pending = standard.filter(d => d.상태 === '대기');
+
+  // 월별 통계 (일반 견적만)
   const monthly = {};
-  filtered.forEach(d => {
+  standard.forEach(d => {
     const m = d.날짜 ? d.날짜.substring(0, 7) : 'unknown';
     if (!monthly[m]) monthly[m] = { total: 0, adopted: 0, rejected: 0, pending: 0 };
     monthly[m].total++;
@@ -1377,16 +1394,32 @@ app.get('/api/adoption', (req, res) => {
     else monthly[m].pending++;
   });
 
+  // 응답 내역에는 정규화된 견적유형 포함 (기존 데이터도 '일반' 채워서 반환)
+  const 내역 = filtered
+    .map(d => ({ ...d, 견적유형: normalizeQuoteType(d.견적유형) }))
+    .sort((a, b) => (b.날짜 || '').localeCompare(a.날짜 || ''));
+
   res.json({
     year,
-    총건수: filtered.length,
+    총건수: standard.length,                              // 일반만 (기존 호환)
     채택: adopted.length,
     미채택: rejected.length,
     대기: pending.length,
-    채택률: filtered.length > 0 ? Math.round(adopted.length / (adopted.length + rejected.length) * 100) || 0 : 0,
+    채택률: standard.length > 0 ? Math.round(adopted.length / (adopted.length + rejected.length) * 100) || 0 : 0,
     월별: monthly,
-    내역: filtered.sort((a, b) => (b.날짜 || '').localeCompare(a.날짜 || '')),
-    미채택사유: rejected.reduce((acc, d) => { const r = d.사유 || '기타'; acc[r] = (acc[r] || 0) + 1; return acc; }, {})
+    내역,
+    미채택사유: rejected.reduce((acc, d) => { const r = d.사유 || '기타'; acc[r] = (acc[r] || 0) + 1; return acc; }, {}),
+    // 견적유형별 카운트 (별도 표시용 — 통계 카드)
+    유형별: {
+      일반: standard.length,
+      선급금: advance.length,
+      장기: longTerm.length,
+      특수합계: advance.length + longTerm.length,
+      // 금액 합계 (참고용)
+      선급금_금액합: advance.reduce((s, d) => s + (Number(d.견적금액) || 0), 0),
+      장기_금액합: longTerm.reduce((s, d) => s + (Number(d.견적금액) || 0), 0)
+    },
+    전체총건수: filtered.length                           // 신규 — 일반+선급금+장기 합계
   });
 });
 
@@ -1400,6 +1433,7 @@ app.post('/api/adoption', (req, res) => {
   item.id = item.id || Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
   item.날짜 = item.날짜 || new Date().toISOString().split('T')[0];
   item.상태 = item.상태 || '대기';
+  item.견적유형 = normalizeQuoteType(item.견적유형);    // default '일반'
   data.push(item);
   saveAdoption(data);
   res.json({ success: true, item });
@@ -1411,7 +1445,10 @@ app.patch('/api/adoption/:id', (req, res) => {
   const data = loadAdoption();
   const idx = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
-  Object.assign(data[idx], req.body);
+  // 견적유형 변경도 허용 — 정규화 적용
+  const patch = { ...req.body };
+  if (patch.견적유형 !== undefined) patch.견적유형 = normalizeQuoteType(patch.견적유형);
+  Object.assign(data[idx], patch);
   saveAdoption(data);
   res.json({ success: true, item: data[idx] });
 });
