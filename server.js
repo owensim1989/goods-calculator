@@ -1355,18 +1355,6 @@ function saveAdoption(data) {
   fs.writeFileSync(ADOPTION_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// 견적유형 정규화 헬퍼 — 기존 데이터 호환 (필드 없으면 '일반'으로 처리)
-const VALID_QUOTE_TYPES = ['일반', '선급금', '장기'];
-function normalizeQuoteType(v) {
-  if (!v) return '일반';
-  const s = String(v).trim();
-  if (VALID_QUOTE_TYPES.includes(s)) return s;
-  // 호환: '선급금/가수금', '가수금', '장기 계약' 등 변형 입력 처리
-  if (/선급금|가수금|advance/i.test(s)) return '선급금';
-  if (/장기|long.?term/i.test(s)) return '장기';
-  return '일반';
-}
-
 // ━━━ 옵션 B Step 2 — parent_quote_id 기반 dedupe 헬퍼 (2026-05-08) ━━━
 // 같은 parent_quote_id(상위견적ID) 그룹은 1건으로 카운트
 // 그룹 내 우선순위: ① 채택 row (있으면) ② 가장 최근 row (날짜 내림차순)
@@ -1403,23 +1391,16 @@ app.get('/api/adoption', (req, res) => {
   const dedupeFlag = req.query.dedupe !== '0'; // 기본 ON, ?dedupe=0 으로 끄기 가능 (legacy 호환)
   const filtered = data.filter(d => d.날짜 && d.날짜.startsWith(year));
 
-  // 일반 견적만 채택률 통계에 집계 (선급금·장기는 큰 금액으로 통계 왜곡 → 별도 분리)
-  let standardRaw = filtered.filter(d => normalizeQuoteType(d.견적유형) === '일반');
-  let advanceRaw  = filtered.filter(d => normalizeQuoteType(d.견적유형) === '선급금');
-  let longTermRaw = filtered.filter(d => normalizeQuoteType(d.견적유형) === '장기');
-
   // 옵션 B Step 2 — 채택률 통계는 parent_quote_id 기반 dedupe (v1·v2 같은 견적은 1건)
-  const standard = dedupeFlag ? dedupeByParent(standardRaw) : standardRaw;
-  const advance  = dedupeFlag ? dedupeByParent(advanceRaw)  : advanceRaw;
-  const longTerm = dedupeFlag ? dedupeByParent(longTermRaw) : longTermRaw;
+  const dedupedRows = dedupeFlag ? dedupeByParent(filtered) : filtered;
 
-  const adopted = standard.filter(d => d.상태 === '채택');
-  const rejected = standard.filter(d => d.상태 === '미채택');
-  const pending = standard.filter(d => d.상태 === '대기');
+  const adopted = dedupedRows.filter(d => d.상태 === '채택');
+  const rejected = dedupedRows.filter(d => d.상태 === '미채택');
+  const pending = dedupedRows.filter(d => d.상태 === '대기');
 
-  // 월별 통계 (일반 견적만, dedupe된 후)
+  // 월별 통계 (dedupe된 후)
   const monthly = {};
-  standard.forEach(d => {
+  dedupedRows.forEach(d => {
     const m = d.날짜 ? d.날짜.substring(0, 7) : 'unknown';
     if (!monthly[m]) monthly[m] = { total: 0, adopted: 0, rejected: 0, pending: 0 };
     monthly[m].total++;
@@ -1428,33 +1409,21 @@ app.get('/api/adoption', (req, res) => {
     else monthly[m].pending++;
   });
 
-  // 응답 내역에는 정규화된 견적유형 포함 (기존 데이터도 '일반' 채워서 반환)
   // 내역은 dedupe 안 됨 — 모든 row 표시 (사용자가 v1·v2 둘 다 보고 관리할 수 있게)
   const 내역 = filtered
-    .map(d => ({ ...d, 견적유형: normalizeQuoteType(d.견적유형) }))
+    .slice()
     .sort((a, b) => (b.날짜 || '').localeCompare(a.날짜 || ''));
 
   res.json({
     year,
-    총건수: standard.length,                              // 일반만 (기존 호환)
+    총건수: dedupedRows.length,
     채택: adopted.length,
     미채택: rejected.length,
     대기: pending.length,
-    채택률: standard.length > 0 ? Math.round(adopted.length / (adopted.length + rejected.length) * 100) || 0 : 0,
+    채택률: dedupedRows.length > 0 ? Math.round(adopted.length / (adopted.length + rejected.length) * 100) || 0 : 0,
     월별: monthly,
     내역,
-    미채택사유: rejected.reduce((acc, d) => { const r = d.사유 || '기타'; acc[r] = (acc[r] || 0) + 1; return acc; }, {}),
-    // 견적유형별 카운트 (별도 표시용 — 통계 카드)
-    유형별: {
-      일반: standard.length,
-      선급금: advance.length,
-      장기: longTerm.length,
-      특수합계: advance.length + longTerm.length,
-      // 금액 합계 (참고용)
-      선급금_금액합: advance.reduce((s, d) => s + (Number(d.견적금액) || 0), 0),
-      장기_금액합: longTerm.reduce((s, d) => s + (Number(d.견적금액) || 0), 0)
-    },
-    전체총건수: filtered.length                           // 신규 — 일반+선급금+장기 합계
+    미채택사유: rejected.reduce((acc, d) => { const r = d.사유 || '기타'; acc[r] = (acc[r] || 0) + 1; return acc; }, {})
   });
 });
 
@@ -1468,7 +1437,6 @@ app.post('/api/adoption', (req, res) => {
   item.id = item.id || Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
   item.날짜 = item.날짜 || new Date().toISOString().split('T')[0];
   item.상태 = item.상태 || '대기';
-  item.견적유형 = normalizeQuoteType(item.견적유형);    // default '일반'
   // 옵션 B Step 2 — parent_quote_id (선택). v1=자기id 또는 mydesk Notion page id
   if (item.parent_quote_id !== undefined) {
     item.parent_quote_id = String(item.parent_quote_id || '').trim() || null;
@@ -1484,9 +1452,7 @@ app.patch('/api/adoption/:id', (req, res) => {
   const data = loadAdoption();
   const idx = data.findIndex(d => d.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
-  // 견적유형 변경도 허용 — 정규화 적용
   const patch = { ...req.body };
-  if (patch.견적유형 !== undefined) patch.견적유형 = normalizeQuoteType(patch.견적유형);
   if (patch.parent_quote_id !== undefined) {
     patch.parent_quote_id = String(patch.parent_quote_id || '').trim() || null;
   }
