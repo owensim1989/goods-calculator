@@ -1383,7 +1383,9 @@ function dedupeByParent(rows) {
   return Array.from(groups.values());
 }
 
-// 견적 채택 데이터 목록
+// ⚠️ DEPRECATED (2026-05-10, Phase 1.5) — KPI 가 더이상 이 endpoint 호출 안 함
+// 데이터 소스: mydesk 노션 ESTIMATE_DB_ID 로 통합. KPI 는 mydesk 의 /api/quote-stats 호출.
+// 이 endpoint 와 quote-adoption.json 은 다음 사이클에서 완전 제거 예정 — 그 전까지 후방 호환만 유지
 app.get('/api/adoption', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   const data = loadAdoption();
