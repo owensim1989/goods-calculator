@@ -1623,6 +1623,10 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
       const cpIdRaw = getText('소비자가_산정_ID');
       const imgId = cpIdRaw ? cpImageId(cpIdRaw) : '';
       const hasLocalImage = imgId ? !!findCatalogImage(imgId) : false;
+      // 시리즈 그룹화 — 비고 필드에 박힌 <!--SERIES_ROOT:rootId--> 메타 추출 (2026-05-11)
+      const __remark = getText('비고');
+      const __srMatch = __remark && __remark.match(/<!--SERIES_ROOT:([a-f0-9-]+)-->/i);
+      const seriesRootId = __srMatch ? __srMatch[1] : null;
       return {
         id: p.id,
         productName: getText('Product Name'),
@@ -1637,7 +1641,8 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
         작성자: getSel('작성자'),
         원가율: getNum('원가율'),
         등록일: pr['등록일']?.date?.start || null,
-        cpId: cpIdRaw
+        cpId: cpIdRaw,
+        seriesRootId
       };
     });
     res.json({ items, total: allPages.length });
@@ -4359,6 +4364,9 @@ function pageToConsumerPricing(page) {
     material: __meta.material || '',
     packagingType: __meta.packagingType || '',
     fobDiscountRate: (typeof __meta.fobDiscountRate === 'number' ? __meta.fobDiscountRate : null),
+    // 시리즈 관계 — 복제 등록 시 원본 사업성 검토 page id 보존 (2026-05-11)
+    // 자기 자신이 root 인 경우 null, 복제로 만들어진 row 만 값을 가짐
+    seriesRootId: (typeof __meta.seriesRootId === 'string' && __meta.seriesRootId) ? __meta.seriesRootId : null,
     createdAt: page.created_time,
     updatedAt: page.last_edited_time
   };
@@ -4968,7 +4976,14 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       'Category': { select: { name: hsToCategory(item.HS코드, item.프로젝트명) } },
       '등록일': { date: { start: new Date().toISOString().slice(0, 10) } },
       '소비자가_산정_ID': { rich_text: [{ text: { content: req.params.id } }] },
-      '비고': { rich_text: [{ text: { content: item.메모 ? item.메모.replace(/<!--BREAKDOWN_META:[\s\S]*?-->/, '').trim() : '' } }] }
+      // 비고: 메모 본문 (BREAKDOWN_META 제거) + 시리즈 원본 ID 메타 (2026-05-11 추가)
+      // seriesRootId 가 있으면 그 값을, 없으면 자기 자신을 root 로 임베드
+      // — 자기 자신을 박는 이유: 카탈로그 그룹화 시 root 인 row 도 같은 키로 매칭되어 묶이게 하기 위함
+      '비고': (function(){
+        const memoBody = item.메모 ? item.메모.replace(/<!--BREAKDOWN_META:[\s\S]*?-->/, '').replace(/<!--SERIES_ROOT:[a-f0-9-]+-->/i, '').trim() : '';
+        const root = (typeof item.seriesRootId === 'string' && item.seriesRootId) ? item.seriesRootId : req.params.id;
+        return { rich_text: [{ text: { content: memoBody + '\n<!--SERIES_ROOT:' + root + '-->' } }] };
+      })()
     };
     if (item.작성자) props['작성자'] = { select: { name: item.작성자 } };
     if (item.size) props['Size_mm'] = { rich_text: [{ text: { content: item.size } }] };

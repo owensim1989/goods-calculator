@@ -843,6 +843,19 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div class="cp-input-section">
+    <!-- 🔍 기존 제품 복제 (2026-05-11 추가) — 사이즈/색상 변형·시즌 리뉴얼 등 비슷한 제품을 다시 등록할 때 -->
+    <div id="cp-clone-bar" style="margin-bottom:14px;padding:10px 14px;background:var(--bg-soft,#f7f7f7);border:1px dashed var(--border,#d0d0d0);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpOpenCloneSearch()">🔍 기존 제품 복제로 시작</button>
+      <span style="font-size:11px;color:var(--text-muted);">사이즈·색상만 다른 변형 / 시즌 리뉴얼은 복제로 빠르게 등록</span>
+      <span id="cp-cloned-from-tag" style="display:none;margin-left:auto;font-size:11px;color:var(--text-muted);">
+        🔗 원본 시리즈: <a href="#" id="cp-cloned-from-link" style="color:var(--accent,#4f6597);text-decoration:underline;">보기</a>
+        <button class="cp-btn cp-btn-ghost" style="font-size:10px;padding:2px 6px;margin-left:4px;" onclick="cpClearClonedFrom()">해제</button>
+      </span>
+    </div>
+    <div id="cp-clone-hint" style="display:none;margin-bottom:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;cursor:pointer;" onclick="cpOpenCloneSearch(true)">
+      💡 <strong id="cp-clone-hint-count">N</strong>개의 비슷한 제품 발견 — 클릭해서 정보 불러오기
+    </div>
+
     <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:14px;">
       <div class="cp-field">
         <label>① 프로젝트명 (제품명) *</label>
@@ -1216,6 +1229,26 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="catRenameClose()">취소</button>
       <button class="cp-btn cp-btn-primary" style="font-size:12px;" onclick="catRenameSave()">💾 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🔍 기존 제품 복제 검색 모달 (2026-05-11) -->
+<div id="cp-clone-search-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--card);border-radius:12px;padding:20px 24px;max-width:720px;width:92%;max-height:80vh;display:flex;flex-direction:column;">
+    <h3 style="margin:0 0 4px 0;font-size:15px;">🔍 기존 제품 복제로 시작</h3>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">선택한 제품의 카테고리·HS·원산지·소재·포장·관세 등이 자동으로 채워집니다. 프로젝트명·생산단가·수량은 비워둡니다.</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="cp-clone-search-q" type="text" placeholder="제품명으로 검색 (예: 키링)" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;" oninput="cpCloneRenderList()">
+      <select id="cp-clone-search-cat" onchange="cpCloneRenderList()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;">
+        <option value="">모든 카테고리</option>
+      </select>
+    </div>
+    <div id="cp-clone-search-results" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-soft,#fafafa);padding:6px;min-height:200px;">
+      <div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px;">로딩 중...</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpCloseCloneSearch()">취소</button>
     </div>
   </div>
 </div>
@@ -2924,6 +2957,11 @@ let CP_PRESETS = null;               // /api/consumer-pricing/presets 로 받아
 let CP_CURRENT = null;               // 현재 편집중 객체 (null=신규)
 let CP_COMPETITORS = [];             // [{brand,product,priceKRW,memo}]
 let CP_COUNTRIES = [];               // UI에 표시되는 국가 배열 (presets 복사본)
+// 🔍 복제 / 시리즈 관계 (2026-05-11)
+let CP_CLONED_FROM = null;           // 복제 원본 사업성 검토 page id (root) — null 이면 신규 또는 root 자기 자신
+let CP_LIST_CACHE = [];              // 사업성 검토 list 캐시 — 검색 모달 + 자동 감지 배너 공통 사용
+let CP_LIST_CACHE_AT = 0;            // 캐시 시각 (ms)
+let CP_CLONE_HINT_DEBOUNCE = null;   // 프로젝트명 input → 자동 감지 debounce
 
 const cpFmtNum = n => (n==null||isNaN(n))?'':Math.round(n).toLocaleString('ko-KR');
 const cpFmtKRW = n => (n==null||isNaN(n))?'-':'₩'+Math.round(n).toLocaleString('ko-KR');
@@ -3023,21 +3061,60 @@ function cpRememberAuthor(){
   if(v) localStorage.setItem('cp_author', v);
 }
 
+// 🔗 시리즈 그룹화 (2026-05-11) — items 를 root id 별로 묶고, 그룹 안에서는 root 가 맨 위
+function cpGroupBySeriesRoot(items){
+  const byRoot = new Map();      // rootId → [items]
+  const order = [];              // 그룹 순서 (첫 등장 순)
+  for (const it of items){
+    const root = (typeof it.seriesRootId === 'string' && it.seriesRootId) ? it.seriesRootId : it.id;
+    if (!byRoot.has(root)){ byRoot.set(root, []); order.push(root); }
+    byRoot.get(root).push(it);
+  }
+  // 각 그룹 안에서 — root 자기 자신 row 가 있으면 맨 위
+  const flat = [];
+  for (const rootId of order){
+    const arr = byRoot.get(rootId);
+    arr.sort((a,b)=>{
+      const aIsRoot = (a.id === rootId) ? -1 : 0;
+      const bIsRoot = (b.id === rootId) ? -1 : 0;
+      if (aIsRoot !== bIsRoot) return aIsRoot - bIsRoot;
+      const aT = Date.parse(a.updatedAt||'')||0;
+      const bT = Date.parse(b.updatedAt||'')||0;
+      return bT - aT;
+    });
+    for (let i = 0; i < arr.length; i++){
+      flat.push({ item: arr[i], rootId, indexInGroup: i, groupSize: arr.length });
+    }
+  }
+  return flat;
+}
 async function cpLoadList(){
   try{
     const r = await fetch('/api/consumer-pricing');
     const data = await r.json();
     const items = data.items || [];
+    // list 캐시도 같이 갱신 (검색 모달·자동 감지 배너 재사용)
+    CP_LIST_CACHE = items;
+    CP_LIST_CACHE_AT = Date.now();
     const listEl = document.getElementById('cp-list');
     const emptyEl = document.getElementById('cp-list-empty');
     if(!items.length){emptyEl.style.display='block';listEl.innerHTML='';return;}
     emptyEl.style.display='none';
-    listEl.innerHTML = items.map(it=>{
+    const grouped = cpGroupBySeriesRoot(items);
+    listEl.innerHTML = grouped.map(({item:it, rootId, indexInGroup, groupSize})=>{
       const badge = it.상태==='승인'?'cp-badge-approve':it.상태==='보류'?'cp-badge-hold':it.상태==='거절'?'cp-badge-reject':'cp-badge-review';
       const marginPct = (it.마진율!=null)?(it.마진율*100).toFixed(1)+'%':'-';
       const updated = it.updatedAt?new Date(it.updatedAt).toLocaleDateString('ko-KR'):'';
-      return `<div class="cp-list-item" onclick="cpLoadProject('${it.id}')">
-        <div><div class="cp-li-name">${escapeHtml(it.프로젝트명||'(무제)')}</div><div class="cp-li-meta">${escapeHtml(it.품목||'')} · ${updated}</div></div>
+      // 시리즈 표기: 그룹 N≥2 일 때만
+      const isMultiSeries = groupSize >= 2;
+      const isChild = isMultiSeries && indexInGroup > 0;
+      const seriesBadge = (isMultiSeries && indexInGroup === 0)
+        ? ' <span class="cp-badge" style="background:rgba(167,139,250,0.18);color:#7c5ec8;font-size:10px;padding:1px 6px;margin-left:6px;">🔗 시리즈 '+groupSize+'개</span>'
+        : '';
+      const nameDisplay = (isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '') + escapeHtml(it.프로젝트명||'(무제)') + seriesBadge;
+      const rowStyle = isChild ? ' style="padding-left:18px;"' : '';
+      return `<div class="cp-list-item"${rowStyle} onclick="cpLoadProject('${it.id}')">
+        <div><div class="cp-li-name">${nameDisplay}</div><div class="cp-li-meta">${escapeHtml(it.품목||'')} · ${updated}</div></div>
         <div>🎯 ${cpFmtKRW(it.타겟_소비자가_KRW)}</div>
         <div>마진 ${marginPct}</div>
         <div><span class="cp-badge ${badge}">${escapeHtml(it.상태||'검토중')}</span></div>
@@ -3362,6 +3439,10 @@ function cpNewProject(){
   document.querySelectorAll('.cp-ship-opt').forEach(b => b.classList.toggle('active', b.dataset.mode === 'LCL'));
   CP_COUNTRIES.forEach(c => { c.tariffPct = null; c.shipKRW = null; c.finalLocal = null; if (c.code !== 'KR') c.rate = null; });
   CP_CURRENT = null;
+  // 🔍 복제 / 시리즈 관계 리셋 (2026-05-11)
+  CP_CLONED_FROM = null;
+  if (typeof cpUpdateClonedFromTag === 'function') cpUpdateClonedFromTag();
+  const _hint = document.getElementById('cp-clone-hint'); if (_hint) _hint.style.display = 'none';
   // 복수 제품 견적서 체인 리셋
   window._cpMultiQuote = null;
   window._cpPendingQuote = null;
@@ -3424,6 +3505,8 @@ async function cpLoadProject(id){
     const it = await r.json();
     if(!it || it.error){showToast('불러오기 실패');return;}
     CP_CURRENT = it;
+    // 🔍 시리즈 관계 복원 (2026-05-11) — 저장된 row 가 복제로 만들어진 경우 root 표기
+    CP_CLONED_FROM = (typeof it.seriesRootId === 'string' && it.seriesRootId) ? it.seriesRootId : null;
     document.getElementById('cp-name').value = it.프로젝트명||'';
     document.getElementById('cp-category').value = it.품목||'';
     document.getElementById('cp-hs').value = it.HS코드||'';
@@ -3496,6 +3579,9 @@ async function cpLoadProject(id){
     } else {
       cpResetProductImage();
     }
+    // 🔍 시리즈 관계 UI 갱신 (2026-05-11)
+    if (typeof cpUpdateClonedFromTag === 'function') cpUpdateClonedFromTag();
+    const _hint2 = document.getElementById('cp-clone-hint'); if (_hint2) _hint2.style.display = 'none';
     window.scrollTo({top:document.getElementById('cp-list-section').offsetTop-60,behavior:'smooth'});
     showToast('불러왔습니다');
   }catch(e){console.error(e);showToast('오류: '+e.message);}
@@ -4257,7 +4343,9 @@ async function cpSave(){
     size: (document.getElementById('cp-size')?.value||'').trim(),
     material: (document.getElementById('cp-material')?.value||'').trim(),
     packagingType: (document.getElementById('cp-packaging-type')?.value||'').trim(),
-    fobDiscountRate: (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })()
+    fobDiscountRate: (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })(),
+    // 🔍 시리즈 관계 (2026-05-11) — 복제로 만들어진 row 만 root id 보존 (자기 자신이 root 이면 null)
+    seriesRootId: (typeof CP_CLONED_FROM === 'string' && CP_CLONED_FROM) ? CP_CLONED_FROM : null
   };
   const memoText = document.getElementById('cp-memo').value;
   const memoWithMeta = memoText + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(breakdownMeta) + '-->';
@@ -4596,6 +4684,200 @@ function cpApplyTariffsToCountries(t){
     }
   }
 }
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔍 기존 제품 복제 / 시리즈 관계 (2026-05-11)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 검색 매칭용 — 제품명 normalize: 소문자 + 공백·괄호·하이픈·언더바 제거 + 숫자 끝자리 제거 (시즌 변형 매칭)
+function cpNormalizeName(s){
+  if (!s) return '';
+  return String(s).toLowerCase()
+    .replace(/[\s\(\)\[\]_\-\,\.·]+/g,'')
+    .replace(/\d+$/,'')      // 끝의 숫자 (예: "키링2026" 의 2026) 제거
+    .trim();
+}
+// list 캐시 fetch (60초 캐시)
+async function cpFetchListCached(force){
+  const now = Date.now();
+  if (!force && CP_LIST_CACHE.length && (now - CP_LIST_CACHE_AT) < 60000) return CP_LIST_CACHE;
+  try{
+    const r = await fetch('/api/consumer-pricing');
+    if(!r.ok) return CP_LIST_CACHE;
+    const j = await r.json();
+    CP_LIST_CACHE = Array.isArray(j.items) ? j.items : [];
+    CP_LIST_CACHE_AT = now;
+  }catch(e){ /* keep stale cache */ }
+  return CP_LIST_CACHE;
+}
+// 두 문자열의 공통 prefix 길이 (시리즈 변형 감지용)
+function cpCommonPrefixLen(a, b){
+  let i = 0; const max = Math.min(a.length, b.length);
+  while (i < max && a[i] === b[i]) i++;
+  return i;
+}
+// 유사 제품 매칭 (현재 입력 제품명 기준) — 자기 자신 (CP_CURRENT) 제외
+function cpFindSimilar(query, opts){
+  const q = cpNormalizeName(query);
+  if (!q || q.length < 2) return [];
+  const filterCat = opts && opts.category ? opts.category : '';
+  const myId = CP_CURRENT && CP_CURRENT.id;
+  const out = [];
+  for (const it of CP_LIST_CACHE){
+    if (myId && it.id === myId) continue;
+    if (filterCat && it.품목 !== filterCat) continue;
+    const nm = cpNormalizeName(it.프로젝트명);
+    if (!nm) continue;
+    // 매칭 기준 4종:
+    let match = false;
+    // ① 한쪽이 다른쪽의 완전 prefix (예: "키링" → "키링 아크릴")
+    if (nm.indexOf(q) === 0 || q.indexOf(nm) === 0) match = true;
+    // ② substring 양방향 (둘 중 4자 이상)
+    else if (q.length >= 4 && nm.indexOf(q) >= 0) match = true;
+    else if (nm.length >= 4 && q.indexOf(nm) >= 0) match = true;
+    // ③ 공통 prefix 4자 이상 (같은 시리즈 변형: "아크릴키링빨강" vs "아크릴키링파랑" → "아크릴키링" 5자 공통)
+    else if (cpCommonPrefixLen(q, nm) >= 4) match = true;
+    if (match) out.push(it);
+  }
+  // 정렬: 같은 카테고리 우선 + 최근 작성 우선
+  return out.sort((a,b)=>{
+    const aT = Date.parse(a.updatedAt||'')||0;
+    const bT = Date.parse(b.updatedAt||'')||0;
+    return bT - aT;
+  });
+}
+
+// 모달 열기
+async function cpOpenCloneSearch(autoQuery){
+  const modal = document.getElementById('cp-clone-search-modal');
+  if (!modal) return;
+  // 검색어 — 자동 감지 배너에서 열린 경우 현재 입력값을 prefill
+  const qInput = document.getElementById('cp-clone-search-q');
+  if (autoQuery) qInput.value = (document.getElementById('cp-name').value||'').trim();
+  // 카테고리 드롭다운 채우기 (cp-category 옵션 복사)
+  const catSel = document.getElementById('cp-clone-search-cat');
+  const srcCat = document.getElementById('cp-category');
+  if (catSel && srcCat && catSel.options.length <= 1){
+    Array.from(srcCat.options).forEach(o => {
+      if (!o.value) return;
+      const opt = document.createElement('option');
+      opt.value = o.value; opt.textContent = o.value;
+      catSel.appendChild(opt);
+    });
+  }
+  modal.style.display = 'flex';
+  await cpFetchListCached(true);
+  cpCloneRenderList();
+  setTimeout(()=>qInput.focus(), 50);
+}
+function cpCloseCloneSearch(){
+  const modal = document.getElementById('cp-clone-search-modal');
+  if (modal) modal.style.display = 'none';
+}
+// 검색 결과 렌더링
+function cpCloneRenderList(){
+  const q = document.getElementById('cp-clone-search-q').value || '';
+  const cat = document.getElementById('cp-clone-search-cat').value || '';
+  const box = document.getElementById('cp-clone-search-results');
+  if (!box) return;
+  const results = q.trim() ? cpFindSimilar(q, {category:cat}) : (cat ? CP_LIST_CACHE.filter(x=>x.품목===cat) : CP_LIST_CACHE).slice(0, 30);
+  if (!results.length){
+    box.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px;">'
+      + (q.trim() ? '일치하는 제품 없음' : '저장된 사업성 검토가 없습니다')
+      + '</div>';
+    return;
+  }
+  box.innerHTML = results.slice(0, 50).map(it => {
+    const cat = it.품목 || '-';
+    const cost = (it.생산_단가!=null && it.생산_통화) ? (it.생산_통화 + ' ' + Math.round(it.생산_단가).toLocaleString()) : '';
+    const target = it.타겟_소비자가_KRW ? '타겟 ₩' + Math.round(it.타겟_소비자가_KRW).toLocaleString() : '';
+    const size = it.size || '';
+    const mat = it.material || '';
+    const subline = [cat, cost, target, size, mat].filter(Boolean).join(' · ');
+    const safeName = (it.프로젝트명||'-').replace(/"/g,'&quot;');
+    return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="cpApplyClone(\''+it.id+'\')">'
+      + '<div style="font-size:13px;color:var(--text);font-weight:500;">'+safeName+'</div>'
+      + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+subline+'</div>'
+      + '</div>';
+  }).join('');
+}
+// 선택된 제품의 정보를 폼에 prefill — 자동 prefill 필드 vs 비우는 필드 분리
+function cpApplyClone(srcId){
+  const src = CP_LIST_CACHE.find(x => x.id === srcId);
+  if (!src) { showToast('원본 제품을 찾을 수 없습니다'); return; }
+  // 폼 초기화 (cpNewProject 와 동일 효과 — 단 prefill 직전에)
+  cpNewProject();
+  // ── 자동 prefill: "거의 안 바뀌는 것" — 카테고리·HS·원산지·소재·포장·통화·관세·VAT·사이즈·FOB·타겟·작성자·경쟁사·국가별 가격
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
+  set('cp-category', src.품목);
+  set('cp-hs', src.HS코드);
+  set('cp-origin', src.origin);
+  set('cp-material', src.material);
+  set('cp-packaging-type', src.packagingType);
+  set('cp-size', src.size);
+  set('cp-cost-currency', src.생산_통화);
+  set('cp-author', src.작성자);
+  set('cp-target-price', src.타겟_소비자가_KRW ? Math.round(src.타겟_소비자가_KRW).toLocaleString() : '');
+  if (typeof src.fobDiscountRate === 'number') set('cp-fob-discount', src.fobDiscountRate);
+  // 경쟁사·국가별 가격 (배열)
+  if (Array.isArray(src.competitors) && src.competitors.length){
+    CP_COMPETITORS = src.competitors.map(c => ({...c}));   // deep copy
+    if (typeof cpRenderCompetitors === 'function') cpRenderCompetitors();
+  }
+  if (Array.isArray(src.countryPricing) && src.countryPricing.length){
+    CP_COUNTRIES = src.countryPricing.map(c => ({...c}));
+    if (typeof cpRenderCountryTable === 'function') cpRenderCountryTable();
+  }
+  // ── 비우고 시작 — 프로젝트명·생산단가·수량·메모·상태 → 사용자가 직접 입력
+  // (cpNewProject 가 이미 비워놨으니 추가 작업 X)
+  // ── 시리즈 관계 — root id 보존 (원본이 이미 복제된 row 면 그 root 를 그대로 이어받음)
+  CP_CLONED_FROM = src.seriesRootId || src.id;
+  cpUpdateClonedFromTag();
+  // hint 배너 숨김
+  const hint = document.getElementById('cp-clone-hint');
+  if (hint) hint.style.display = 'none';
+  cpCloseCloneSearch();
+  showToast('🔗 "' + (src.프로젝트명||'') + '" 정보를 불러왔습니다 — 프로젝트명·생산단가·수량을 입력하세요');
+  // 제품명 input 으로 포커스 이동
+  setTimeout(()=>{ const nm = document.getElementById('cp-name'); if (nm) nm.focus(); }, 100);
+}
+// 원본 보기 태그 표시/숨김
+function cpUpdateClonedFromTag(){
+  const tag = document.getElementById('cp-cloned-from-tag');
+  const link = document.getElementById('cp-cloned-from-link');
+  if (!tag) return;
+  if (CP_CLONED_FROM){
+    const root = CP_LIST_CACHE.find(x => x.id === CP_CLONED_FROM);
+    if (link) link.textContent = root ? (root.프로젝트명 || '보기') : '보기';
+    if (link) link.onclick = (e) => { e.preventDefault(); if (root) cpLoadProject(root.id); else showToast('원본을 찾을 수 없습니다'); };
+    tag.style.display = 'inline-block';
+  } else {
+    tag.style.display = 'none';
+  }
+}
+function cpClearClonedFrom(){
+  CP_CLONED_FROM = null;
+  cpUpdateClonedFromTag();
+}
+// 프로젝트명 input → 자동 감지 배너 (500ms debounce, 검색은 client-side 캐시)
+async function cpClonedHintRefresh(){
+  // 이미 복제 표기 중이면 hint 안 띄움
+  if (CP_CLONED_FROM){ const h = document.getElementById('cp-clone-hint'); if (h) h.style.display='none'; return; }
+  // 기존 저장 row 편집 중이면 안 띄움
+  if (CP_CURRENT && CP_CURRENT.id){ const h = document.getElementById('cp-clone-hint'); if (h) h.style.display='none'; return; }
+  const name = (document.getElementById('cp-name').value||'').trim();
+  if (name.length < 2){ const h = document.getElementById('cp-clone-hint'); if (h) h.style.display='none'; return; }
+  await cpFetchListCached(false);
+  const matches = cpFindSimilar(name, {category: document.getElementById('cp-category').value||''});
+  const hint = document.getElementById('cp-clone-hint');
+  const cnt = document.getElementById('cp-clone-hint-count');
+  if (!hint) return;
+  if (matches.length){
+    if (cnt) cnt.textContent = matches.length;
+    hint.style.display = 'block';
+  } else {
+    hint.style.display = 'none';
+  }
+}
+
 // 자동 HS 추천 — 품명 입력 1.5초 debounce
 let CP_HS_DEBOUNCE = null;
 let CP_HS_LAST_QUERY = '';
@@ -4609,6 +4891,9 @@ function cpOnNameInput(){
   cpRenderCountryTable();
   clearTimeout(CP_HS_DEBOUNCE);
   CP_HS_DEBOUNCE = setTimeout(cpAutoHSSoon, 1500);
+  // 🔍 시리즈 자동 감지 배너 — 별도 debounce (500ms)
+  clearTimeout(CP_CLONE_HINT_DEBOUNCE);
+  CP_CLONE_HINT_DEBOUNCE = setTimeout(cpClonedHintRefresh, 500);
 }
 async function cpAutoHSSoon(force){
   const name = (document.getElementById('cp-name').value||'').trim();
@@ -5767,15 +6052,39 @@ function catRender(){
   if (cat) list = list.filter(x => x.category === cat);
   if (noimg) list = list.filter(x => !x.imageUrl && !x.hasLocalImage);
 
-  _catVisibleIds = list.map(x => x.id);
+  // 🔗 시리즈 그룹화 (2026-05-11) — 같은 seriesRootId 끼리 모음. 정렬 유지 (root 첫 등장 위치 기준)
+  // groupedFlat: [{item, rootId, indexInGroup, groupSize}]
+  const _byRoot = new Map();
+  for (const it of list){
+    const root = (typeof it.seriesRootId === 'string' && it.seriesRootId) ? it.seriesRootId : it.id;
+    if (!_byRoot.has(root)) _byRoot.set(root, []);
+    _byRoot.get(root).push(it);
+  }
+  const _seenRoot = new Set();
+  const groupedFlat = [];
+  for (const it of list){
+    const root = (typeof it.seriesRootId === 'string' && it.seriesRootId) ? it.seriesRootId : it.id;
+    if (_seenRoot.has(root)) continue;
+    _seenRoot.add(root);
+    const grp = _byRoot.get(root).slice().sort((a, b) => {
+      const ar = (a.id === root) ? -1 : 0;
+      const br = (b.id === root) ? -1 : 0;
+      return ar - br;
+    });
+    for (let i = 0; i < grp.length; i++){
+      groupedFlat.push({ item: grp[i], rootId: root, indexInGroup: i, groupSize: grp.length });
+    }
+  }
 
-  if (!list.length) {
+  _catVisibleIds = groupedFlat.map(g => g.item.id);
+
+  if (!groupedFlat.length) {
     rowsEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px;">조건에 맞는 항목 없음</div>';
     catUpdateBulkBar();
     return;
   }
 
-  rowsEl.innerHTML = list.map((it, idx) => {
+  rowsEl.innerHTML = groupedFlat.map(({item:it, indexInGroup, groupSize}, idx) => {
     const isSwapSource = _catSwapFromId === it.id;
     const isSelected = _catSelected.has(it.id);
     const thumb = (it.imageUrl || (it.hasLocalImage ? `/api/catalog-image/${escapeHtml(it.imageId||'')}` : ''));
@@ -5785,12 +6094,20 @@ function catRender(){
     const catVal = it.category || '';
     const opts = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타']
       .map(c => `<option value="${c}"${c===catVal?' selected':''}>${c}</option>`).join('');
+    // 🔗 시리즈 그룹 표기 (2026-05-11) — 그룹 N≥2 일 때만
+    const _isMulti = groupSize >= 2;
+    const _isChild = _isMulti && indexInGroup > 0;
+    const _seriesBadge = (_isMulti && indexInGroup === 0)
+      ? ' <span style="background:rgba(167,139,250,0.18);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:500;">🔗 시리즈 '+groupSize+'</span>'
+      : '';
+    const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '') + escapeHtml(it.productName || '(이름없음)') + _seriesBadge;
+    const _rowExtra = _isChild ? ' style="cursor:pointer;background:rgba(167,139,250,0.04);"' : ' style="cursor:pointer;"';
     return `
-      <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}" data-idx="${idx}" onclick="catRowClick(event, '${it.id}', ${idx})" style="cursor:pointer;">
+      <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}" data-idx="${idx}" onclick="catRowClick(event, '${it.id}', ${idx})"${_rowExtra}>
         <div><input type="checkbox" ${isSelected?'checked':''} onclick="event.preventDefault();" tabindex="-1" style="pointer-events:none;"></div>
         <div class="cat-thumb">${thumbHtml}</div>
         <div>
-          <div class="name">${escapeHtml(it.productName || '(이름없음)')}</div>
+          <div class="name">${_nameDisplay}</div>
           <div class="meta">HS ${escapeHtml(it.hsCode || '-')} · ₩${(it.retailKR||0).toLocaleString('ko-KR')} · ${escapeHtml(it.작성자 || '-')} · ${escapeHtml(it.등록일 || '-')}</div>
         </div>
         <div class="cat-select-wrap" onclick="event.stopPropagation();">
