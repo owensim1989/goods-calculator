@@ -6146,18 +6146,19 @@ function catRender(){
   if (cat) list = list.filter(x => x.category === cat);
   if (noimg) list = list.filter(x => !x.imageUrl && !x.hasLocalImage);
 
-  // 🔗 시리즈 그룹화 (2026-05-11) — 같은 seriesRootId 끼리 모음. 정렬 유지 (root 첫 등장 위치 기준)
+  // 🔗 시리즈 그룹화 (2026-05-11) — root id 는 항상 "사업성 검토 page id" 기준
   // 견고성: server 의 비고 메타 (seriesRootId) 외에도 row.cpId 로 사업성 검토 list 의 root 매핑 fallback
-  // → 비고 메타가 없는 옛날 publish row 도 자연 보정
-  const _cpRootMap = new Map();   // cp page id → root id (사업성 검토 list 기반)
+  const _cpRootMap = new Map();   // cp page id → root id
+  const _cpNameMap = new Map();   // cp page id → 프로젝트명 (root 가 카탈로그에 없을 때 이름 lookup)
   for (const cp of (CP_LIST_CACHE||[])){
     const r = (typeof cp.seriesRootId === 'string' && cp.seriesRootId) ? cp.seriesRootId : cp.id;
     _cpRootMap.set(cp.id, r);
+    _cpNameMap.set(cp.id, cp.프로젝트명 || '');
   }
   function _resolveRoot(it){
     if (typeof it.seriesRootId === 'string' && it.seriesRootId) return it.seriesRootId;
     if (it.cpId && _cpRootMap.has(it.cpId)) return _cpRootMap.get(it.cpId);
-    return it.id;
+    return it.cpId || it.id;
   }
   // groupedFlat: [{item, rootId, indexInGroup, groupSize}]
   const _byRoot = new Map();
@@ -6200,12 +6201,24 @@ function catRender(){
     const catVal = it.category || '';
     const opts = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타']
       .map(c => `<option value="${c}"${c===catVal?' selected':''}>${c}</option>`).join('');
-    // 🔗 시리즈 그룹 표기 (2026-05-11) — 그룹 N≥2 일 때만
-    const _isMulti = groupSize >= 2;
-    const _isChild = _isMulti && indexInGroup > 0;
-    const _seriesBadge = (_isMulti && indexInGroup === 0)
-      ? ' <span style="background:rgba(167,139,250,0.18);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:500;">🔗 시리즈 '+groupSize+'</span>'
-      : '';
+    // 🔗 시리즈 그룹 표기 (2026-05-11) — root id 는 사업성 검토 page id. 카탈로그 row 의 cpId 가 root id 와 같으면 root row
+    const _rootId = _resolveRoot(it);
+    const _isRoot = !!(it.cpId && it.cpId === _rootId);
+    // 자식 판정: 자기 cpId 가 root id 와 다르면 자식 (root row 가 카탈로그에 publish 안 됐어도)
+    const _isChild = !_isRoot && _rootId && _rootId !== it.cpId && _rootId !== it.id;
+    // 사업성 검토 list 에서 같은 root 의 자식 수 (카탈로그에 없는 자식도 포함)
+    let _totalVariants = Math.max(0, groupSize - (_isRoot ? 1 : (groupSize > 0 ? 0 : 0)));
+    // 사업성 검토에만 있는 자식 추가 (카탈로그 root 가 있을 때만 의미 있음)
+    if (_isRoot){
+      const _cpIdsHere = new Set();
+      groupedFlat.forEach(g => { if (g.rootId === _rootId && g.item._cpId !== undefined) _cpIdsHere.add(g.item.cpId); });
+      for (const [cpKey, r] of _cpRootMap){ if (r === _rootId && cpKey !== _rootId && !_cpIdsHere.has(cpKey)) _totalVariants++; }
+    }
+    const _seriesBadge = (_isRoot && _totalVariants >= 1)
+      ? ' <span style="background:rgba(167,139,250,0.18);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:500;">🔗 시리즈 '+(_totalVariants+1)+'</span>'
+      : (_isChild
+          ? ' <span style="background:rgba(167,139,250,0.10);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-style:italic;">↳ ' + escapeHtml(_cpNameMap.get(_rootId) || '원본 미등록') + '</span>'
+          : '');
     const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '') + escapeHtml(it.productName || '(이름없음)') + _seriesBadge;
     const _rowExtra = _isChild ? ' style="cursor:pointer;background:rgba(167,139,250,0.04);"' : ' style="cursor:pointer;"';
     return `

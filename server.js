@@ -3745,8 +3745,11 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     };
     const prodName = (p) => ((p.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
     // 🔗 시리즈 root id 추출 (2026-05-11) — 비고 필드의 <!--SERIES_ROOT:rootId--> 메타 + cpId fallback
-    // 사업성 검토 list 도 fetch (cpId → seriesRootId 매핑 fallback 용)
-    const _cpRootMap = new Map();   // 사업성 검토 page id → 그 row 의 root (seriesRootId 또는 자기 자신)
+    // 사업성 검토 list 도 fetch (cpId → seriesRootId 매핑 + 이름 lookup)
+    // ⚠️ root id 는 항상 "사업성 검토 page id" 기준. 카탈로그 row.id (다른 DB) 와 같지 않으므로
+    //    카탈로그 row 의 자기 cpId 와 root id 를 비교해서 root/자식 판정.
+    const _cpRootMap = new Map();   // 사업성 검토 page id → 그 row 의 root id
+    const _cpNameMap = new Map();   // 사업성 검토 page id → 프로젝트명 (root row 가 카탈로그에 없을 때 이름 lookup)
     try {
       const cpResp = await notion.databases.query({
         database_id: CONSUMER_PRICING_DB_ID,
@@ -3756,20 +3759,30 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
         const cp = pageToConsumerPricing(cpPage);
         const r = (typeof cp.seriesRootId === 'string' && cp.seriesRootId) ? cp.seriesRootId : cp.id;
         _cpRootMap.set(cp.id, r);
+        _cpNameMap.set(cp.id, cp.프로젝트명 || '');
       }
     } catch (e) { console.warn('[엑셀 시리즈] 사업성 검토 list fetch 실패:', e.message); }
+    // root id 추출 + 카탈로그 row 의 cpId 도 캐시
+    const _getCpId = (p) => {
+      const pr = p.properties || {};
+      return (pr['소비자가_산정_ID'] && (pr['소비자가_산정_ID'].rich_text || []) || []).map(t => t.plain_text || '').join('');
+    };
     const _getRootId = (p) => {
       const pr = p.properties || {};
       const remark = (pr['비고'] && (pr['비고'].rich_text || []) || []).map(t => t.plain_text || '').join('');
       const m = remark.match(/<!--SERIES_ROOT:([a-f0-9-]+)-->/i);
       if (m) return m[1];
-      // fallback: 소비자가_산정_ID (cpId) → 사업성 검토 list 에서 root 매핑
-      const cpId = (pr['소비자가_산정_ID'] && (pr['소비자가_산정_ID'].rich_text || []) || []).map(t => t.plain_text || '').join('');
+      // fallback: cpId → 사업성 검토 list 에서 root 매핑
+      const cpId = _getCpId(p);
       if (cpId && _cpRootMap.has(cpId)) return _cpRootMap.get(cpId);
-      return p.id;     // 자기 자신이 root (단독)
+      // 둘 다 없으면 자기 cpId (없으면 카탈로그 자기 id) 를 root 로 (단독)
+      return cpId || p.id;
     };
-    // 각 page 에 root id 캐시 박아둠 (반복 호출 방지)
-    for (const p of allPages){ p._seriesRootId = _getRootId(p); }
+    // 각 page 에 root id + cpId 캐시 박아둠
+    for (const p of allPages){
+      p._cpId = _getCpId(p);
+      p._seriesRootId = _getRootId(p);
+    }
     // 1차 정렬: 카테고리 → 등록일 → 이름 (기존 동일). 그 다음 그룹화로 같은 시리즈끼리 인접 모음
     allPages.sort((a, b) => {
       const ca = catIdx(a), cb = catIdx(b);
@@ -3856,27 +3869,44 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       const 발주수량 = getNum('발주수량');
       const amount = (fobKRW && 발주수량) ? fobKRW * 발주수량 : null;
 
-      // 🔗 시리즈 정보 (2026-05-11)
+      // 🔗 시리즈 정보 (2026-05-11) — root id 는 항상 사업성 검토 page id 기준
       const rootId = p._seriesRootId;
-      const grpSize = allPages.filter(x => x._seriesRootId === rootId).length;
-      const isRoot = (p.id === rootId);
-      const isChild = grpSize >= 2 && !isRoot;
-      // root 의 Product Name 찾기 (자식 row 의 Series 컬럼에 표시)
+      const cpId = p._cpId;
+      // isRoot 판정: 카탈로그 row 의 cpId 가 root id 와 같으면 root row
+      const isRoot = !!(cpId && cpId === rootId);
+      // 카탈로그 안 같은 root row 수
+      const grpInCatalog = allPages.filter(x => x._seriesRootId === rootId).length;
+      // 사업성 검토 list 에서 같은 root 의 자식 수 (카탈로그에 publish 안 된 자식도 포함)
+      let cpVariantsCount = 0;
+      for (const [cpKey, r] of _cpRootMap){
+        if (r === rootId && cpKey !== rootId) cpVariantsCount++;
+      }
+      // 총 시리즈 변형 수 (root 제외) — 카탈로그 + 사업성 검토 dedupe
+      const cpIdsInCatalog = new Set(allPages.filter(x => x._seriesRootId === rootId).map(x => x._cpId).filter(Boolean));
+      let totalVariants = cpIdsInCatalog.size - (isRoot ? 1 : (cpIdsInCatalog.has(rootId) ? 1 : 0));
+      // 사업성 검토에만 있는 자식 추가
+      for (const [cpKey, r] of _cpRootMap){
+        if (r === rootId && cpKey !== rootId && !cpIdsInCatalog.has(cpKey)) totalVariants++;
+      }
+      // root 의 Product Name 찾기 (자식 row 의 Series 컬럼에 표시) — 카탈로그 → 사업성 검토 순으로 lookup
       let rootName = '';
-      if (grpSize >= 2){
-        const rootPage = allPages.find(x => x.id === rootId);
+      if (!isRoot){
+        const rootPage = allPages.find(x => x._cpId === rootId);
         if (rootPage) rootName = prodName(rootPage);
+        else if (_cpNameMap.has(rootId)) rootName = _cpNameMap.get(rootId);
       }
       // Series 컬럼 값:
-      //  - 단독 (grpSize===1): 빈칸
-      //  - root (다중 시리즈의 head): "Series Master (N variants)"
-      //  - 자식: "↳ variant of: {rootName}"
+      //  - 자식 (isRoot=false 이면서 root id 가 자기 cpId 와 다름): "↳ variant of: {rootName}"
+      //  - root + 변형 N≥1: "Series Master (N variants)"
+      //  - 단독 (변형 0): 빈칸
       let seriesLabel = '';
-      if (grpSize >= 2){
-        if (isRoot) seriesLabel = `Series Master (${grpSize} variants)`;
-        else seriesLabel = `↳ variant of: ${rootName}`;
+      const isChild = !isRoot && rootId && rootId !== cpId && rootId !== p.id;
+      if (isChild){
+        seriesLabel = '↳ variant of: ' + (rootName || '(원본 미등록)');
+      } else if (isRoot && totalVariants >= 1){
+        seriesLabel = `Series Master (${totalVariants + 1} variants)`;
       }
-      // Product Name — 자식 row 는 "  └ " prefix (시각적 들여쓰기)
+      // Product Name — 자식 row 는 "  └ " prefix
       const productNameDisplay = (isChild ? '  └ ' : '') + getText('Product Name');
 
       const rowNum = idx + 3;
@@ -3891,10 +3921,10 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       ];
       sheet.getRow(rowNum).height = 80;
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
-      // Series 셀 (E) 스타일 — 자식 row 는 보라 + italic
+      // Series 셀 (E) 스타일 — 자식 row 는 보라 + italic / root + 변형 ≥1 은 보라 bold
       if (isChild) {
         sheet.getCell(`E${rowNum}`).font = { color: { argb: 'FF7C5EC8' }, italic: true, size: 10 };
-      } else if (isRoot && grpSize >= 2) {
+      } else if (isRoot && totalVariants >= 1) {
         sheet.getCell(`E${rowNum}`).font = { color: { argb: 'FF7C5EC8' }, bold: true, size: 10 };
       }
       // Series 컬럼 추가로 모든 numFmt 컬럼 키 한 칸씩 우측 이동:
