@@ -3744,6 +3744,33 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       return d;
     };
     const prodName = (p) => ((p.properties?.['Product Name']?.title) || []).map(t => t.plain_text).join('');
+    // 🔗 시리즈 root id 추출 (2026-05-11) — 비고 필드의 <!--SERIES_ROOT:rootId--> 메타 + cpId fallback
+    // 사업성 검토 list 도 fetch (cpId → seriesRootId 매핑 fallback 용)
+    const _cpRootMap = new Map();   // 사업성 검토 page id → 그 row 의 root (seriesRootId 또는 자기 자신)
+    try {
+      const cpResp = await notion.databases.query({
+        database_id: CONSUMER_PRICING_DB_ID,
+        page_size: 100
+      });
+      for (const cpPage of (cpResp.results || [])){
+        const cp = pageToConsumerPricing(cpPage);
+        const r = (typeof cp.seriesRootId === 'string' && cp.seriesRootId) ? cp.seriesRootId : cp.id;
+        _cpRootMap.set(cp.id, r);
+      }
+    } catch (e) { console.warn('[엑셀 시리즈] 사업성 검토 list fetch 실패:', e.message); }
+    const _getRootId = (p) => {
+      const pr = p.properties || {};
+      const remark = (pr['비고'] && (pr['비고'].rich_text || []) || []).map(t => t.plain_text || '').join('');
+      const m = remark.match(/<!--SERIES_ROOT:([a-f0-9-]+)-->/i);
+      if (m) return m[1];
+      // fallback: 소비자가_산정_ID (cpId) → 사업성 검토 list 에서 root 매핑
+      const cpId = (pr['소비자가_산정_ID'] && (pr['소비자가_산정_ID'].rich_text || []) || []).map(t => t.plain_text || '').join('');
+      if (cpId && _cpRootMap.has(cpId)) return _cpRootMap.get(cpId);
+      return p.id;     // 자기 자신이 root (단독)
+    };
+    // 각 page 에 root id 캐시 박아둠 (반복 호출 방지)
+    for (const p of allPages){ p._seriesRootId = _getRootId(p); }
+    // 1차 정렬: 카테고리 → 등록일 → 이름 (기존 동일). 그 다음 그룹화로 같은 시리즈끼리 인접 모음
     allPages.sort((a, b) => {
       const ca = catIdx(a), cb = catIdx(b);
       if (ca !== cb) return ca - cb;
@@ -3751,6 +3778,30 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       if (da !== db) return db.localeCompare(da);
       return prodName(a).localeCompare(prodName(b));
     });
+    // 2차 그룹화: 같은 root id 끼리 인접. root 첫 등장 위치 기준 + root 자기 자신 row 가 그룹 head
+    {
+      const byRoot = new Map();   // rootId → [pages]
+      const order = [];
+      for (const p of allPages){
+        const r = p._seriesRootId;
+        if (!byRoot.has(r)){ byRoot.set(r, []); order.push(r); }
+        byRoot.get(r).push(p);
+      }
+      const flat = [];
+      for (const rootId of order){
+        const grp = byRoot.get(rootId);
+        // root 자기 자신 row 가 그룹 안에 있으면 맨 위
+        grp.sort((a, b) => {
+          const ar = (a.id === rootId) ? -1 : 0;
+          const br = (b.id === rootId) ? -1 : 0;
+          if (ar !== br) return ar - br;
+          return 0;   // 나머지는 1차 정렬 유지 (stable sort)
+        });
+        flat.push(...grp);
+      }
+      allPages.length = 0;
+      allPages.push(...flat);
+    }
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Mr.Donothing';
@@ -3758,14 +3809,15 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       properties: { defaultRowHeight: 80 }
     });
 
-    // 타이틀 (A1 merge A1:V1)
-    sheet.mergeCells('A1:W1');
+    // 타이틀 (A1 merge A1:X1 — Series 컬럼 추가로 +1)
+    sheet.mergeCells('A1:X1');
     sheet.getCell('A1').value = 'Mr.Donothing Product List';
     sheet.getCell('A1').font = { bold: true, size: 14 };
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
 
+    // Series 컬럼 추가 (2026-05-11) — 같은 시리즈 묶음 표시
     const headers = [
-      'no.', 'Image', 'Category', 'Product Name', 'Barcode', 'Packaging',
+      'no.', 'Image', 'Category', 'Product Name', 'Series', 'Barcode', 'Packaging',
       'Retail Price\n(South Korea)', 'Retail Price\n(Taiwan)', 'Retail Price\n(US)',
       'Retail Price\n(Thailand)', 'Retail Price\n(HK)', 'Retail Price\n(China)',
       'Retail Price\n(Indonesia)',
@@ -3778,7 +3830,8 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     sheet.getRow(2).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     sheet.getRow(2).height = 40;
 
-    const widths = [5, 14, 14, 32, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
+    // 컬럼 너비 — Series 컬럼 (E) 18 추가
+    const widths = [5, 14, 14, 32, 18, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
     widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
 
     let imagesEmbedded = 0;
@@ -3803,9 +3856,32 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       const 발주수량 = getNum('발주수량');
       const amount = (fobKRW && 발주수량) ? fobKRW * 발주수량 : null;
 
+      // 🔗 시리즈 정보 (2026-05-11)
+      const rootId = p._seriesRootId;
+      const grpSize = allPages.filter(x => x._seriesRootId === rootId).length;
+      const isRoot = (p.id === rootId);
+      const isChild = grpSize >= 2 && !isRoot;
+      // root 의 Product Name 찾기 (자식 row 의 Series 컬럼에 표시)
+      let rootName = '';
+      if (grpSize >= 2){
+        const rootPage = allPages.find(x => x.id === rootId);
+        if (rootPage) rootName = prodName(rootPage);
+      }
+      // Series 컬럼 값:
+      //  - 단독 (grpSize===1): 빈칸
+      //  - root (다중 시리즈의 head): "Series Master (N variants)"
+      //  - 자식: "↳ variant of: {rootName}"
+      let seriesLabel = '';
+      if (grpSize >= 2){
+        if (isRoot) seriesLabel = `Series Master (${grpSize} variants)`;
+        else seriesLabel = `↳ variant of: ${rootName}`;
+      }
+      // Product Name — 자식 row 는 "  └ " prefix (시각적 들여쓰기)
+      const productNameDisplay = (isChild ? '  └ ' : '') + getText('Product Name');
+
       const rowNum = idx + 3;
       sheet.getRow(rowNum).values = [
-        idx + 1, '', (CATEGORY_EN[getSel('Category')] || 'Others'), getText('Product Name'), barcode, getText('Packaging'),
+        idx + 1, '', (CATEGORY_EN[getSel('Category')] || 'Others'), productNameDisplay, seriesLabel, barcode, getText('Packaging'),
         getNum('Retail_KR_KRW'), getNum('Retail_TW_TWD'), getNum('Retail_US_USD'),
         getNum('Retail_TH_THB'), getNum('Retail_HK_HKD'), getNum('Retail_CN_CNY'),
         getNum('Retail_ID_IDR'),
@@ -3815,14 +3891,21 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       ];
       sheet.getRow(rowNum).height = 80;
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
-      sheet.getCell(`O${rowNum}`).numFmt = '0%';
-      // 천단위 콤마 — 가격·수량·금액 컬럼 일괄 적용 (2026-05-05)
-      // G:KR / H:TW / J:TH / K:HK / L:CN / M:ID / N:FOB / P:CIF / U:발주수량 / V:Total — 정수형 #,##0
-      // I:US — 0.5 라운딩이라 소수점 1자리 #,##0.0
-      ['G','H','J','K','L','M','N','P','U','V'].forEach(col => {
+      // Series 셀 (E) 스타일 — 자식 row 는 보라 + italic
+      if (isChild) {
+        sheet.getCell(`E${rowNum}`).font = { color: { argb: 'FF7C5EC8' }, italic: true, size: 10 };
+      } else if (isRoot && grpSize >= 2) {
+        sheet.getCell(`E${rowNum}`).font = { color: { argb: 'FF7C5EC8' }, bold: true, size: 10 };
+      }
+      // Series 컬럼 추가로 모든 numFmt 컬럼 키 한 칸씩 우측 이동:
+      //   기존 G/H/J/K/L/M/N/P/U/V → 신규 H/I/K/L/M/N/O/Q/V/W
+      //   기존 I (US 소수점) → 신규 J
+      //   기존 O (FOB %) → 신규 P
+      sheet.getCell(`P${rowNum}`).numFmt = '0%';   // FOB_discount_rate
+      ['H','I','K','L','M','N','O','Q','V','W'].forEach(col => {
         sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
       });
-      sheet.getCell(`I${rowNum}`).numFmt = '#,##0.0';
+      sheet.getCell(`J${rowNum}`).numFmt = '#,##0.0';   // US 0.5 라운딩
 
       // 이미지 임베드: 바코드 우선, 없으면 Image_URL의 cp_{id} fallback
       let imgKey = barcode;
