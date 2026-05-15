@@ -1176,6 +1176,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음만</span>
       </label>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catReload()">🔄 새로고침</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catBulkSyncToInventory()" title="카탈로그 전체 → mdn-inventory 일괄 sync (barcode 있는 row 만, 재고 X · price/name/image 만 등록)">📦 재고 일괄 sync</button>
     </div>
 
     <!-- swap 모드 안내 -->
@@ -6698,6 +6699,75 @@ let _catSelected = new Set();
 let _catVisibleIds = [];   // 현재 필터로 노출 중인 ID 목록
 let _catLastClickIdx = -1; // shift-click 범위 선택용 anchor
 
+// 📦 mdn-inventory 재고 배지 (2026-05-15 B+C 풀스택 사이클)
+// _invStockByCatalogId[catalogPageId] 값 해석:
+//   undefined → 카탈로그에 Barcode 미입력 (⚠️ 바코드 미등록)
+//   null      → barcode 있지만 mdn-inventory 에 미등록 (🔌 미동기화 — Owen 일괄 sync 누르면 등록)
+//   0         → mdn-inventory 등록됨, 재고 0
+//   N (>=1)   → 재고 N개
+let _invStockByCatalogId = {};
+let _invStockLoaded = false;
+async function _catLoadInventoryStock(force = false) {
+  try {
+    const url = '/api/consumer-pricing/catalog/inventory-stock' + (force ? '?refresh=1' : '');
+    const r = await fetch(url);
+    if (!r.ok) { _invStockLoaded = false; _invStockByCatalogId = {}; return; }
+    const d = await r.json();
+    _invStockByCatalogId = d.byCatalogId || {};
+    _invStockLoaded = true;
+  } catch (e) {
+    _invStockLoaded = false;
+    _invStockByCatalogId = {};
+    console.warn('[inventory-stock] 로드 실패 (배지 숨김):', e.message);
+  }
+}
+function _renderInvStockBadge(catalogId) {
+  if (!_invStockLoaded) return ''; // 로딩 전: 빈 배지
+  const v = _invStockByCatalogId[catalogId];
+  const base = 'font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:500;';
+  if (v === undefined) {
+    return '<span style="background:rgba(160,160,160,0.18);color:#999;' + base + '" title="카탈로그에 Barcode 미입력 — 노션 카탈로그 DB Barcode 필드 입력 후 일괄 sync 누르면 등록">⚠️ 바코드 미등록</span>';
+  }
+  if (v === null) {
+    return '<span style="background:rgba(255,180,90,0.16);color:#c87a00;' + base + '" title="barcode 있지만 mdn-inventory 미등록 — 일괄 sync 누르면 자동 등록">🔌 미동기화</span>';
+  }
+  if (v === 0) {
+    return '<span style="background:rgba(160,160,160,0.18);color:#888;' + base + '" title="mdn-inventory 등록됨, 재고 0">📦 재고 0</span>';
+  }
+  if (v <= 5) {
+    return '<span style="background:rgba(255,220,90,0.18);color:#b08a00;' + base + '" title="mdn-inventory 재고">📦 ' + v + '개</span>';
+  }
+  return '<span style="background:rgba(110,231,183,0.18);color:#1d9e75;' + base + '" title="mdn-inventory 재고">📦 ' + v + '개</span>';
+}
+async function catBulkSyncToInventory() {
+  if (!confirm('카탈로그 전체 → mdn-inventory 일괄 sync 진행할까요?\n\n• barcode 있는 row 만 sync (없으면 skip)\n• 재고는 건드리지 않음 (name/price/image/category 만 upsert)\n• 시간이 좀 걸릴 수 있습니다 (페이지마다 ~1초)')) return;
+  const btn = event.currentTarget;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ sync 중…';
+  try {
+    const r = await fetch('/api/admin/catalog/sync-all-from-goods', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    let msg = '✅ 일괄 sync 완료\n\n';
+    msg += '• 스캔: ' + (d.scanned || 0) + '건\n';
+    msg += '• 등록·갱신: ' + (d.synced || 0) + '건\n';
+    msg += '• 바코드 없음 (skip): ' + (d.skipped_no_barcode || 0) + '건\n';
+    msg += '• 아카이브 (skip): ' + (d.skipped_archived || 0) + '건\n';
+    if (d.errors && d.errors.length) msg += '• 에러: ' + d.errors.length + '건 (콘솔 참고)';
+    alert(msg);
+    if (d.errors && d.errors.length) console.warn('[bulk-sync errors]', d.errors);
+    // 재고 배지 즉시 갱신
+    await _catLoadInventoryStock(true);
+    catRender();
+  } catch (e) {
+    alert('❌ 일괄 sync 실패: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 // 정렬 우선순위 — 카테고리 9개 고정 순서, 그 외(미분류 포함)는 마지막
 const CAT_SORT_ORDER = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타'];
 function _catSortKey(it){
@@ -6734,6 +6804,8 @@ async function catReload(){
     if (typeof cpFetchListCached === 'function'){
       try { await cpFetchListCached(false); } catch(e) { /* silent */ }
     }
+    // 📦 mdn-inventory 재고 배지 (B+C 풀스택 사이클, 2026-05-15) — 비차단 (실패해도 카드 렌더링은 정상)
+    _catLoadInventoryStock(false).then(() => catRender()).catch(() => {});
     catRender();
   } catch (e) {
     if (rowsEl) rowsEl.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">조회 실패: ${escapeHtml(e.message)}</div>`;
@@ -6836,7 +6908,7 @@ function catRender(){
         <div><input type="checkbox" ${isSelected?'checked':''} onclick="event.preventDefault();" tabindex="-1" style="pointer-events:none;"></div>
         <div class="cat-thumb">${thumbHtml}</div>
         <div>
-          <div class="name">${_nameDisplay}</div>
+          <div class="name">${_nameDisplay}${_renderInvStockBadge(it.id)}</div>
           <div class="meta">HS ${escapeHtml(it.hsCode || '-')} · ₩${(it.retailKR||0).toLocaleString('ko-KR')} · ${escapeHtml(it.작성자 || '-')} · ${escapeHtml(it.등록일 || '-')}</div>
         </div>
         <div class="cat-select-wrap" onclick="event.stopPropagation();">

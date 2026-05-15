@@ -41,6 +41,10 @@ const EMPLOYEES_LIST = [
 ];
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ADMIN_SECRET  = process.env.ADMIN_SECRET   || '';
+// ━━━ mdn-inventory 양방향 webhook (2026-05-15 B+C 풀스택 사이클) ━━━
+// publish-to-catalog 후 자동 sync + 카탈로그 UI 재고 배지용 stock 조회
+const INVENTORY_API_URL = process.env.INVENTORY_API_URL || ''; // 예: https://inventory.jeisha.kr
+const INVENTORY_API_KEY = process.env.INVENTORY_API_KEY || ''; // mdn-inventory PARTNER_API_KEY 와 동일값
 let XLSX = null; try { XLSX = require('xlsx'); } catch(e) { console.warn('[xlsx] 패키지 없음, 엑셀 파싱 비활성'); }
 let JSZip = null; try { JSZip = require('jszip'); } catch(e) { console.warn('[jszip] 패키지 없음, 엑셀 내부 이미지 추출 비활성'); }
 let sharp = null; try { sharp = require('sharp'); } catch(e) { console.warn('[sharp] 패키지 없음, 썸네일 리사이즈 비활성'); }
@@ -5045,6 +5049,62 @@ app.delete('/api/consumer-pricing/:id/image', async (req, res) => {
   }
 });
 
+// ━━━ mdn-inventory 양방향 sync helper (2026-05-15 B+C 풀스택 사이클) ━━━
+// 카탈로그 page → mdn-inventory products upsert (barcode 기준 멱등)
+// best-effort: 실패해도 호출처는 영향 X. publish/일괄 sync 양쪽에서 사용.
+async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
+  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) {
+    return { skipped: true, reason: 'env_not_configured' };
+  }
+  if (!notion) return { skipped: true, reason: 'notion_unavailable' };
+  try {
+    const page = await notion.pages.retrieve({ page_id: catalogPageId });
+    if (page.archived) return { skipped: true, reason: 'archived' };
+    const pr = page.properties || {};
+    const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('').trim();
+    const barcode = getText('Barcode');
+    if (!barcode) {
+      console.log('[sync→inventory] skip (barcode missing):', { catalogPageId, reason });
+      return { skipped: true, reason: 'barcode_missing' };
+    }
+    const name = getText('Product Name');
+    if (!name) return { skipped: true, reason: 'name_missing' };
+    const salePrice = (typeof pr.Retail_KR_KRW?.number === 'number') ? pr.Retail_KR_KRW.number : null;
+    const categoryName = pr.Category?.select?.name || null;
+    const imageUrl = pr.Image_URL?.url || null;
+
+    const url = INVENTORY_API_URL.replace(/\/$/, '') + '/api/hooks/catalog-sync-from-goods';
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 15000);
+    let resp, data;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': INVENTORY_API_KEY },
+        body: JSON.stringify({
+          barcode, name,
+          sale_price: salePrice,
+          image_url: imageUrl,
+          category_name: categoryName,
+          catalog_id: catalogPageId
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(to);
+      const text = await resp.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+    } catch (fetchErr) {
+      clearTimeout(to);
+      throw fetchErr;
+    }
+    console.log('[sync→inventory]', { catalogPageId, barcode, reason, ok: resp.ok, status: resp.status, action: data?.action });
+    return { ok: resp.ok, status: resp.status, data, barcode };
+  } catch (err) {
+    console.warn('[sync→inventory] error (best-effort):', err.message, { catalogPageId, reason });
+    return { ok: false, error: err.message };
+  }
+}
+
 // ━━━ 제품 카탈로그 — 소비자가 산정 → 카탈로그 자동 등록 ━━━
 app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -5159,9 +5219,163 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       });
     } catch (e) { console.warn('[카탈로그] 상태 승인 업데이트 실패:', e.message); }
 
+    // mdn-inventory 양방향 sync (best-effort, 비차단). 2026-05-15 B+C 풀스택 사이클.
+    // barcode 가 카탈로그에 없으면 sync skip (Owen 노션 직접 입력 또는 일괄 sync 트리거로 보강)
+    setImmediate(() => {
+      syncCatalogPageToInventory(created.id, reused ? 'republish' : 'publish').catch(() => {});
+    });
+
     res.json({ success: true, catalogId: created.id, reused, url: `https://www.notion.so/${created.id.replace(/-/g, '')}` });
   } catch (e) {
     console.error('[카탈로그 등록 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ━━━ 카탈로그 → mdn-inventory 일괄 sync (2026-05-15 B+C 풀스택 사이클) ━━━
+// Owen 이 노션 카탈로그 DB 에 barcode 일괄 입력 후 한 번 누르면 모두 sync.
+// 인증: 관리자 SSO 또는 ?password=ADMIN_PASSWORD
+// 응답: { ok, scanned, synced, skipped_no_barcode, skipped_archived, errors[] }
+app.post('/api/admin/catalog/sync-all-from-goods', async (req, res) => {
+  const sessionAdmin = req.user && req.user.role === '관리자';
+  const adminPwSet = !!(process.env.ADMIN_PASSWORD || '').trim();
+  const passwordOK = adminPwSet && (req.query.password || req.body?.password || '') === process.env.ADMIN_PASSWORD;
+  const noPasswordFallback = !adminPwSet;
+  if (!sessionAdmin && !passwordOK && !noPasswordFallback) {
+    return res.status(403).json({ error: 'unauthorized — 관리자 SSO 로그인 또는 password 파라미터 필요' });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) {
+    return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 환경변수 미설정' });
+  }
+
+  const dryRun = req.query.dryRun === '1' || req.body?.dryRun === true;
+  const summary = { ok: true, scanned: 0, synced: 0, skipped_no_barcode: 0, skipped_archived: 0, skipped_no_name: 0, errors: [], samples_synced: [], samples_no_barcode: [] };
+
+  try {
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      for (const p of resp.results) {
+        summary.scanned++;
+        if (p.archived) { summary.skipped_archived++; continue; }
+        const pr = p.properties || {};
+        const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('').trim();
+        const barcode = getText('Barcode');
+        const name = getText('Product Name');
+        if (!barcode) {
+          summary.skipped_no_barcode++;
+          if (summary.samples_no_barcode.length < 5) summary.samples_no_barcode.push({ id: p.id, name });
+          continue;
+        }
+        if (!name) { summary.skipped_no_name++; continue; }
+        if (dryRun) {
+          summary.synced++;
+          if (summary.samples_synced.length < 5) summary.samples_synced.push({ id: p.id, name, barcode });
+          continue;
+        }
+        // 실 sync — 직렬 호출 (rate limit 회피, 500개 한계)
+        const r = await syncCatalogPageToInventory(p.id, 'bulk-sync');
+        if (r.ok) {
+          summary.synced++;
+          if (summary.samples_synced.length < 5) summary.samples_synced.push({ id: p.id, name, barcode, action: r.data?.action });
+        } else if (r.skipped) {
+          // 위 검증 통과했으니 skip 은 거의 없지만 안전망
+          summary.skipped_no_barcode++;
+        } else {
+          summary.errors.push({ id: p.id, name, barcode, error: r.error || (r.data && r.data.error) || `status_${r.status}` });
+        }
+      }
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    res.json({ ...summary, dryRun, mode: dryRun ? 'DRY_RUN' : 'CONFIRMED' });
+  } catch (e) {
+    console.error('[catalog/sync-all-from-goods 실패]', e.message);
+    res.status(500).json({ error: e.message, ...summary });
+  }
+});
+
+// ━━━ 카탈로그 카드용 mdn-inventory 재고 lookup (2026-05-15 B+C 풀스택 사이클) ━━━
+// UI 가 카탈로그 그리드 로드 시 호출. barcode 별 재고 합계 dict 반환.
+// 카탈로그 page 전체 조회 후 barcode 추출 → mdn-inventory 에 일괄 query.
+// 60초 인메모리 캐시 (UI 가 짧은 시간에 여러 번 호출해도 부담 X).
+const _invStockCache = { ts: 0, data: null, byCatalogId: null };
+const INV_STOCK_CACHE_MS = 60 * 1000;
+app.get('/api/consumer-pricing/catalog/inventory-stock', async (req, res) => {
+  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) {
+    return res.json({ stocks: {}, byCatalogId: {}, skipped: 'env_not_configured' });
+  }
+  const now = Date.now();
+  if (_invStockCache.data && (now - _invStockCache.ts) < INV_STOCK_CACHE_MS && !req.query.refresh) {
+    return res.json({ ...{ stocks: _invStockCache.data, byCatalogId: _invStockCache.byCatalogId }, cached: true, cachedMs: now - _invStockCache.ts });
+  }
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+
+  try {
+    // 1) 카탈로그 전체 페이지 스캔 → barcode 추출 + page_id 매핑
+    const barcodeToCatalogIds = {}; // barcode → [pageId, ...] (드물게 중복 가능)
+    const catalogIdToBarcode = {};  // pageId → barcode
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      for (const p of resp.results) {
+        if (p.archived) continue;
+        const pr = p.properties || {};
+        const barcode = (pr.Barcode?.rich_text || []).map(t => t.plain_text || '').join('').trim();
+        if (!barcode) continue;
+        catalogIdToBarcode[p.id] = barcode;
+        if (!barcodeToCatalogIds[barcode]) barcodeToCatalogIds[barcode] = [];
+        barcodeToCatalogIds[barcode].push(p.id);
+      }
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const barcodes = Object.keys(barcodeToCatalogIds);
+    if (!barcodes.length) {
+      _invStockCache.ts = now; _invStockCache.data = {}; _invStockCache.byCatalogId = {};
+      return res.json({ stocks: {}, byCatalogId: {}, scanned: 0 });
+    }
+
+    // 2) mdn-inventory 일괄 query (최대 500개씩 — 안전망)
+    const stocks = {};
+    const chunks = [];
+    for (let i = 0; i < barcodes.length; i += 500) chunks.push(barcodes.slice(i, i + 500));
+    for (const chunk of chunks) {
+      const url = INVENTORY_API_URL.replace(/\/$/, '') + '/api/hooks/stock-by-barcodes?barcodes=' + encodeURIComponent(chunk.join(','));
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 10000);
+      try {
+        const resp = await fetch(url, { headers: { 'X-API-Key': INVENTORY_API_KEY }, signal: ctrl.signal });
+        clearTimeout(to);
+        const data = await resp.json().catch(() => ({}));
+        if (data.stocks) Object.assign(stocks, data.stocks);
+      } catch (err) {
+        clearTimeout(to);
+        console.warn('[inventory-stock] chunk fetch 실패 (chunk size=' + chunk.length + '):', err.message);
+      }
+    }
+
+    // 3) catalogId → stock 매핑 (UI 사용 편의)
+    const byCatalogId = {};
+    for (const [pageId, barcode] of Object.entries(catalogIdToBarcode)) {
+      byCatalogId[pageId] = stocks[barcode] ?? null; // null = mdn-inventory 미등록
+    }
+
+    _invStockCache.ts = now;
+    _invStockCache.data = stocks;
+    _invStockCache.byCatalogId = byCatalogId;
+    res.json({ stocks, byCatalogId, scanned: barcodes.length, cached: false });
+  } catch (e) {
+    console.error('[inventory-stock 실패]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
