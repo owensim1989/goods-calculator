@@ -1253,6 +1253,21 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 </div>
 
 <!-- 🔍 기존 제품 복제 검색 모달 (2026-05-11) -->
+<!-- 🆕 국가별 유사 제품 가격 리스트 모달 (2026-05-15) -->
+<div id="cp-similar-price-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--card);color:var(--text);border-radius:12px;padding:20px 24px;max-width:680px;width:92%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--border);">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      <h3 id="cp-similar-price-modal-title" style="margin:0;font-size:15px;color:var(--text);flex:1;">🌏 유사 제품 가격 리스트</h3>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:4px 10px;" onclick="cpCloseSimilarPriceModal()">✕</button>
+    </div>
+    <div id="cp-similar-price-modal-subtitle" style="font-size:11px;color:var(--text-muted);margin-bottom:12px;"></div>
+    <div id="cp-similar-price-modal-body" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);padding:8px;min-height:200px;"></div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
+      ※ 카탈로그에 등록되고 해당 국가 가격이 설정된 제품만 표시. 판매중 (단종/Out of stock 제외).
+    </div>
+  </div>
+</div>
+
 <div id="cp-clone-search-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--card);color:var(--text);border-radius:12px;padding:20px 24px;max-width:720px;width:92%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--border);">
     <h3 style="margin:0 0 4px 0;font-size:15px;color:var(--text);">🔍 기존 제품 복제로 시작</h3>
@@ -3678,56 +3693,217 @@ function cpOnTargetInput(el){
 // 🆕 카테고리 가격 분포 박스 (B) + 유사 제품 패널 (A) 렌더링 (2026-05-15 추가)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// B: 카테고리 가격 분포 박스 — 타겟 소비자가 input 아래
+// B: 카테고리 실제 제품 미니 카드 박스 — 타겟 소비자가 input 아래
+//   분포 bar (추상값) 대신 실제 카탈로그 등록 제품 5건 (KR가 정렬, 내 입력과 가까운 순)
 function cpRefreshPriceDistribBox(){
   const box = document.getElementById('cp-price-distrib-box');
   if (!box) return;
   const cat = document.getElementById('cp-category')?.value || '';
   if (!cat){ box.style.display = 'none'; return; }
-  const dist = cpComputeCategoryDistribution(cat, 'KR');
-  if (!dist || dist.n < 2){
+  // 카탈로그 안 같은 카테고리 + 판매중 + KR 가격 있음
+  const all = (CP_CATALOG_CACHE || []).filter(it => {
+    if ((it.category || '') !== cat) return false;
+    const st = it.판매상태 || '';
+    if (st === '단종' || st === 'Out of stock') return false;
+    if (!(it.retailKR > 0)) return false;
+    return true;
+  });
+  if (!all.length){
     box.style.display = 'block';
-    box.innerHTML = `<span style="color:var(--text-muted);">📊 "${escapeHtml(cat)}" 카테고리에 등록된 제품 ${dist?dist.n:0}건 — 분포 비교 불가 (최소 2건 필요)</span>`;
+    box.innerHTML = `<span style="color:var(--text-muted);">📊 "${escapeHtml(cat)}" 카테고리에 KR 가격이 등록된 제품 없음</span>`;
     return;
   }
   const target = cpParseNum(document.getElementById('cp-target-price')?.value) || 0;
-  // 위치 계산 — min~max 사이에서 target 의 비율
-  let markerPct = null, colorClass = '';
-  if (target > 0){
-    if (target < dist.min) markerPct = 0;
-    else if (target > dist.max) markerPct = 100;
-    else markerPct = ((target - dist.min) / (dist.max - dist.min)) * 100;
-    // 색상: avg 대비 차이
-    const diffPct = ((target / dist.avg) - 1) * 100;
-    colorClass = cpPriceGapColor(diffPct);
-  }
-  // 차이 텍스트
+  // 정렬: target 입력 있으면 내 가격과 가까운 순, 없으면 KR 가격 오름차순
+  const sorted = [...all].sort((a, b) => {
+    if (target > 0){
+      return Math.abs(a.retailKR - target) - Math.abs(b.retailKR - target);
+    }
+    return a.retailKR - b.retailKR;
+  });
+  const top = sorted.slice(0, 6);
+  // 분포 (텍스트 한 줄로 — 평균/최저/최고)
+  const dist = cpComputeDistribution(all.map(it => ({item: it})), 'KR');
   let diffTxt = '';
-  if (target > 0){
+  if (target > 0 && dist){
     const diffPct = ((target / dist.avg) - 1) * 100;
+    const col = cpPriceGapColor(diffPct);
     const sign = diffPct >= 0 ? '+' : '';
-    diffTxt = ` <b style="color:${colorClass};">(평균 대비 ${sign}${diffPct.toFixed(1)}%)</b>`;
+    diffTxt = ` <span style="color:${col};font-weight:600;">(평균 ${cpFmtKRW(Math.round(dist.avg))} 대비 ${sign}${diffPct.toFixed(1)}%)</span>`;
+  } else if (dist){
+    diffTxt = ` <span style="color:var(--text-muted);">평균 ${cpFmtKRW(Math.round(dist.avg))}</span>`;
   }
+  // 카드 마크업
+  const cards = top.map(it => {
+    const thumb = it.imageUrl || (it.hasLocalImage && it.imageId ? '/api/catalog-image/' + encodeURIComponent(it.imageId) : '');
+    const thumbHtml = thumb
+      ? `<img src="${thumb.replace(/"/g,'&quot;')}" alt="" style="width:32px;height:32px;border-radius:4px;object-fit:cover;flex-shrink:0;background:var(--card);">`
+      : `<span style="width:32px;height:32px;border-radius:4px;background:var(--card);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;color:var(--text-muted);">📦</span>`;
+    let priceCol = 'var(--text)';
+    let diffBadge = '';
+    if (target > 0){
+      const d = ((target / it.retailKR) - 1) * 100;
+      priceCol = cpPriceGapColor(d);
+      const sign = d >= 0 ? '+' : '';
+      diffBadge = `<div style="font-size:9px;color:${priceCol};line-height:1.1;font-weight:600;">${sign}${d.toFixed(0)}%</div>`;
+    }
+    const sizeInfo = it.sizeMm ? `<div style="font-size:9px;color:var(--text-muted);line-height:1.2;">${escapeHtml(it.sizeMm.slice(0,18))}</div>` : '';
+    return `<div title="${escapeHtml(it.productName||'')}" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--card);border:1px solid var(--border);border-radius:6px;min-width:0;cursor:pointer;" onclick="cpRefreshSimilarPanelScroll()">
+      ${thumbHtml}
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;color:var(--text);">${escapeHtml(it.productName||'-')}</div>
+        ${sizeInfo}
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-size:12px;font-weight:600;color:${priceCol};font-variant-numeric:tabular-nums;">${cpFmtKRW(it.retailKR)}</div>
+        ${diffBadge}
+      </div>
+    </div>`;
+  }).join('');
   box.style.display = 'block';
   box.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
-      <span style="font-weight:600;">📊 "${escapeHtml(cat)}" 카테고리 KR 분포 (n=${dist.n})</span>
-      ${target > 0 ? `<span style="color:var(--text-muted);">내 입력: <b style="color:var(--text);">${cpFmtKRW(target)}</b>${diffTxt}</span>` : ''}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <span style="font-weight:600;font-size:11px;">📦 "${escapeHtml(cat)}" 카테고리 실제 등록 제품 ${all.length}건${diffTxt}</span>
+      ${all.length > 6 ? `<button style="margin-left:auto;font-size:10px;padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;" onclick="cpRefreshSimilarPanelScroll()">전체 보기 →</button>` : ''}
     </div>
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:3px;">
-      <span>최저 ${cpFmtKRW(dist.min)}</span>
-      <span>중간 ${cpFmtKRW(dist.median)}</span>
-      <span>평균 ${cpFmtKRW(Math.round(dist.avg))}</span>
-      <span>최고 ${cpFmtKRW(dist.max)}</span>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;">
+      ${cards}
     </div>
-    <div style="position:relative;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
-      <!-- p25~p75 IQR 영역 (다소 진한 회색) -->
-      <div style="position:absolute;left:${((dist.p25-dist.min)/(dist.max-dist.min)*100).toFixed(1)}%;width:${((dist.p75-dist.p25)/(dist.max-dist.min)*100).toFixed(1)}%;top:0;bottom:0;background:rgba(124,58,237,0.25);"></div>
-      <!-- 평균 마커 (점선) -->
-      <div style="position:absolute;left:${((dist.avg-dist.min)/(dist.max-dist.min)*100).toFixed(1)}%;top:-2px;bottom:-2px;width:1px;background:var(--text-muted);"></div>
-      ${markerPct != null ? `<div style="position:absolute;left:${markerPct.toFixed(1)}%;top:-3px;bottom:-3px;width:3px;background:${colorClass};border-radius:1.5px;box-shadow:0 0 4px ${colorClass};" title="내 입력 ${cpFmtKRW(target)}"></div>` : ''}
-    </div>
+    ${target > 0 ? '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">↑ 내 타겟가 ' + cpFmtKRW(target) + ' 과 가까운 순 정렬 · 각 카드 ±% = 내 가격 대비 차이</div>' : '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">↑ KR 가격 오름차순 정렬 · 타겟 소비자가 입력하면 가까운 순 정렬</div>'}
   `;
+}
+
+// 유사 제품 패널까지 스크롤 (전체 보기 / 카드 클릭 시)
+function cpRefreshSimilarPanelScroll(){
+  const sect = document.getElementById('cp-similar-products-section');
+  if (sect){
+    sect.scrollIntoView({behavior:'smooth', block:'start'});
+    // 접혀있으면 펴기
+    if (CP_SIMILAR_PANEL_COLLAPSED) cpToggleSimilarPanel();
+  }
+}
+
+// 🆕 국가별 유사 제품 가격 리스트 모달 (≈ 셀 클릭 시)
+//   countryCode: KR/TW/HK/CN/TH/US/JP — 그 국가 통화로 정렬된 실제 제품 카드 리스트
+//   countryName: 표시명 (한국·대만 등)
+//   myPriceLocal: 내 확정 현지가 (있으면 ±% 표시)
+function cpOpenSimilarPriceModal(countryCode, countryName, myPriceLocal){
+  const modal = document.getElementById('cp-similar-price-modal');
+  if (!modal) return;
+  const cat = document.getElementById('cp-category')?.value || '';
+  if (!cat){
+    showToast('카테고리를 먼저 선택하세요');
+    return;
+  }
+  const size = document.getElementById('cp-size')?.value || '';
+  const material = document.getElementById('cp-material')?.value || '';
+  const tolEl = document.getElementById('cp-similar-tolerance');
+  const tol = tolEl ? (parseInt(tolEl.value, 10) || 30) / 100 : 0.30;
+  const excludeId = CP_CURRENT?.id || null;
+  // 매칭 — 카테고리 + 사이즈/소재. 매칭 0 이면 카테고리만으로 fallback
+  let matches = cpFindSimilarBySpec(cat, size, material, { sizeTolerance: tol, excludeId });
+  // 그 국가 가격이 있는 것만 필터
+  matches = matches.filter(m => {
+    const v = (countryCode === 'KR') ? m.item.retailKR : (m.item.retails && m.item.retails[countryCode]);
+    return v && v > 0;
+  });
+  // 정렬: 내 가격과 가까운 순, 없으면 그 국가 가격 오름차순
+  matches.sort((a, b) => {
+    const av = (countryCode === 'KR') ? a.item.retailKR : a.item.retails[countryCode];
+    const bv = (countryCode === 'KR') ? b.item.retailKR : b.item.retails[countryCode];
+    if (myPriceLocal > 0){
+      return Math.abs(av - myPriceLocal) - Math.abs(bv - myPriceLocal);
+    }
+    return av - bv;
+  });
+  // 통화 심볼·포맷
+  const SYMBOLS = { KR:'₩', TW:'NT$', HK:'HK$', CN:'¥', TH:'฿', US:'$', JP:'¥' };
+  const symbol = SYMBOLS[countryCode] || '';
+  const fmtPrice = (v) => {
+    if (countryCode === 'KR' || countryCode === 'CN' || countryCode === 'TH' || countryCode === 'JP'){
+      return symbol + Math.round(v).toLocaleString();
+    }
+    return symbol + v.toFixed(2);
+  };
+  // 분포 평균
+  const dist = cpComputeDistribution(matches, countryCode);
+  // 헤더
+  const titleEl = document.getElementById('cp-similar-price-modal-title');
+  const subtitleEl = document.getElementById('cp-similar-price-modal-subtitle');
+  const flag = CP_FLAGS[countryCode] || '';
+  titleEl.innerHTML = `${flag} ${escapeHtml(countryName || countryCode)} 유사 제품 가격 — "${escapeHtml(cat)}"`;
+  let subParts = [];
+  if (size) subParts.push(`사이즈 매칭 ±${(tol*100).toFixed(0)}% (${escapeHtml(size)})`);
+  if (material) subParts.push(`소재 ${escapeHtml(material)}`);
+  let subSecond = '';
+  if (matches.length > 0 && dist){
+    subSecond = ` · 평균 <b style="color:var(--primary);">${fmtPrice(dist.avg)}</b> · 최저 ${fmtPrice(dist.min)} · 최고 ${fmtPrice(dist.max)} (n=${dist.n})`;
+    if (myPriceLocal > 0){
+      const diffPct = ((myPriceLocal / dist.avg) - 1) * 100;
+      const col = cpPriceGapColor(diffPct);
+      const sign = diffPct >= 0 ? '+' : '';
+      subSecond += ` · 내 가격 <b style="color:${col};">${fmtPrice(myPriceLocal)} (${sign}${diffPct.toFixed(1)}%)</b>`;
+    }
+  }
+  subtitleEl.innerHTML = (subParts.join(' · ') || '카테고리만 매칭') + subSecond;
+  // body
+  const body = document.getElementById('cp-similar-price-modal-body');
+  if (!matches.length){
+    body.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px;">"${escapeHtml(cat)}" 카테고리에 ${countryName || countryCode} 가격이 설정된 제품 없음</div>`;
+  } else {
+    const cards = matches.map(m => {
+      const it = m.item;
+      const v = (countryCode === 'KR') ? it.retailKR : it.retails[countryCode];
+      const thumb = it.imageUrl || (it.hasLocalImage && it.imageId ? '/api/catalog-image/' + encodeURIComponent(it.imageId) : '');
+      const thumbHtml = thumb
+        ? `<img src="${thumb.replace(/"/g,'&quot;')}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--card);">`
+        : `<span style="width:48px;height:48px;border-radius:6px;background:var(--card);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;color:var(--text-muted);">📦</span>`;
+      // 신호등 색 (내 가격 대비)
+      let priceCol = 'var(--text)', diffBadge = '';
+      if (myPriceLocal > 0){
+        const d = ((myPriceLocal / v) - 1) * 100;
+        priceCol = cpPriceGapColor(d);
+        const sign = d >= 0 ? '+' : '';
+        diffBadge = `<div style="font-size:10px;color:${priceCol};font-weight:600;margin-top:1px;">내 가격 ${sign}${d.toFixed(1)}%</div>`;
+      }
+      // 매칭 배지
+      const sizeBadge = m.sizeSim
+        ? `<span style="display:inline-block;padding:1px 5px;font-size:9px;font-weight:600;border-radius:3px;background:rgba(16,185,129,0.15);color:var(--success);margin-left:4px;" title="사이즈 매칭">📏</span>` : '';
+      const matBadge = m.matSim
+        ? `<span style="display:inline-block;padding:1px 5px;font-size:9px;font-weight:600;border-radius:3px;background:rgba(124,58,237,0.15);color:#7c3aed;margin-left:3px;" title="소재 매칭">🧵</span>` : '';
+      // 다른 국가 가격도 같이 표시 (참고용 작은 글자)
+      const otherCodes = ['KR','TW','HK','CN','TH','US'].filter(c => c !== countryCode);
+      const otherPrices = otherCodes.map(c => {
+        const ov = (c === 'KR') ? it.retailKR : (it.retails && it.retails[c]);
+        if (!ov || ov <= 0) return null;
+        const sym = SYMBOLS[c];
+        const fmtV = (c === 'KR' || c === 'CN' || c === 'TH') ? Math.round(ov).toLocaleString() : ov.toFixed(2);
+        return `<span style="color:var(--text-muted);">${sym}${fmtV}</span>`;
+      }).filter(Boolean).join(' · ');
+      const sizeMatTxt = [it.sizeMm, it.material].filter(Boolean).map(escapeHtml).join(' · ');
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);">
+        ${thumbHtml}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${escapeHtml(it.productName || '(이름 없음)')}${sizeBadge}${matBadge}
+          </div>
+          ${sizeMatTxt ? `<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">${sizeMatTxt}</div>` : ''}
+          ${otherPrices ? `<div style="font-size:10px;margin-top:2px;">${otherPrices}</div>` : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:15px;font-weight:700;color:${priceCol};font-variant-numeric:tabular-nums;">${fmtPrice(v)}</div>
+          ${diffBadge}
+        </div>
+      </div>`;
+    }).join('');
+    body.innerHTML = cards;
+  }
+  modal.style.display = 'flex';
+}
+
+function cpCloseSimilarPriceModal(){
+  const modal = document.getElementById('cp-similar-price-modal');
+  if (modal) modal.style.display = 'none';
 }
 
 // A: 유사 제품 패널 — 같은 카테고리 + 사이즈 ±N% 매칭. 카탈로그 등록·판매중 제품만
@@ -4327,30 +4503,26 @@ function cpRenderCountryTable(){
       }
     }
 
-    // 🆕 유사 자체 제품 평균과 비교 (확정 KRW 셀에 sub-line)
+    // 🆕 유사 자체 제품 평균과 비교 — 확정 KRW 셀의 sub-line (클릭 시 실제 제품 리스트 모달)
     let similarHint = '';
     const _spD = _spDistByCode[c.code];
     if (_spD && _spD.n >= 1){
-      // KR 은 finalKRW = finalLocal (KRW), 그 외는 finalLocal × rate
-      const compareTo = isKR ? (finalLocal || target) : finalLocal;
-      const avgInLocal = _spD.avg;   // 카탈로그 retails 는 현지 통화 단위 (KR=KRW, TW=TWD 등)
-      const myInLocal = isKR ? compareTo : finalLocal;
+      const avgInLocal = _spD.avg;   // 카탈로그 retails 는 현지 통화 단위
+      const myInLocal = isKR ? (finalLocal || target) : finalLocal;
+      const SYM = { KR:'₩', TW:'NT$', HK:'HK$', CN:'¥', TH:'฿', US:'$', JP:'¥' };
+      const symbol = SYM[c.code] || '';
+      const fmtVal = (c.code === 'KR' || c.code === 'CN' || c.code === 'TH' || c.code === 'JP')
+        ? Math.round(avgInLocal).toLocaleString()
+        : avgInLocal.toFixed(2);
+      const escName = String(c.name||c.code).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+      const clickAttr = `style=\"cursor:pointer;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:2px;\" onclick=\"event.stopPropagation();cpOpenSimilarPriceModal('${c.code}','${escName}',${myInLocal||0})\" title=\"클릭 → ${c.name} 통화 기준 실제 제품 리스트 보기 (유사 ${_spD.n}건)\"`;
       if (myInLocal != null && myInLocal > 0 && avgInLocal > 0){
         const diffPct = ((myInLocal / avgInLocal) - 1) * 100;
         const col = cpPriceGapColor(diffPct);
         const sign = diffPct >= 0 ? '+' : '';
-        const fmtVal = (c.code === 'KR' || c.code === 'CN' || c.code === 'TH' || c.code === 'JP')
-          ? Math.round(avgInLocal).toLocaleString()
-          : avgInLocal.toFixed(2);
-        const symbol = (c.code === 'KR') ? '₩' : (c.code === 'TW' ? 'NT$' : (c.code === 'HK' ? 'HK$' : (c.code === 'US' ? '$' : (c.code === 'TH' ? '฿' : (c.code === 'CN' ? '¥' : (c.code === 'JP' ? '¥' : ''))))));
-        similarHint = `<div style="font-size:9px;color:${col};margin-top:2px;line-height:1.2;" title="유사 자체 제품 ${_spD.n}건 평균 ${symbol}${fmtVal}${'\n'}내 입력 ${sign}${diffPct.toFixed(1)}% 차이">≈ ${symbol}${fmtVal} (${sign}${diffPct.toFixed(0)}%)</div>`;
+        similarHint = `<div ${clickAttr} style="font-size:9px;color:${col};margin-top:2px;line-height:1.2;cursor:pointer;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:2px;">≈ ${symbol}${fmtVal} (${sign}${diffPct.toFixed(0)}%) 🔍</div>`;
       } else if (avgInLocal > 0){
-        // 입력값 없으면 평균만 회색으로 안내
-        const fmtVal = (c.code === 'KR' || c.code === 'CN' || c.code === 'TH' || c.code === 'JP')
-          ? Math.round(avgInLocal).toLocaleString()
-          : avgInLocal.toFixed(2);
-        const symbol = (c.code === 'KR') ? '₩' : (c.code === 'TW' ? 'NT$' : (c.code === 'HK' ? 'HK$' : (c.code === 'US' ? '$' : (c.code === 'TH' ? '฿' : (c.code === 'CN' ? '¥' : (c.code === 'JP' ? '¥' : ''))))));
-        similarHint = `<div style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.2;" title="유사 자체 제품 ${_spD.n}건 평균">≈ ${symbol}${fmtVal}</div>`;
+        similarHint = `<div ${clickAttr} style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.2;cursor:pointer;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:2px;">≈ ${symbol}${fmtVal} 🔍</div>`;
       }
     }
 
