@@ -4619,8 +4619,10 @@ async function cpSave(){
     }
   } catch(e) { console.warn('[유사 제품 가격 검증]', e.message); }
 
+  // 콤마 회귀 fix (2026-05-15) — cp-qty 는 type=text + cpFmtInput 콤마 포맷 input.
+  // parseFloat("3,600") === 3 으로 잘림 → 노션에 3 저장 → 재로딩 시 3 표시 버그 (Owen 보고)
   const cost = parseFloat(document.getElementById('cp-cost-price').value)||null;
-  const qty = parseFloat(document.getElementById('cp-qty').value)||null;
+  const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||null;
   const surcharge = parseFloat(document.getElementById('cp-surcharge').value)||0;
   const unit = cpUnitCostKRW();
   const totalCost = (unit*(qty||0))+surcharge;
