@@ -1637,6 +1637,18 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
         hasLocalImage,
         costKRW: getNum('원가_KRW'),
         retailKR: getNum('Retail_KR_KRW'),
+        // 유사 제품 가격 비교용 (2026-05-15 추가) — 스펙 + 국가별 retail
+        sizeMm: getText('Size_mm'),
+        material: getText('Material'),
+        retails: {
+          KR: getNum('Retail_KR_KRW'),
+          TW: getNum('Retail_TW_TWD'),
+          US: getNum('Retail_US_USD'),
+          TH: getNum('Retail_TH_THB'),
+          HK: getNum('Retail_HK_HKD'),
+          CN: getNum('Retail_CN_CNY'),
+          ID: getNum('Retail_ID_IDR')
+        },
         판매상태: getSel('판매상태'),
         작성자: getSel('작성자'),
         원가율: getNum('원가율'),
