@@ -697,8 +697,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div class="sidebar-group sidebar-group-soon">
       <div class="sidebar-group-title">Phase 3 (예정)</div>
       <button class="sidebar-item soon" onclick="comingSoon('데이터 건강도')" title="통합DB 누락·이상치·공백률 대시보드">데이터 건강도</button>
-      <button class="sidebar-item soon" onclick="comingSoon('거래처 DB 관리')" title="Notion 거래처 DB CRUD UI">거래처 DB 관리</button>
-      <button class="sidebar-item soon" onclick="comingSoon('결재 룰 SOP')" title="🟢🟡🔴 사업화팀 결재 룰 + 점검센터 알림">결재 룰</button>
       <button class="sidebar-item soon" onclick="comingSoon('MyDesk 양방향')" title="MyDesk → goods 자동 push 파이프라인">MyDesk 양방향</button>
     </div>
   </aside>
@@ -1284,7 +1282,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 </div>
 
 <style>
-.cat-row{display:grid;grid-template-columns:24px 60px 1fr 160px 130px;gap:10px;align-items:center;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;}
+.cat-row{display:grid;grid-template-columns:24px 60px 1fr 140px 160px 130px;gap:10px;align-items:center;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;}
 .cat-row.selected{background:rgba(96,165,250,0.08);border-color:var(--primary);}
 .cat-row.swap-source{outline:2px solid #a78bfa;outline-offset:-2px;background:rgba(124,58,237,.05);}
 .cat-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--primary);}
@@ -1293,6 +1291,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cat-row .name{font-weight:500;font-size:13px;color:var(--text);line-height:1.3;}
 .cat-row .meta{font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.3;}
 .cat-row select.cat-select{padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px;width:100%;}
+.cat-row .cat-barcode-input{padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px;font-family:'JetBrains Mono','Courier New',monospace;width:100%;box-sizing:border-box;}
+.cat-row .cat-barcode-input:focus{outline:none;border-color:var(--primary);background:rgba(96,165,250,.04);}
+.cat-row .cat-barcode-input.saving{border-color:#fbbf24;background:rgba(251,191,36,.06);}
+.cat-row .cat-barcode-input.saved{border-color:#22c55e;background:rgba(34,197,94,.06);}
+.cat-row .cat-barcode-input.error{border-color:var(--danger);background:rgba(239,68,68,.06);}
 .cat-row .actions{display:flex;gap:3px;justify-content:flex-end;}
 .cat-row .actions button{padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;}
 .cat-row .actions button:hover{background:var(--bg);}
@@ -1301,6 +1304,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cat-empty-cat{color:var(--danger);font-weight:600;}
 @media(max-width:680px){
   .cat-row{grid-template-columns:50px 1fr;gap:6px;}
+  .cat-row .cat-barcode-wrap{grid-column:span 2;}
   .cat-row .cat-select-wrap{grid-column:span 2;}
   .cat-row .actions{grid-column:span 2;justify-content:flex-start;}
 }
@@ -6898,6 +6902,7 @@ function catRender(){
           : '');
     const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '') + escapeHtml(it.productName || '(이름없음)') + _seriesBadge;
     const _rowExtra = _isChild ? ' style="cursor:pointer;background:rgba(167,139,250,0.04);"' : ' style="cursor:pointer;"';
+    const _bcVal = it.barcode || '';
     return `
       <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}" data-idx="${idx}" onclick="catRowClick(event, '${it.id}', ${idx})"${_rowExtra}>
         <div><input type="checkbox" ${isSelected?'checked':''} onclick="event.preventDefault();" tabindex="-1" style="pointer-events:none;"></div>
@@ -6905,6 +6910,10 @@ function catRender(){
         <div>
           <div class="name">${_nameDisplay}${_renderInvStockBadge(it.id)}</div>
           <div class="meta">HS ${escapeHtml(it.hsCode || '-')} · ₩${(it.retailKR||0).toLocaleString('ko-KR')} · ${escapeHtml(it.작성자 || '-')} · ${escapeHtml(it.등록일 || '-')}</div>
+        </div>
+        <div class="cat-barcode-wrap" onclick="event.stopPropagation();">
+          <input type="text" class="cat-barcode-input" data-id="${it.id}" data-original="${escapeHtml(_bcVal)}" value="${escapeHtml(_bcVal)}" placeholder="Barcode 입력" inputmode="numeric" autocomplete="off"
+            onblur="catBarcodeBlur(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}else if(event.key==='Escape'){this.value=this.dataset.original||'';this.classList.remove('saving','saved','error');this.blur();}">
         </div>
         <div class="cat-select-wrap" onclick="event.stopPropagation();">
           <select class="cat-select" onchange="catChangeCategory('${it.id}', this.value, this)">
@@ -7102,6 +7111,52 @@ async function catChangeCategory(id, newCat, selEl){
     selEl.value = prev;
   } finally {
     selEl.disabled = false;
+  }
+}
+
+// 📋 Barcode 인라인 편집 (2026-05-16 신규)
+// — blur 또는 Enter 시 PATCH 발사. 같은 값이면 무시. 빈 문자열로 비우기 허용
+// — 성공 시 mdn-inventory 자동 sync 가 서버 setImmediate 로 발사됨 (~1-3초 후 배지 반영)
+// — Escape 키로 원본 값 복원 (input onkeydown 에서 처리)
+async function catBarcodeBlur(inputEl){
+  const id = inputEl.dataset.id;
+  const original = inputEl.dataset.original || '';
+  const newVal = (inputEl.value || '').trim();
+  // 같은 값이면 PATCH 발사 X
+  if (newVal === original) {
+    inputEl.classList.remove('saving','saved','error');
+    return;
+  }
+  inputEl.classList.remove('saved','error');
+  inputEl.classList.add('saving');
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barcode: newVal })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    inputEl.dataset.original = newVal;
+    inputEl.classList.remove('saving','error');
+    inputEl.classList.add('saved');
+    // 로컬 state 도 갱신 (catRender 재호출 안 해도 재고 배지·다음 blur 비교가 정확)
+    const it = _catItems.find(x => x.id === id);
+    if (it) it.barcode = newVal;
+    // 토스트는 짧게 (인라인 색상 피드백이 주)
+    if (newVal) showToast('✅ Barcode 저장 + sync 발사', 'success');
+    else showToast('Barcode 비움', 'info');
+    // 1.5초 후 saved 강조 해제 + 재고 배지 갱신 (서버 sync 완료 대기)
+    setTimeout(async () => {
+      inputEl.classList.remove('saved');
+      try { await _catLoadInventoryStock(true); catRender(); } catch(e) {}
+    }, 1500);
+  } catch (e) {
+    inputEl.classList.remove('saving','saved');
+    inputEl.classList.add('error');
+    showToast('Barcode 저장 실패: ' + e.message, 'warn');
+    setTimeout(() => inputEl.classList.remove('error'), 3000);
   }
 }
 

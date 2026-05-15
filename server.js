@@ -1635,6 +1635,7 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
         id: p.id,
         productName: getText('Product Name'),
         hsCode: getText('HS_Code'),
+        barcode: (getText('Barcode') || '').trim(),
         category: getSel('Category'),
         imageUrl: getUrl('Image_URL'),
         imageId: imgId,
@@ -1671,12 +1672,14 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
 // 카테고리 일괄 분류 등에 사용한 9개 카테고리 화이트리스트
 const CATALOG_CATEGORIES = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타'];
 
-// 카탈로그 항목 PATCH — Product Name / Category / 판매상태
+// 카탈로그 항목 PATCH — Product Name / Category / 판매상태 / Barcode
+// barcode 변경 시 mdn-inventory 자동 sync (setImmediate, best-effort)
 app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   try {
     const b = req.body || {};
     const props = {};
+    let barcodeChanged = false;
     if (typeof b.productName === 'string' && b.productName.trim()) {
       props['Product Name'] = { title: [{ text: { content: b.productName.trim() } }] };
     }
@@ -1689,9 +1692,22 @@ app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
     if (typeof b.hsCode === 'string') {
       props['HS_Code'] = { rich_text: [{ text: { content: b.hsCode } }] };
     }
+    // Barcode — 빈 문자열로 비우기 허용. 단순 trim 후 그대로 저장 (validation 은 UI 측)
+    if (typeof b.barcode === 'string') {
+      const bc = b.barcode.trim();
+      props['Barcode'] = { rich_text: bc ? [{ text: { content: bc } }] : [] };
+      barcodeChanged = true;
+    }
     if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
     const updated = await notion.pages.update({ page_id: req.params.id, properties: props });
-    res.json({ success: true, id: updated.id });
+    // barcode 변경 시 mdn-inventory 자동 sync (best-effort, 비차단). 2026-05-16
+    // — Owen 인라인 입력 후 즉시 양쪽 sync (publish-to-catalog 와 동일 패턴)
+    if (barcodeChanged) {
+      setImmediate(() => {
+        syncCatalogPageToInventory(req.params.id, 'inline-patch').catch(() => {});
+      });
+    }
+    res.json({ success: true, id: updated.id, barcodeChanged });
   } catch (e) {
     console.error('[카탈로그 PATCH 실패]', e.message);
     res.status(500).json({ error: e.message });
@@ -1813,31 +1829,98 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
 });
 
 // 카탈로그 다수 항목 일괄 PATCH (카테고리 변경 등)
+// 두 가지 모드:
+//   ① 공통값 모드: { ids:[...], category?, productName? } — 같은 값을 ids 전체에 적용
+//   ② 항목별 모드: { items:[{id, barcode?, productName?, category?, hsCode?}] } — 항목마다 다른 값 (barcode 일괄 입력용)
+//   barcode 변경 항목은 setImmediate 로 mdn-inventory 자동 sync 발사
 app.post('/api/consumer-pricing/catalog/bulk-patch', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   try {
-    const { ids, category, productName } = req.body || {};
-    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids 배열 필요' });
-    if (ids.length > 50) return res.status(400).json({ error: '최대 50개씩만 처리' });
-    const props = {};
-    if (typeof category === 'string' && CATALOG_CATEGORIES.includes(category)) {
-      props['Category'] = { select: { name: category } };
-    }
-    if (typeof productName === 'string' && productName.trim()) {
-      props['Product Name'] = { title: [{ text: { content: productName.trim() } }] };
-    }
-    if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
+    const body = req.body || {};
+    const hasItems = Array.isArray(body.items) && body.items.length;
+    const hasIds = Array.isArray(body.ids) && body.ids.length;
+    if (!hasItems && !hasIds) return res.status(400).json({ error: 'ids 또는 items 필요' });
+    if (hasItems && body.items.length > 100) return res.status(400).json({ error: '최대 100건씩만 처리' });
+    if (hasIds && body.ids.length > 50) return res.status(400).json({ error: '최대 50개씩만 처리' });
+
     const results = [];
-    for (const id of ids) {
-      try {
-        await notion.pages.update({ page_id: id, properties: props });
-        results.push({ id, ok: true });
-      } catch (e) {
-        results.push({ id, ok: false, error: e.message });
+    const barcodeChangedIds = [];
+
+    if (hasItems) {
+      // 항목별 모드 — 각 item 의 필드만 적용
+      for (const it of body.items) {
+        if (!it || typeof it.id !== 'string' || !it.id.trim()) {
+          results.push({ id: it?.id || '?', ok: false, error: 'id 누락' });
+          continue;
+        }
+        const props = {};
+        if (typeof it.productName === 'string' && it.productName.trim()) {
+          props['Product Name'] = { title: [{ text: { content: it.productName.trim() } }] };
+        }
+        if (typeof it.category === 'string' && CATALOG_CATEGORIES.includes(it.category)) {
+          props['Category'] = { select: { name: it.category } };
+        }
+        if (typeof it.hsCode === 'string') {
+          props['HS_Code'] = { rich_text: [{ text: { content: it.hsCode } }] };
+        }
+        let bcChanged = false;
+        if (typeof it.barcode === 'string') {
+          const bc = it.barcode.trim();
+          props['Barcode'] = { rich_text: bc ? [{ text: { content: bc } }] : [] };
+          bcChanged = true;
+        }
+        if (!Object.keys(props).length) { results.push({ id: it.id, ok: false, error: '변경할 필드 없음' }); continue; }
+        try {
+          await notion.pages.update({ page_id: it.id, properties: props });
+          results.push({ id: it.id, ok: true });
+          if (bcChanged) barcodeChangedIds.push(it.id);
+        } catch (e) {
+          results.push({ id: it.id, ok: false, error: e.message });
+        }
+      }
+    } else {
+      // 공통값 모드 (기존)
+      const { ids, category, productName, barcode, hsCode } = body;
+      const props = {};
+      if (typeof category === 'string' && CATALOG_CATEGORIES.includes(category)) {
+        props['Category'] = { select: { name: category } };
+      }
+      if (typeof productName === 'string' && productName.trim()) {
+        props['Product Name'] = { title: [{ text: { content: productName.trim() } }] };
+      }
+      if (typeof hsCode === 'string') {
+        props['HS_Code'] = { rich_text: [{ text: { content: hsCode } }] };
+      }
+      let bcChanged = false;
+      // barcode 공통값 — 빈 문자열 허용(비우기). 단 같은 barcode 를 여러 item 에 박는 건 의미상 어색 — UI 가 막아도 server 가 강제는 안 함
+      if (typeof barcode === 'string') {
+        const bc = barcode.trim();
+        props['Barcode'] = { rich_text: bc ? [{ text: { content: bc } }] : [] };
+        bcChanged = true;
+      }
+      if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
+      for (const id of ids) {
+        try {
+          await notion.pages.update({ page_id: id, properties: props });
+          results.push({ id, ok: true });
+          if (bcChanged) barcodeChangedIds.push(id);
+        } catch (e) {
+          results.push({ id, ok: false, error: e.message });
+        }
       }
     }
+
+    // mdn-inventory 자동 sync (best-effort, 비차단) — barcode 변경된 항목만
+    if (barcodeChangedIds.length) {
+      setImmediate(async () => {
+        for (const id of barcodeChangedIds) {
+          await syncCatalogPageToInventory(id, 'bulk-patch').catch(() => {});
+        }
+      });
+    }
+
     const ok = results.filter(r => r.ok).length;
-    res.json({ success: true, ok, fail: results.length - ok, results });
+    res.json({ success: true, ok, fail: results.length - ok, results, syncedBarcodes: barcodeChangedIds.length });
   } catch (e) {
     console.error('[bulk-patch 실패]', e.message);
     res.status(500).json({ error: e.message });
