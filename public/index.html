@@ -1168,6 +1168,15 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
         <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음만</span>
       </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="Barcode 필드가 비어있는 항목만 표시">
+        <input type="checkbox" id="cat-filter-nobarcode" onchange="catRender()"> <span>⚠️ 바코드 없음만</span>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="Barcode 있지만 mdn-inventory 에 미등록 — 일괄 sync 누르면 등록됨">
+        <input type="checkbox" id="cat-filter-nosync" onchange="catRender()"> <span>🔌 미동기화만</span>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="카테고리 미분류 항목만 표시">
+        <input type="checkbox" id="cat-filter-nocat" onchange="catRender()"> <span>🏷️ 미분류만</span>
+      </label>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catReload()">🔄 새로고침</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catBulkSyncToInventory()" title="카탈로그 전체 → mdn-inventory 일괄 sync (barcode 있는 row 만, 재고 X · price/name/image 만 등록)">📦 재고 일괄 sync</button>
     </div>
@@ -6818,6 +6827,9 @@ function catRender(){
   const q = (document.getElementById('cat-search')?.value || '').trim().toLowerCase();
   const cat = document.getElementById('cat-filter-category')?.value || '';
   const noimg = document.getElementById('cat-filter-noimg')?.checked || false;
+  const nobarcode = document.getElementById('cat-filter-nobarcode')?.checked || false;
+  const nosync = document.getElementById('cat-filter-nosync')?.checked || false;
+  const nocat = document.getElementById('cat-filter-nocat')?.checked || false;
   let list = _catItems.slice();
   if (q) list = list.filter(x =>
     (x.productName||'').toLowerCase().includes(q) ||
@@ -6826,6 +6838,13 @@ function catRender(){
   );
   if (cat) list = list.filter(x => x.category === cat);
   if (noimg) list = list.filter(x => !x.imageUrl && !x.hasLocalImage);
+  // ⚠️ 바코드 없음만 — Barcode 필드 비어있는 row (2026-05-16)
+  if (nobarcode) list = list.filter(x => !x.barcode);
+  // 🔌 미동기화만 — barcode 있지만 mdn-inventory 미등록 (_invStockByCatalogId[id] === null)
+  // _invStockLoaded === false 면 결과 비어보일 수 있음 — 로딩 완료 후 자동 재렌더됨
+  if (nosync) list = list.filter(x => x.barcode && _invStockByCatalogId[x.id] === null);
+  // 🏷️ 미분류만 — category 미선택 row
+  if (nocat) list = list.filter(x => !x.category);
 
   // 🔗 시리즈 그룹화 (2026-05-11) — root id 는 항상 "사업성 검토 page id" 기준
   // 견고성: server 의 비고 메타 (seriesRootId) 외에도 row.cpId 로 사업성 검토 list 의 root 매핑 fallback
