@@ -412,7 +412,48 @@ function parsePage(page) {
     기타부대비용: extractProp(page, '기타부대비용', 'number'),
     부대비용메모: extractProp(page, '부대비용메모', 'rich_text'),
     부대비용상태: extractProp(page, '부대비용상태', 'select'),
+    // ━━ 견적 단계 트래킹 (2026-05-17 v3 사이클 — 견적 작성 시 제조사 견적 + 고객사 이력 매칭용) ━━
+    // 기존 row 는 견적상태=NULL → 코드에서 '발주확정' 취급 (backward compatible)
+    견적상태: extractProp(page, '견적상태', 'select'),   // 견적단계 / 발주확정 / 미채택
+    견적ID: extractProp(page, '견적ID', 'rich_text'),     // ESTIMATE_DB row id link
+    견적일자: extractProp(page, '견적일자', 'date'),
+    유효기간: extractProp(page, '유효기간', 'date'),
   };
+}
+
+// ━━ 통합DB 신규 필드 4개 멱등 추가 (2026-05-17 v3 사이클) ━━
+// 부팅 시 + syncFromNotion 호출 시 매번 retrieve → 없으면 추가. 멱등.
+// 회귀 방지 #5: 새 property만 명시. 기존 properties 통째 보내지 말 것 (노션이 통째 교체)
+async function ensureUnifiedDbQuoteFields() {
+  if (!notion) return;
+  try {
+    const db = await notion.databases.retrieve({ database_id: UNIFIED_DB_ID });
+    const existing = db.properties || {};
+    const toAdd = {};
+    if (!existing['견적상태']) {
+      toAdd['견적상태'] = {
+        select: {
+          options: [
+            { name: '견적단계', color: 'blue' },
+            { name: '발주확정', color: 'green' },
+            { name: '미채택',   color: 'gray' },
+          ],
+        },
+      };
+    }
+    if (!existing['견적ID'])   toAdd['견적ID']   = { rich_text: {} };
+    if (!existing['견적일자']) toAdd['견적일자'] = { date: {} };
+    if (!existing['유효기간']) toAdd['유효기간'] = { date: {} };
+
+    if (Object.keys(toAdd).length === 0) return; // 이미 다 있음
+    await notion.databases.update({
+      database_id: UNIFIED_DB_ID,
+      properties: toAdd,
+    });
+    console.log('[ensureUnifiedDbQuoteFields] 추가:', Object.keys(toAdd).join(', '));
+  } catch (e) {
+    console.log('[ensureUnifiedDbQuoteFields] 실패 (무시):', e.message);
+  }
 }
 
 async function fetchAllPages(dbId) {
@@ -438,6 +479,9 @@ async function syncFromNotion() {
   }
   console.log('[동기화] 시작...');
   const start = Date.now();
+
+  // v3 사이클 — 통합DB 견적 트래킹 필드 4개 멱등 추가 (매 sync 시점 보장)
+  await ensureUnifiedDbQuoteFields();
 
   try {
     // 통합 DB
@@ -1030,6 +1074,140 @@ app.get('/api/quote-assist/options', (req, res) => {
   res.json({
     품명: Object.entries(품명Set).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
   });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v3 사이클 — 견적 작성용 제조사 견적 풀 endpoint (2026-05-17)
+// 견적계산기 v3 UI 가 호출. 견적상태 모두 포함 (견적단계 / 발주확정 / 미채택)
+// 기존 quote-assist 는 그대로 보존 — 기존 호출자 영향 없음
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/api/manufacturer-quotes', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const { 품명 } = req.query;
+  if (!품명) return res.status(400).json({ error: '품명 파라미터 필요' });
+
+  // 같은 품명 모든 row (status 무관, NULL = 발주확정 취급)
+  const items = (cache.items || []).filter(i => (i.품명 || []).includes(품명));
+  if (!items.length) return res.json({ found: false, 품명, history: [], stats: null });
+
+  // 응답용 history (v3 UI 에서 사용하는 필드만)
+  const history = items.map(i => ({
+    id: i.id,
+    품명: (i.품명 || [])[0] || 품명,
+    수량: i.수량 || 0,
+    거래처: i.거래처 || null,
+    국가: i.국가 || null,
+    개당단가: i.개당단가 || (i.수량 > 0 && i.제작비 ? Math.round(i.제작비 / i.수량) : null),
+    제작비: i.제작비 || null,
+    견적가: i.견적가 || null,
+    견적상태: i.견적상태 || '발주확정',   // backward compat: NULL = 발주확정
+    견적ID: i.견적ID || null,
+    // extractProp date 타입은 이미 string (예: '2026-05-17') 반환 — 객체 .start 접근 X
+    견적일자: i.견적일자 || i.발주일 || null,
+    유효기간: i.유효기간 || null,
+    비고: i.비고 || null,
+  })).filter(h => h.개당단가 != null);
+
+  // 통계 (발주확정 + NULL 만 — 미채택·견적단계 제외, 평균 왜곡 방지)
+  const adoptedPrices = history
+    .filter(h => h.견적상태 === '발주확정')
+    .map(h => h.개당단가);
+  const stats = adoptedPrices.length > 0 ? {
+    평균단가: Math.round(adoptedPrices.reduce((a, b) => a + b, 0) / adoptedPrices.length),
+    최저단가: Math.min(...adoptedPrices),
+    최고단가: Math.max(...adoptedPrices),
+    발주확정건수: adoptedPrices.length,
+  } : null;
+
+  // status 별 카운트 (UI 뱃지용)
+  const statusCount = history.reduce((acc, h) => {
+    acc[h.견적상태] = (acc[h.견적상태] || 0) + 1;
+    return acc;
+  }, {});
+
+  res.json({
+    found: true,
+    품명,
+    총건수: history.length,
+    status_count: statusCount,
+    stats,
+    history: history.sort((a, b) => {
+      // 발주확정 > 견적단계 > 미채택 정렬, 같으면 최신 날짜 우선
+      const ord = { '발주확정': 0, '견적단계': 1, '미채택': 2 };
+      if ((ord[a.견적상태] ?? 9) !== (ord[b.견적상태] ?? 9)) return (ord[a.견적상태] ?? 9) - (ord[b.견적상태] ?? 9);
+      return (b.견적일자 || '').localeCompare(a.견적일자 || '');
+    }),
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// v3 사이클 — POST 제조사 견적 row 추가 (견적단계, 2026-05-17)
+// 견적계산기 v3 UI "+ 제조사 견적 추가" 버튼이 호출
+// 노션 통합DB row 추가 + 메모리 cache.items 즉시 push (다음 sync 까지 즉시 반영)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.post('/api/manufacturer-quotes', express.json({ limit: '1mb' }), async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (!notion) return res.status(503).json({ error: 'notion 미설정' });
+
+  const { 품명, 수량, 거래처, 개당단가, 메모, 견적일자, 견적ID, 유효기간 } = req.body || {};
+  if (!품명 || !개당단가) return res.status(400).json({ error: '품명·개당단가 필수' });
+
+  try {
+    const qty = parseInt(수량) || 0;
+    const unit = parseFloat(String(개당단가).replace(/,/g, '')) || 0;
+    const totalCost = unit * qty;
+    const today = 견적일자 || new Date().toISOString().slice(0, 10);
+
+    // 노션 row properties
+    const properties = {
+      '프로젝트명': { title: [{ text: { content: `${품명} 견적 ${today}` + (거래처 ? ` — ${거래처}` : '') } }] },
+      '품명': { multi_select: [{ name: String(품명).substring(0, 100) }] },
+      '수량': { number: qty },
+      '제작비': { number: Math.round(totalCost) },
+      '견적상태': { select: { name: '견적단계' } },
+      '견적일자': { date: { start: today } },
+      '데이터유형': { select: { name: '견적' } },
+      '데이터출처': { rich_text: [{ text: { content: 'v3 견적계산기' } }] },
+    };
+    if (견적ID)   properties['견적ID']   = { rich_text: [{ text: { content: String(견적ID).substring(0, 1900) } }] };
+    if (유효기간) properties['유효기간'] = { date: { start: 유효기간 } };
+
+    // 거래처는 select — 기존 옵션에 있을 때만 set (없으면 비고로 박기)
+    // (회귀 방지 #5: 거래처 select 옵션 자동 추가는 별도 사이클에서 검토)
+    let 거래처비고 = '';
+    if (거래처) {
+      try {
+        const db = await notion.databases.retrieve({ database_id: UNIFIED_DB_ID });
+        const venOpts = db.properties?.['거래처']?.select?.options || [];
+        const matched = venOpts.find(o => o.name === 거래처);
+        if (matched) {
+          properties['거래처'] = { select: { name: 거래처 } };
+        } else {
+          거래처비고 = `거래처: ${거래처}`; // 비고에 기록
+        }
+      } catch (e) {
+        거래처비고 = `거래처: ${거래처}`;
+      }
+    }
+
+    const memoFinal = [거래처비고, 메모].filter(s => s).join(' / ');
+    if (memoFinal) properties['비고'] = { rich_text: [{ text: { content: memoFinal.substring(0, 1900) } }] };
+
+    const created = await notion.pages.create({
+      parent: { database_id: UNIFIED_DB_ID },
+      properties,
+    });
+
+    // 메모리 cache.items 즉시 push (다음 sync 까지 즉시 반영)
+    const newItem = parsePage(created);
+    cache.items = cache.items || [];
+    cache.items.push(newItem);
+
+    res.json({ ok: true, id: created.id, item: newItem });
+  } catch (e) {
+    console.error('[manufacturer-quotes POST]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ━━━ AI 파싱 인박스 — 검수 API (2026-04-25 신규) ━━━
