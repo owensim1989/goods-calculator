@@ -1147,6 +1147,16 @@ app.get('/api/manufacturer-quotes', (req, res) => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.post('/api/manufacturer-quotes', express.json({ limit: '1mb' }), async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
+
+  // v3 보안 가드 — POST 만 API key 헤더 검증 (GET 은 공개)
+  // 견적계산기 (Cloudflare Worker) 가 X-Quote-Api-Key 헤더로 호출
+  // env QUOTE_API_KEY 미설정 시 차단 (안전망 — Railway env 설정 후 활성)
+  const apiKey = process.env.QUOTE_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'QUOTE_API_KEY 미설정 — Railway env 추가 필요' });
+  if (req.headers['x-quote-api-key'] !== apiKey) {
+    return res.status(401).json({ error: 'unauthorized — X-Quote-Api-Key 헤더 필요' });
+  }
+
   if (!notion) return res.status(503).json({ error: 'notion 미설정' });
 
   const { 품명, 수량, 거래처, 개당단가, 메모, 견적일자, 견적ID, 유효기간 } = req.body || {};
