@@ -4055,6 +4055,23 @@ function cpOnSpecChanged(){
   if (typeof cpRefreshSimilarPanel === 'function') cpRefreshSimilarPanel();
 }
 
+// ━━━ Telemetry — 5분마다 접속 heartbeat (참고용, 2026-05-17) ━━━
+function _telemetryPing() {
+  try {
+    const u = window._goodsUser;
+    if (!u || !u.name) return;
+    fetch('https://mydesk.jeisha.kr/api/telemetry/heartbeat', {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site: 'goods', user: u.name, team: u.team || null }),
+      keepalive: true
+    }).catch(() => {});
+  } catch(e) {}
+}
+setTimeout(_telemetryPing, 30 * 1000);
+setInterval(_telemetryPing, 5 * 60 * 1000);
+
 // 페이지 로드 후 cp-category·cp-size·cp-material 변경 시 자동 호출 hook
 document.addEventListener('DOMContentLoaded', function(){
   setTimeout(function(){
