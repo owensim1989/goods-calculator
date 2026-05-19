@@ -4152,9 +4152,9 @@ const _buyerExcelHandler = async (req, res) => {
       stockWarehouses = (firstWh || []).filter(w => w.type !== 'popup');
       console.log('[재고 포함 엑셀] barcodes=' + allBarcodes.length + ', 매칭=' + Object.keys(stockMap).length + ', 창고=' + stockWarehouses.length);
     }
-    // 재고 컬럼 라벨 매핑 (country code → 한글)
-    const COUNTRY_LABEL = { 'KR': '한국', 'TW': '대만', 'TH': '태국', 'CN': '중국', 'JP': '일본', 'US': '미국', 'HK': '홍콩', 'ID': '인도네시아' };
-    const _whLabel = (w) => COUNTRY_LABEL[w.country] || w.name || w.code;
+    // 재고 컬럼 라벨 매핑 (country code → 영문 — 바이어 엑셀 일관성)
+    const COUNTRY_LABEL_EN = { 'KR': 'South Korea', 'TW': 'Taiwan', 'TH': 'Thailand', 'CN': 'China', 'JP': 'Japan', 'US': 'US', 'HK': 'HK', 'ID': 'Indonesia' };
+    const _whLabel = (w) => COUNTRY_LABEL_EN[w.country] || w.name || w.code;
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Mr.Donothing';
@@ -4175,13 +4175,13 @@ const _buyerExcelHandler = async (req, res) => {
     // 컬럼 너비 — Series 컬럼 (E) 18 추가
     const widths = [5, 14, 14, 32, 18, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
 
-    // 재고 컬럼 추가 (includeStock=true 일 때) — 총합 + 창고별
+    // 재고 컬럼 추가 (includeStock=true 일 때) — 총합 + 창고별 (영문)
     if (includeStock) {
-      headers.push('재고 총합');
+      headers.push('Total\nStock');
       widths.push(12);
       for (const w of stockWarehouses) {
-        headers.push('재고\n(' + _whLabel(w) + ')');
-        widths.push(12);
+        headers.push('Stock\n(' + _whLabel(w) + ')');
+        widths.push(14);
       }
     }
 
@@ -4189,7 +4189,7 @@ const _buyerExcelHandler = async (req, res) => {
     const lastColLetter = _colIndexToLetter(headers.length);
     sheet.mergeCells(`A1:${lastColLetter}1`);
     sheet.getCell('A1').value = includeStock
-      ? 'Mr.Donothing Product List (재고 포함)'
+      ? 'Mr.Donothing Product List (with Stock)'
       : 'Mr.Donothing Product List';
     sheet.getCell('A1').font = { bold: true, size: 14 };
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
