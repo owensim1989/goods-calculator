@@ -3991,9 +3991,25 @@ app.get('/api/catalog-image/:barcode/thumb', async (req, res) => {
 });
 
 // 📥 바이어 공유용 엑셀 다운로드 (ExcelJS 기반 — 셀 이미지 임베드)
-app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
+// 엑셀 컬럼 인덱스 → 엑셀 컬럼 letter (A, B, ..., Z, AA, AB, ...) 변환 헬퍼
+function _colIndexToLetter(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+// 📥 바이어 엑셀 핸들러 — 두 라우트 공유 (req.path 에 'with-stock' 포함 시 재고 컬럼 추가)
+const _buyerExcelHandler = async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 모듈 미설치 — 서버 재배포 필요 (npm install exceljs sharp)' });
+  const includeStock = req.path.includes('with-stock');
+  if (includeStock && (!INVENTORY_API_URL || !INVENTORY_API_KEY)) {
+    return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 환경변수 미설정 — 재고 포함 엑셀 사용 불가' });
+  }
   try {
     const allPages = [];
     let cursor = undefined;
@@ -4103,17 +4119,48 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       allPages.push(...flat);
     }
 
+    // 2026-05-05 — 단종/Out of stock 항목은 바이어 엑셀에서 제외 (제품리스트 다운로드 정합성)
+    const _gSelStatus = (p) => (p.properties?.판매상태?.select?.name) || null;
+    const visiblePages = allPages.filter(p => {
+      const s = _gSelStatus(p);
+      return s !== '단종' && s !== 'Out of stock';
+    });
+
+    // 📦 재고 포함 엑셀 — mdn-inventory 창고별 실시간 재고 조회 (2026-05-19)
+    let stockMap = {};            // barcode → { warehouseCode: quantity, ... }
+    let stockWarehouses = [];     // [{code, name, country, type}, ...] non-popup 만
+    if (includeStock) {
+      const _getBarcode = p => ((p.properties?.Barcode?.rich_text || []).map(t => t.plain_text || '').join('').trim());
+      const allBarcodes = [...new Set(visiblePages.map(_getBarcode).filter(Boolean))];
+      const chunks = [];
+      for (let i = 0; i < allBarcodes.length; i += 500) chunks.push(allBarcodes.slice(i, i + 500));
+      let firstWh = null;
+      for (const chunk of chunks) {
+        const url = INVENTORY_API_URL.replace(/\/$/, '') + '/api/hooks/stock-by-barcodes-detailed?barcodes=' + encodeURIComponent(chunk.join(','));
+        try {
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 15000);
+          const resp = await fetch(url, { headers: { 'X-API-Key': INVENTORY_API_KEY }, signal: ctrl.signal });
+          clearTimeout(to);
+          const data = await resp.json().catch(() => ({}));
+          if (!firstWh && Array.isArray(data.warehouses)) firstWh = data.warehouses;
+          if (data.stocks) Object.assign(stockMap, data.stocks);
+        } catch (err) {
+          console.warn('[재고 포함 엑셀] chunk fetch 실패 (size=' + chunk.length + '):', err.message);
+        }
+      }
+      stockWarehouses = (firstWh || []).filter(w => w.type !== 'popup');
+      console.log('[재고 포함 엑셀] barcodes=' + allBarcodes.length + ', 매칭=' + Object.keys(stockMap).length + ', 창고=' + stockWarehouses.length);
+    }
+    // 재고 컬럼 라벨 매핑 (country code → 한글)
+    const COUNTRY_LABEL = { 'KR': '한국', 'TW': '대만', 'TH': '태국', 'CN': '중국', 'JP': '일본', 'US': '미국', 'HK': '홍콩', 'ID': '인도네시아' };
+    const _whLabel = (w) => COUNTRY_LABEL[w.country] || w.name || w.code;
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Mr.Donothing';
     const sheet = workbook.addWorksheet('Mr.Donothing Product List', {
       properties: { defaultRowHeight: 80 }
     });
-
-    // 타이틀 (A1 merge A1:X1 — Series 컬럼 추가로 +1)
-    sheet.mergeCells('A1:X1');
-    sheet.getCell('A1').value = 'Mr.Donothing Product List';
-    sheet.getCell('A1').font = { bold: true, size: 14 };
-    sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Series 컬럼 추가 (2026-05-11) — 같은 시리즈 묶음 표시
     const headers = [
@@ -4125,24 +4172,37 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       'HS CODE', 'Size\n(mm)', 'Material', 'Country of\nOrigin',
       'Order Qty', 'Total (KRW)', 'Note'
     ];
+    // 컬럼 너비 — Series 컬럼 (E) 18 추가
+    const widths = [5, 14, 14, 32, 18, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
+
+    // 재고 컬럼 추가 (includeStock=true 일 때) — 총합 + 창고별
+    if (includeStock) {
+      headers.push('재고 총합');
+      widths.push(12);
+      for (const w of stockWarehouses) {
+        headers.push('재고\n(' + _whLabel(w) + ')');
+        widths.push(12);
+      }
+    }
+
+    // 타이틀 mergeCells — 헤더 개수만큼 동적
+    const lastColLetter = _colIndexToLetter(headers.length);
+    sheet.mergeCells(`A1:${lastColLetter}1`);
+    sheet.getCell('A1').value = includeStock
+      ? 'Mr.Donothing Product List (재고 포함)'
+      : 'Mr.Donothing Product List';
+    sheet.getCell('A1').font = { bold: true, size: 14 };
+    sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
     sheet.getRow(2).values = headers;
     sheet.getRow(2).font = { bold: true };
     sheet.getRow(2).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     sheet.getRow(2).height = 40;
 
-    // 컬럼 너비 — Series 컬럼 (E) 18 추가
-    const widths = [5, 14, 14, 32, 18, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
     widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
 
     let imagesEmbedded = 0;
     let imageErrors = [];
-
-    // 2026-05-05 — 단종/Out of stock 항목은 바이어 엑셀에서 제외 (제품리스트 다운로드 정합성)
-    const _gSelStatus = (p) => (p.properties?.판매상태?.select?.name) || null;
-    const visiblePages = allPages.filter(p => {
-      const s = _gSelStatus(p);
-      return s !== '단종' && s !== 'Out of stock';
-    });
 
     for (let idx = 0; idx < visiblePages.length; idx++) {
       const p = visiblePages[idx];
@@ -4197,7 +4257,7 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       const productNameDisplay = (isChild ? '  └ ' : '') + getText('Product Name');
 
       const rowNum = idx + 3;
-      sheet.getRow(rowNum).values = [
+      const rowValues = [
         idx + 1, '', (CATEGORY_EN[getSel('Category')] || 'Others'), productNameDisplay, seriesLabel, barcode, getText('Packaging'),
         getNum('Retail_KR_KRW'), getNum('Retail_TW_TWD'), getNum('Retail_US_USD'),
         getNum('Retail_TH_THB'), getNum('Retail_HK_HKD'), getNum('Retail_CN_CNY'),
@@ -4206,6 +4266,19 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
         getText('HS_Code'), getText('Size_mm'), getText('Material'),
         getSel('원산지') || '', 발주수량, amount, getText('비고')
       ];
+      // 재고 컬럼 추가 (includeStock=true) — 총합 + 창고별
+      if (includeStock) {
+        const stockByWh = (barcode && stockMap[barcode]) || {};
+        let totalStock = 0;
+        const perWhVals = [];
+        for (const w of stockWarehouses) {
+          const v = stockByWh[w.code] || 0;
+          totalStock += v;
+          perWhVals.push(v);
+        }
+        rowValues.push(totalStock, ...perWhVals);
+      }
+      sheet.getRow(rowNum).values = rowValues;
       sheet.getRow(rowNum).height = 80;
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
       // Series 셀 (E) 스타일 — 자식 row 는 보라 + italic / root + 변형 ≥1 은 보라 bold
@@ -4223,6 +4296,17 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
         sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
       });
       sheet.getCell(`J${rowNum}`).numFmt = '#,##0.0';   // US 0.5 라운딩
+      // 재고 컬럼 numFmt (Y 이후 동적) — 총합 컬럼은 bold
+      if (includeStock) {
+        const totalColIdx = 25; // 24 base + 1 (총합)
+        const totalColLetter = _colIndexToLetter(totalColIdx);
+        sheet.getCell(`${totalColLetter}${rowNum}`).numFmt = '#,##0';
+        sheet.getCell(`${totalColLetter}${rowNum}`).font = { bold: true };
+        for (let i = 0; i < stockWarehouses.length; i++) {
+          const colLetter = _colIndexToLetter(26 + i);
+          sheet.getCell(`${colLetter}${rowNum}`).numFmt = '#,##0';
+        }
+      }
 
       // 이미지 임베드: 바코드 우선, 없으면 Image_URL의 cp_{id} fallback
       let imgKey = barcode;
@@ -4270,10 +4354,12 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
       }
     }
 
-    console.log(`[바이어 엑셀] 이미지 임베드: ${imagesEmbedded}/${visiblePages.length}, 에러: ${imageErrors.length} (전체 ${allPages.length} 중 단종/품절 ${allPages.length - visiblePages.length} 제외)`);
+    console.log(`[바이어 엑셀${includeStock ? '+재고' : ''}] 이미지 임베드: ${imagesEmbedded}/${visiblePages.length}, 에러: ${imageErrors.length} (전체 ${allPages.length} 중 단종/품절 ${allPages.length - visiblePages.length} 제외)`);
     const buf = await workbook.xlsx.writeBuffer();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const filename = `Mr.Donothing_Product_List_${today}.xlsx`;
+    const filename = includeStock
+      ? `Mr.Donothing_Product_List_with_Stock_${today}.xlsx`
+      : `Mr.Donothing_Product_List_${today}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.setHeader('X-Images-Embedded', String(imagesEmbedded));
@@ -4282,7 +4368,9 @@ app.get('/api/consumer-pricing/catalog/export', async (req, res) => {
     console.error('[카탈로그 엑셀 내보내기 실패]', e);
     res.status(500).json({ error: e.message });
   }
-});
+};
+app.get('/api/consumer-pricing/catalog/export', _buyerExcelHandler);
+app.get('/api/consumer-pricing/catalog/export-with-stock', _buyerExcelHandler);
 
 
 // 📤 카탈로그 일괄 Import (엑셀 업로드 → Notion 카탈로그 DB에 create)
