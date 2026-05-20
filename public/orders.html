@@ -245,8 +245,74 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
         <button class="ghost" onclick="goStep(3)">← 이전</button>
         <div class="row">
           <button id="issueQuoteBtn" class="primary" onclick="issueQuote()">📄 견적서 발급 (QUO 부여 + 환율 캡쳐)</button>
-          <button id="downloadQuoteBtn" style="display:none" onclick="openQuoteForPrint()">📥 PDF 다운로드 (새 창)</button>
-          <button id="gmailBtn" style="display:none" onclick="openGmail()">📧 Gmail 새 창</button>
+          <button id="downloadQuoteBtn" style="display:none" onclick="openQuoteForPrint()">📥 견적서 PDF</button>
+          <button id="confirmedBtn" style="display:none" class="primary" onclick="goStep(5)">✓ Confirm 받음 → 인보이스 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 5 : 인보이스 -->
+    <section class="section" data-step="5">
+      <div class="hero"><h2>5. 인보이스 (Commercial Invoice) 발행</h2><div class="desc">business.jeisha.kr 의 INV-KR-YYYY-NNNN 시퀀스로 자동 발행 · 외환계좌 자동 첨부 · 노션 통합정산 sync 자동</div></div>
+      <div class="alert info" id="invoiceAlert"><div class="ico">📄</div><div id="invoiceAlertText">"인보이스 발행" 클릭 시 business 의 INV-KR-2026-NNNN 자동 발급 + 거래처 4중 매칭 + 노션 통합정산 row 생성</div></div>
+      <div class="card" style="background:linear-gradient(135deg,var(--surface-2),var(--surface))">
+        <div class="card-title">📑 문서 양식 <small>견적서 설정 자동 동기 · 여기서도 변경 가능</small></div>
+        <div class="row">
+          <button class="primary" id="modeDetailBtn2" onclick="setSummaryMode(false)">📋 상세</button>
+          <button id="modeSummaryBtn2" onclick="setSummaryMode(true)">📄 한 줄 요약</button>
+          <span class="muted" style="margin-left:auto" id="modeStatus2">현재: 상세</span>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <iframe id="invoicePreview" class="quote-iframe" srcdoc="<div style='display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-family:sans-serif;font-size:14px'>인보이스 발행 후 미리보기가 표시됩니다.</div>"></iframe>
+      </div>
+      <div class="step-actions">
+        <button class="ghost" onclick="goStep(4)">← 이전</button>
+        <div class="row">
+          <button id="issueInvoiceBtn" class="primary" onclick="issueInvoice()">📄 인보이스 발행 (business webhook)</button>
+          <button id="downloadInvoiceBtn" style="display:none" onclick="openInvoiceForPrint()">📥 인보이스 PDF</button>
+          <button id="toMailBtn" style="display:none" class="primary" onclick="goStep(6)">메일 발송 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 6 : 메일 · 자동연동 -->
+    <section class="section" data-step="6">
+      <div class="hero"><h2>6. 거래처 발송 (Gmail 수동) + 입금·출고 자동 연동 (Phase 3)</h2><div class="desc">메일 초안 자동 작성 → Gmail 새 창에서 본인 계정으로 발송 (첨부 직접). 입금 확정되면 inventory 자동 출고 (Phase 3, 별도 사이클)</div></div>
+      <div class="alert info"><div class="ico">📮</div><div><strong>Gmail 수동 발송 모드</strong> — 시스템 자동 발송 X. 본문 복사 또는 Gmail 새 창에서 열어 (제목·본문 prefill) PDF 2종 직접 첨부 후 보내세요.</div></div>
+      <div class="card">
+        <div class="card-title">📧 메일 초안 (영문 자동 작성)
+          <div class="row" style="gap:6px">
+            <button class="primary" onclick="copyEmailBody()">📋 본문 복사</button>
+            <button class="primary" onclick="openGmail()">📧 Gmail 새 창 열기</button>
+          </div>
+        </div>
+        <div id="emailPreview" style="background:#f7f4ed;color:#1a1a1a;border-radius:8px;padding:24px 26px;font-family:Helvetica,sans-serif;font-size:13px;line-height:1.7;max-width:760px;margin:0 auto;box-shadow:0 4px 16px rgba(0,0,0,.2)"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📎 첨부 PDF · 자동 연동 흐름</div>
+        <div class="grid g3">
+          <div style="padding:14px;background:var(--surface-2);border-radius:8px">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">📥 첨부 (직접 다운로드)</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:8px">견적서 + 인보이스 PDF</div>
+            <div class="row" style="gap:6px"><button onclick="openQuoteForPrint()">📄 견적서</button><button onclick="openInvoiceForPrint()">📄 인보이스</button></div>
+          </div>
+          <div style="padding:14px;background:var(--surface-2);border-radius:8px">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">① 입금 추적 (자동)</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px">business · 미수금 탭</div>
+            <div style="font-size:11px;color:var(--text-2)">신한 외환 SWIFT 또는 KB 자동매칭 → status='paid'</div>
+          </div>
+          <div style="padding:14px;background:var(--surface-2);border-radius:8px">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">② 출고 (Phase 3)</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px">inventory · 출고 대기</div>
+            <div style="font-size:11px;color:var(--text-2)">입금 → webhook → 자동 prefill 카드 생성</div>
+          </div>
+        </div>
+      </div>
+      <div class="step-actions">
+        <button class="ghost" onclick="goStep(5)">← 이전</button>
+        <div class="row">
+          <button onclick="markShipped()">🚚 송장번호 입력 (Phase 3, 직접 marking)</button>
         </div>
       </div>
     </section>
@@ -266,7 +332,9 @@ const STEPS = [
   {n:1,title:'주문서 인입'},
   {n:2,title:'매칭 · 재고'},
   {n:3,title:'가격 산정'},
-  {n:4,title:'견적서 발급'}
+  {n:4,title:'견적서 (goods)'},
+  {n:5,title:'인보이스 (business)'},
+  {n:6,title:'메일 · 자동연동'}
 ];
 
 // ━━━ TOAST ━━━
@@ -292,6 +360,8 @@ function goStep(n){
   if (n===2 && STATE.order) { renderMatchTable(); if (!_stockEverLoaded) refreshStock(); }
   if (n===3 && STATE.order) renderPriceTable();
   if (n===4 && STATE.order) renderQuotePreview();
+  if (n===5 && STATE.order) renderInvoicePreview();
+  if (n===6 && STATE.order) renderEmailPreview();
   if (STATE.orderId) updateOrderRemote({ step: n });
 }
 
@@ -473,15 +543,32 @@ function applyOrderToUI(){
   if (o.quote_no) {
     document.getElementById('issueQuoteBtn').style.display = 'none';
     document.getElementById('downloadQuoteBtn').style.display = '';
-    document.getElementById('gmailBtn').style.display = '';
+    document.getElementById('confirmedBtn').style.display = '';
     document.getElementById('quoteAlertText').innerHTML = `<strong>${o.quote_no}</strong> 발급됨 · 환율 캡쳐: 1 USD = ₩${(o.rate||1380).toLocaleString()} (${(o.rate_locked_at||'').slice(0,10)}) · 유효 ${o.validity_until||''}`;
     document.getElementById('quoteAlert').className = 'alert ok';
   } else {
     document.getElementById('issueQuoteBtn').style.display = '';
     document.getElementById('downloadQuoteBtn').style.display = 'none';
-    document.getElementById('gmailBtn').style.display = 'none';
+    document.getElementById('confirmedBtn').style.display = 'none';
     document.getElementById('quoteAlert').className = 'alert info';
   }
+  // 5단계 인보이스 prefill
+  if (o.invoice_no) {
+    document.getElementById('issueInvoiceBtn').style.display = 'none';
+    document.getElementById('downloadInvoiceBtn').style.display = '';
+    document.getElementById('toMailBtn').style.display = '';
+    const bi = o.business_invoice || {};
+    document.getElementById('invoiceAlertText').innerHTML = `<strong>${o.invoice_no}</strong> 발행됨 · 견적서 <strong>${escapeHtml(o.quote_no||'')}</strong> 참조 · ${bi.issue_date||''} → ${bi.due_date||''} · ${o.currency||'USD'} ${Number(bi.total_amount||0).toLocaleString('en-US',{minimumFractionDigits:2})}`;
+    document.getElementById('invoiceAlert').className = 'alert ok';
+  } else {
+    document.getElementById('issueInvoiceBtn').style.display = '';
+    document.getElementById('downloadInvoiceBtn').style.display = 'none';
+    document.getElementById('toMailBtn').style.display = 'none';
+    document.getElementById('invoiceAlert').className = 'alert info';
+  }
+  // 5단계 요약 모드 status 텍스트 갱신
+  const modeStatusEl = document.getElementById('modeStatus2');
+  if (modeStatusEl) modeStatusEl.textContent = STATE._summaryMode ? `현재: 요약 — "${o.summary_label||''}"` : '현재: 상세';
 }
 
 function renderPartner(){
@@ -660,9 +747,14 @@ function setSummaryMode(on){
   if (STATE.order) STATE.order.summary_mode = STATE._summaryMode;
   const b1 = document.getElementById('modeDetailBtn'); const b2 = document.getElementById('modeSummaryBtn');
   if (b1 && b2) { b1.className = on ? '' : 'primary'; b2.className = on ? 'primary' : ''; }
+  const b1b = document.getElementById('modeDetailBtn2'); const b2b = document.getElementById('modeSummaryBtn2');
+  if (b1b && b2b) { b1b.className = on ? '' : 'primary'; b2b.className = on ? 'primary' : ''; }
+  const modeStatusEl = document.getElementById('modeStatus2');
+  if (modeStatusEl) modeStatusEl.textContent = on ? `현재: 요약 — "${(STATE.order&&STATE.order.summary_label)||''}"` : '현재: 상세';
   document.getElementById('summaryControls').style.display = on ? 'block' : 'none';
   scheduleSave();
   renderQuotePreview();
+  if (STATE.order && STATE.order.invoice_no) renderInvoicePreview();
 }
 function onSummaryChange(){
   if (!STATE.order) return;
@@ -696,30 +788,106 @@ function openQuoteForPrint(){
   window.open('/api/orders/' + encodeURIComponent(STATE.orderId) + '/quote.html', '_blank', 'noopener');
 }
 
-function openGmail(){
-  const o = STATE.order; if (!o) return;
+// ━━━ STEP 5 : 인보이스 ━━━
+async function issueInvoice(){
+  if (!STATE.orderId) { toast('주문이 없습니다', 'err'); return; }
+  if (!STATE.order.quote_no) { toast('견적서 먼저 발급해주세요', 'err'); return; }
+  if (!confirm('business 에 인보이스 발행 요청을 보냅니다.\n- INV-KR-YYYY-NNNN 자동 발급\n- 거래처 4중 매칭 (tax_id ▶ notion ▶ email ▶ 이름)\n- 노션 통합정산 row 자동 등록\n\n진행할까요?')) return;
+  try {
+    const data = await api('/' + STATE.orderId + '/issue-invoice', { method: 'POST', body: JSON.stringify({ issuer: 'kr' })});
+    STATE.order = data.order;
+    applyOrderToUI();
+    toast('인보이스 ' + data.invoice_no + ' 발행', 'ok');
+    setTimeout(()=>{ renderInvoicePreview(); loadOrderList(); }, 200);
+  } catch (e) { toast('인보이스 발행 실패: ' + e.message, 'err'); }
+}
+
+function renderInvoicePreview(){
+  if (!STATE.orderId || !STATE.order || !STATE.order.invoice_no) return;
+  const iframe = document.getElementById('invoicePreview');
+  iframe.src = '/api/orders/' + encodeURIComponent(STATE.orderId) + '/invoice.html?ts=' + Date.now();
+}
+
+function openInvoiceForPrint(){
+  if (!STATE.orderId || !STATE.order?.invoice_no) { toast('인보이스 먼저 발행', 'err'); return; }
+  window.open('/api/orders/' + encodeURIComponent(STATE.orderId) + '/invoice.html', '_blank', 'noopener');
+}
+
+function markShipped(){
+  if (!STATE.orderId) return;
+  const trk = prompt('송장번호 입력 (Phase 3 본 구현 시 inventory webhook 자동 트리거 예정)', '');
+  if (trk === null) return;
+  if (!trk.trim()) return;
+  updateOrderRemote({ status: 'shipped', step: 6, notes: 'tracking:' + trk.trim() });
+  toast('shipped 마킹됨 (송장: ' + trk.trim() + ')', 'ok');
+  setTimeout(()=>openOrder(STATE.orderId), 200);
+}
+
+// ━━━ STEP 6 : 메일 ━━━
+function buildEmailContent(){
+  const o = STATE.order; if (!o) return { subject: '', body: '', to: '' };
   const p = o.partner || {};
   const total = (o.items||[]).reduce((s,i)=>s + (i.final_fob_won||i.fob_won||0)*i.order_qty, 0);
   const usd = (total / (o.rate||1380)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const quoteNo = o.quote_no || 'QUO-DRAFT';
-  const subject = `[Mr.Donothing] Quotation ${quoteNo} — ${o.items.length} items, ${o.incoterm||'FOB Busan'}, ${o.currency||'USD'} $${usd}`;
+  const refNo = o.invoice_no || o.quote_no || 'DRAFT';
+  const docType = o.invoice_no ? 'Invoice' : 'Quotation';
+  const subject = `[Mr.Donothing] ${docType} ${refNo} — ${o.items.length} items, ${o.incoterm||'FOB Busan'}, ${o.currency||'USD'} $${usd}`;
   const body = `Dear ${p.name||'Sir/Madam'},
 
-Thank you for your order. Please find attached our quotation for your reference.
+Thank you for your order. Please find attached our ${o.invoice_no ? 'commercial invoice (and quotation for reference)' : 'quotation'}.
 
 Order Summary
 - Items: ${o.items.length} line items
 - Total: ${o.currency||'USD'} $${usd} (KRW ₩${total.toLocaleString()} @ 1 USD = ₩${(o.rate||1380).toLocaleString()}, locked on ${(o.rate_locked_at||'').slice(0,10)})
 - Incoterm: ${o.incoterm||'FOB Busan'}
-- Validity: Quote valid until ${o.validity_until||''}
+${o.quote_no ? '- Reference: ' + o.quote_no : ''}
+${o.invoice_no ? '- Invoice No: ' + o.invoice_no : ''}
+${o.validity_until ? '- Validity: Quote valid until ' + o.validity_until : ''}
 
-Please confirm the order at your earliest convenience. Upon confirmation, we will issue a pro-forma invoice with payment instructions.
+${o.invoice_no ? `Payment Instructions (Foreign Exchange Wire Transfer)
+Beneficiary: JEISHA CO., LTD.
+Bank: Shinhan Bank, Seoul, Republic of Korea
+Swift Code: SHBKKRSE
+Account No: 100-035-************
+Bank Address: 20, Sejong-daero 9-gil, Jung-gu, Seoul, 04513, Korea
+
+Please instruct your bank to remit USD $${usd} with reference: ${o.invoice_no}
+
+Upon confirmation of payment, we will prepare and ship the goods within 5-7 business days. We will send you the tracking number and shipping documents (Packing List, Commercial Invoice, B/L) at that time.` : 'Please confirm the order at your earliest convenience. Upon confirmation, we will issue a commercial invoice with payment instructions.'}
+
+Please let us know if you have any questions.
 
 Best regards,
 Sales Team · Mr.Donothing
 JEISHA Co., Ltd.
 sales@jeisha.kr · jeisha.kr`;
-  const to = p.email || '';
+  return { subject, body, to: p.email || '' };
+}
+
+function renderEmailPreview(){
+  if (!STATE.order) return;
+  const { subject, body, to } = buildEmailContent();
+  const el = document.getElementById('emailPreview');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="background:#ece6d5;padding:14px 18px;border-bottom:1px solid #d4ccb8;font-size:12.5px;color:#1a1a1a;margin:-24px -26px 18px -26px;border-radius:8px 8px 0 0">
+      <div style="margin-bottom:4px"><strong>From</strong> sales@jeisha.kr (you)</div>
+      <div style="margin-bottom:4px"><strong>To</strong> ${escapeHtml(to)}</div>
+      <div><strong>Subject</strong> ${escapeHtml(subject)}</div>
+    </div>
+    <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;color:#1a1a1a">${escapeHtml(body)}</div>
+  `;
+}
+
+function copyEmailBody(){
+  const { subject, body } = buildEmailContent();
+  const full = `Subject: ${subject}\n\n${body}`;
+  navigator.clipboard.writeText(full).then(() => toast('✓ 제목 + 본문 클립보드 복사', 'ok'))
+    .catch(() => toast('복사 실패 — 브라우저 권한 확인', 'err'));
+}
+
+function openGmail(){
+  const { subject, body, to } = buildEmailContent();
   const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.open(url, '_blank', 'noopener');
 }
