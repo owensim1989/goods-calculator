@@ -4973,8 +4973,29 @@ function consumerPricingToProps(b) {
   return props;
 }
 
-// ━━━ Anthropic Claude API 호출 헬퍼 ━━━
-function callClaude(messages, opts = {}) {
+// ━━━ Anthropic Claude API 호출 헬퍼 (자동 재시도 wrapper, 2026-05-20) ━━━
+// 408/429/500/502/503/504/529 만 retry. 최대 3회 (1초→2초→4초+jitter).
+// 비용: 429/529 는 Anthropic 빌링 X (성공 시 1회 청구만)
+async function callClaude(messages, opts = {}) {
+  const MAX_RETRIES = 3;
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await _callClaudeOnce(messages, opts);
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e.message || '');
+      const retriable = /overloaded|rate.?limit|\b429\b|\b529\b|\b502\b|\b503\b|\b504\b|timeout|ECONNRESET|ETIMEDOUT|ENETUNREACH/i.test(msg);
+      if (!retriable || attempt === MAX_RETRIES) throw e;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000) + Math.random() * 500;
+      console.warn(`[anthropic-retry] callClaude 에러 (${msg.slice(0, 80)}) — ${Math.round(delay)}ms 후 재시도 (${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
+
+function _callClaudeOnce(messages, opts = {}) {
   return new Promise((resolve, reject) => {
     if (!ANTHROPIC_API_KEY) return reject(new Error('ANTHROPIC_API_KEY 미설정'));
     const body = JSON.stringify({
@@ -5000,7 +5021,9 @@ function callClaude(messages, opts = {}) {
           const j = JSON.parse(data);
           if (j.error) {
             console.error('[Claude API 에러]', JSON.stringify(j.error).slice(0, 500));
-            return reject(new Error(j.error.message || j.error.type || 'claude error'));
+            // status code 를 메시지에 포함시켜 retry 판단에 도움
+            const statusHint = res.statusCode ? ` [HTTP ${res.statusCode}]` : '';
+            return reject(new Error((j.error.message || j.error.type || 'claude error') + statusHint));
           }
           const text = (j.content && j.content[0] && j.content[0].text) || '';
           if (!text) {
