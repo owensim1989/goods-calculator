@@ -5846,6 +5846,24 @@ app.get('/api/consumer-pricing/catalog/inventory-stock', async (req, res) => {
 
 // 카탈로그 조회
 
+// ━━━ 📥 주문 처리 (Phase 1, 2026-05-20) ━━━
+// goods.jeisha.kr 의 주문서 인입 → 매칭·재고 → 가격 산정 → 견적서 발급
+// inventory `/api/hooks/stock-by-barcodes-detailed` + Notion PRODUCT_CATALOG 매칭
+try {
+  const ordersRoutes = require('./lib/orders-routes');
+  app.use('/api/orders', ordersRoutes.router({
+    notion,
+    PRODUCT_CATALOG_DB_ID,
+    INVENTORY_API_URL,
+    INVENTORY_API_KEY,
+    fxCache,
+    XLSX
+  }));
+  console.log('[orders] /api/orders 라우터 등록 완료');
+} catch (err) {
+  console.error('[orders] 라우터 등록 실패:', err.message);
+}
+
 // SPA 폴백
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>📥 주문 처리 — goods.jeisha.kr</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#1f1f1f; --surface:#2a2a2a; --surface-2:#353535; --line:#3d3d3d;
+  --sidebar:#191919;
+  --text:#e8e6e3; --text-2:#a8a6a2; --text-3:#6e6c69;
+  --accent:#c9a27a; --accent-strong:#d9b48c; --accent-bg:rgba(201,162,122,.14);
+  --ok:#6ee7b7; --warn:#fb923c; --err:#ef4444; --info:#4da1ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;font-size:14px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em}
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+aside{background:var(--sidebar);border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;height:100vh;overflow-y:auto}
+aside h1{font-size:15px;font-weight:600;margin-bottom:4px;letter-spacing:-0.02em}
+aside .sub{font-size:11px;color:var(--text-3);margin-bottom:24px;font-family:'JetBrains Mono',monospace}
+.steps{display:flex;flex-direction:column;gap:2px}
+.step{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid transparent;transition:all .12s;color:var(--text-2)}
+.step:hover{background:var(--surface);color:var(--text)}
+.step.active{background:var(--accent-bg);border-color:rgba(201,162,122,.35);color:var(--accent-strong);font-weight:600}
+.step .num{width:22px;height:22px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text-2);flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.step.active .num{background:var(--accent);color:#1f1f1f}
+.step.done .num{background:var(--ok);color:#1f1f1f}
+.step.done .num::before{content:"✓";font-family:inherit}
+.step.done .num span{display:none}
+main{padding:32px 40px;max-width:1400px;width:100%}
+.hero{margin-bottom:24px}
+.hero h2{font-size:22px;font-weight:600;margin-bottom:6px;letter-spacing:-0.02em}
+.hero .desc{color:var(--text-2);font-size:13px;line-height:1.6}
+.section{display:none}
+.section.active{display:block}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:14px}
+.card-title{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;letter-spacing:-0.01em}
+.card-title small{font-size:11px;color:var(--text-3);font-weight:400;letter-spacing:0}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:1fr 1fr 1fr}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr 1fr}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:13px 15px;min-width:0}
+.kpi .label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:600}
+.kpi .value{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1;font-family:'JetBrains Mono',monospace;letter-spacing:-0.02em}
+.kpi .sub{font-size:11px;color:var(--text-2);margin-top:4px}
+.kpi.ok .value{color:var(--ok)} .kpi.warn .value{color:var(--warn)} .kpi.err .value{color:var(--err)} .kpi.accent .value{color:var(--accent-strong)}
+button,.btn{font-family:inherit;font-size:12px;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);cursor:pointer;font-weight:500;transition:all .12s;display:inline-flex;align-items:center;gap:6px;letter-spacing:-0.005em}
+button:hover,.btn:hover{background:var(--line);border-color:#4d4d4d}
+button.primary,.btn.primary{background:var(--accent);color:#1f1f1f;border-color:var(--accent);font-weight:600}
+button.primary:hover{background:var(--accent-strong);border-color:var(--accent-strong)}
+button.ghost{background:transparent;border-color:transparent;color:var(--text-2)}
+button.ghost:hover{background:var(--surface-2);color:var(--text)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=text],input[type=number],input[type=date],select,textarea{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);min-width:0;width:100%}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+label{display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;font-weight:600}
+.muted{color:var(--text-3);font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);font-weight:600;padding:9px 8px;text-align:left;border-bottom:1px solid var(--line);background:var(--bg);position:sticky;top:0}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle;color:var(--text)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace}
+tr:hover td{background:rgba(255,255,255,.02)}
+tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(251,146,60,.06)}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:0}
+.badge.ok{background:rgba(110,231,183,.18);color:var(--ok)} .badge.warn{background:rgba(251,146,60,.18);color:var(--warn)} .badge.err{background:rgba(239,68,68,.18);color:var(--err)} .badge.info{background:rgba(77,161,255,.18);color:var(--info)} .badge.neutral{background:var(--surface-2);color:var(--text-2)}
+.dropzone{border:1.5px dashed var(--line);border-radius:10px;padding:36px;text-align:center;color:var(--text-2);transition:all .12s;cursor:pointer;background:var(--bg)}
+.dropzone:hover{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-strong)}
+.dropzone.drag{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-strong)}
+.dropzone .icon{font-size:30px;margin-bottom:8px}
+.dropzone h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px}
+.partner-card{background:linear-gradient(135deg,var(--accent-bg),var(--surface));border:1px solid rgba(201,162,122,.35);border-radius:10px;padding:16px 18px}
+.partner-card h3{font-size:13px;font-weight:600;margin-bottom:10px;color:var(--accent-strong);letter-spacing:-0.01em}
+.partner-card .info{display:grid;grid-template-columns:80px 1fr;gap:6px 14px;font-size:12px}
+.partner-card .info .k{color:var(--text-3);font-weight:500}
+.partner-card .info .v{color:var(--text)}
+.step-actions{display:flex;justify-content:space-between;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.alert{padding:11px 14px;border-radius:8px;font-size:12px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start;line-height:1.55}
+.alert.info{background:rgba(77,161,255,.1);color:#a4c8f0;border:1px solid rgba(77,161,255,.25)}
+.alert.warn{background:rgba(251,146,60,.1);color:#fcb785;border:1px solid rgba(251,146,60,.25)}
+.alert.ok{background:rgba(110,231,183,.1);color:#a0e9c8;border:1px solid rgba(110,231,183,.25)}
+.alert.err{background:rgba(239,68,68,.1);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
+.alert .ico{font-size:15px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap}
+.summary-bar{background:linear-gradient(135deg,var(--surface),var(--surface-2));border:1px solid rgba(201,162,122,.35);border-radius:8px;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.summary-bar .lhs{font-size:12px;color:var(--text-2)}
+.summary-bar .lhs strong{color:var(--text);font-weight:600}
+.summary-bar .rhs{font-size:22px;font-weight:600;color:var(--accent-strong);font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;letter-spacing:-0.02em}
+.quote-iframe{width:100%;height:680px;border:1px solid var(--line);border-radius:8px;background:#f7f4ed}
+.toast{position:fixed;top:18px;right:18px;background:var(--surface-2);border:1px solid var(--accent);color:var(--text);padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:9999;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.toast.err{border-color:var(--err);color:#fca5a5}
+.toast.ok{border-color:var(--ok);color:#a0e9c8}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="app">
+  <aside>
+    <h1>📥 주문 처리</h1>
+    <div class="sub">goods.jeisha.kr</div>
+    <div class="steps" id="stepNav"></div>
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">📋 진행 중 주문</div>
+        <button onclick="newOrder()" style="padding:3px 8px;font-size:10px" title="새 주문 시작">+ 새로</button>
+      </div>
+      <div id="orderList" style="display:flex;flex-direction:column;gap:4px;font-size:12px"></div>
+    </div>
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:11px;color:var(--text-3);line-height:1.6">
+      <div style="margin-bottom:6px;font-weight:600;color:var(--text-2)">💡 서버 자동 저장</div>
+      단계 이동 시 server <code style="background:var(--surface-2);padding:1px 4px;border-radius:3px;font-size:10px">data/orders.json</code> 에 저장. PC·세션 무관 복원
+    </div>
+  </aside>
+
+  <main>
+    <!-- STEP 1 : 인입 -->
+    <section class="section active" data-step="1">
+      <div class="hero"><h2>1. 주문서 인입</h2><div class="desc">거래처가 회신한 22컬럼 바이어 엑셀을 업로드 — Order Qty 가 채워진 행만 자동 추출.</div></div>
+      <div class="card">
+        <div class="card-title">엑셀 업로드</div>
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+          <div class="icon">📥</div>
+          <h3>회신 엑셀 드래그앤드롭 또는 클릭</h3>
+          <div>22컬럼 FOB/CIF 바이어 엑셀 회신본 · 최대 20MB</div>
+        </div>
+        <input id="fileInput" type="file" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
+        <div id="parsing" style="display:none;margin-top:12px" class="alert info"><div class="ico">⏳</div><div>파싱 중...</div></div>
+      </div>
+      <div class="card" id="parsedOrderCard" style="display:none">
+        <div class="card-title">파싱 결과 <small>자동 인식</small></div>
+        <div class="grid g4" style="margin-bottom:14px">
+          <div class="kpi"><div class="label">주문 행 수</div><div class="value" id="kpiRows">0</div><div class="sub">엑셀 Order Qty 기준</div></div>
+          <div class="kpi ok"><div class="label">카탈로그 매칭</div><div class="value" id="kpiMatched">0</div><div class="sub">바코드 자동 매칭</div></div>
+          <div class="kpi err"><div class="label">미매칭</div><div class="value" id="kpiUnmatched">0</div><div class="sub">신제품 또는 폐기품</div></div>
+          <div class="kpi accent"><div class="label">예상 합계</div><div class="value" id="kpiTotal">$0</div><div class="sub">환율 ₩<span id="kpiRate">1,380</span> 기준</div></div>
+        </div>
+        <div class="alert info" id="unmatchedAlert" style="display:none"><div class="ico">ℹ️</div><div id="unmatchedNote"></div></div>
+      </div>
+      <div class="step-actions" id="step1Actions" style="display:none">
+        <button class="ghost" onclick="document.getElementById('fileInput').click()">← 다시 업로드</button>
+        <button class="primary" onclick="goStep(2)">매칭·재고 확인 →</button>
+      </div>
+    </section>
+
+    <!-- STEP 2 : 매칭 + 재고 -->
+    <section class="section" data-step="2">
+      <div class="hero"><h2>2. 매칭 + 재고 확인</h2><div class="desc">바코드로 카탈로그 매칭 + mdn-inventory API 실시간 cross-check.</div></div>
+      <div class="grid g4" style="margin-bottom:16px">
+        <div class="kpi"><div class="label">매칭 완료</div><div class="value ok" id="kpi2Matched">0</div><div class="sub">바코드 정확 매칭</div></div>
+        <div class="kpi ok"><div class="label">재고 충분</div><div class="value" id="kpi2Ok">0</div><div class="sub">출고 즉시 가능</div></div>
+        <div class="kpi warn"><div class="label">재고 부족</div><div class="value" id="kpi2Low">0</div><div class="sub">일부만 출고 가능</div></div>
+        <div class="kpi err"><div class="label">결품</div><div class="value" id="kpi2Out">0</div><div class="sub">발주·생산 필요</div></div>
+      </div>
+      <div class="card">
+        <div class="toolbar">
+          <div class="card-title" style="margin:0">매칭 결과 — 수량 조정 가능 <small>거래처 답변 받으면 노란 셀에 최종 수량 입력</small></div>
+          <div class="row">
+            <button onclick="refreshStock()">🔄 재고 새로고침</button>
+            <span class="muted" style="margin:0 6px">일괄:</span>
+            <button onclick="bulkQty('lowToStock')">부족분 → 재고만큼</button>
+            <button onclick="bulkQty('outToZero')">결품 → 0 처리</button>
+            <button onclick="bulkQty('reset')">↺ 원래 주문수량</button>
+          </div>
+        </div>
+        <div class="alert info" style="margin-bottom:12px"><div class="ico">💡</div><div>거래처에 "재고 부족분 어떻게 할지" 물어본 후 답변 받아 입력. 수량 변경 시 3단계 가격·합계 자동 재계산.</div></div>
+        <div style="max-height:480px;overflow-y:auto">
+          <table id="matchTable"><thead><tr><th>제품명</th><th class="num">KR</th><th class="num">TW</th><th class="num">TH</th><th class="num">총재고</th><th class="num">원주문</th><th class="num">확정 수량</th><th>상태</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="step-actions"><button class="ghost" onclick="goStep(1)">← 이전</button><button class="primary" onclick="goStep(3)">가격 산정 →</button></div>
+    </section>
+
+    <!-- STEP 3 : 가격 산정 -->
+    <section class="section" data-step="3">
+      <div class="hero"><h2>3. 가격 산정 + 환율 캡쳐</h2><div class="desc">거래처·통화·인코텀즈·환율을 확정. 환율은 발급 시점에 캡쳐되어 견적서에 고정.</div></div>
+      <div class="grid g2" style="margin-bottom:16px">
+        <div class="partner-card">
+          <h3>🏢 거래처</h3>
+          <div class="info" id="partnerInfo"></div>
+          <div style="margin-top:10px"><button onclick="editPartner()" style="font-size:11px;padding:4px 8px">✏️ 편집</button></div>
+        </div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title">거래 조건</div>
+          <div class="grid g2">
+            <div><label>통화</label><select id="currencyInput" onchange="onCondChange()"><option>USD</option><option>HKD</option><option>EUR</option><option>KRW</option><option>JPY</option><option>CNY</option><option>TWD</option><option>THB</option></select></div>
+            <div><label>인코텀즈</label><select id="incotermInput" onchange="onCondChange()"><option>FOB Busan</option><option>CIF</option><option>EXW</option></select></div>
+            <div><label>환율 (1 USD = ₩)</label><input type="number" id="rateInput" value="1380" oninput="recalcAll()"><div class="muted" style="margin-top:4px">📍 EXIM 환율 자동 prefill · 발급 시 캡쳐</div></div>
+            <div><label>유효 기간 (일)</label><input type="number" id="validityInput" value="14" min="1" max="60"><div class="muted" style="margin-top:4px">기본 14일</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="lhs">
+          <strong id="sumLines">0 line items</strong> · 확정 합계 (₩) <strong id="sumKrw">0</strong>원 → USD 환전<br>
+          <span class="muted" style="font-size:11px">제시가 ₩<span id="sumListed">0</span> · 조정액 <span id="sumDiff" style="font-weight:600">±0</span></span>
+        </div>
+        <div class="rhs">$<span id="sumUsd">0.00</span></div>
+      </div>
+      <div class="card">
+        <div class="toolbar">
+          <div class="card-title" style="margin:0">단가 테이블 <small>노란 셀에 협상 후 최종 단가 입력</small></div>
+          <div class="row">
+            <span class="muted" style="margin-right:8px">일괄 조정:</span>
+            <button onclick="bulkAdjust(0)">원가 (제시가 그대로)</button>
+            <button onclick="bulkAdjust(5)">-5%</button>
+            <button onclick="bulkAdjust(10)">-10%</button>
+            <button onclick="bulkAdjust(15)">-15%</button>
+            <button onclick="bulkAdjust(20)">-20%</button>
+            <button onclick="bulkAdjust('custom')">기타...</button>
+          </div>
+        </div>
+        <div style="max-height:520px;overflow-y:auto">
+          <table id="priceTable"><thead><tr><th>제품명</th><th class="num">제시 FOB ₩</th><th class="num">확정 FOB ₩</th><th class="num">할인 %</th><th class="num">수량</th><th class="num">확정 FOB $</th><th class="num">합계 ₩</th><th class="num">합계 $</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="step-actions"><button class="ghost" onclick="goStep(2)">← 이전</button><button class="primary" onclick="goStep(4)">견적서 발급 →</button></div>
+    </section>
+
+    <!-- STEP 4 : 견적서 -->
+    <section class="section" data-step="4">
+      <div class="hero"><h2>4. 견적서 (Quotation) 발급</h2><div class="desc">QUO-YYYY-NNNN 자동 발급 · 환율 시점 고정 · cream 톤 영문 견적서 PDF</div></div>
+      <div class="alert info" id="quoteAlert"><div class="ico">📄</div><div id="quoteAlertText">"견적서 발급" 클릭 시 QUO 번호 자동 부여 + 환율 캡쳐</div></div>
+      <div class="card" style="background:linear-gradient(135deg,var(--surface-2),var(--surface))">
+        <div class="card-title">📑 문서 양식 <small>거래처 요청에 따라 선택</small></div>
+        <div class="row" style="margin-bottom:12px">
+          <button class="primary" id="modeDetailBtn" onclick="setSummaryMode(false)">📋 상세 (각 line 별)</button>
+          <button id="modeSummaryBtn" onclick="setSummaryMode(true)">📄 한 줄 요약 (1 line)</button>
+        </div>
+        <div id="summaryControls" style="display:none;padding-top:12px;border-top:1px solid var(--line)">
+          <div class="grid g2">
+            <div><label>Description</label><input type="text" id="summaryLabelInput" value="Mr.Donothing Goods - 1 Lot" oninput="onSummaryChange()"><div class="muted" style="margin-top:4px">예: "Mr.Donothing Promotional Goods (Assorted)"</div></div>
+            <div><label>HS Code</label><input type="text" id="summaryHSInput" value="9503.00 (assorted character merchandise)" oninput="onSummaryChange()"><div class="muted" style="margin-top:4px">대표 HS code</div></div>
+          </div>
+          <div class="alert warn" style="margin-top:12px;margin-bottom:0"><div class="ico">⚠️</div><div>한 줄 요약은 거래처가 명시적으로 요청한 경우에만 사용. 세관이 detailed packing list 요구 가능 — 별도 PDF 첨부 권장.</div></div>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <iframe id="quotePreview" class="quote-iframe" srcdoc="<div style='display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-family:sans-serif;font-size:14px'>견적서 발급 후 미리보기가 표시됩니다.</div>"></iframe>
+      </div>
+      <div class="step-actions">
+        <button class="ghost" onclick="goStep(3)">← 이전</button>
+        <div class="row">
+          <button id="issueQuoteBtn" class="primary" onclick="issueQuote()">📄 견적서 발급 (QUO 부여 + 환율 캡쳐)</button>
+          <button id="downloadQuoteBtn" style="display:none" onclick="openQuoteForPrint()">📥 PDF 다운로드 (새 창)</button>
+          <button id="gmailBtn" style="display:none" onclick="openGmail()">📧 Gmail 새 창</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+// ━━━ STATE ━━━
+const STATE = {
+  step: 1,
+  orderId: null,
+  order: null,    // 서버에서 받아온 raw order
+  warehouses: []  // KR/TW/TH 코드 + 라벨
+};
+
+const STEPS = [
+  {n:1,title:'주문서 인입'},
+  {n:2,title:'매칭 · 재고'},
+  {n:3,title:'가격 산정'},
+  {n:4,title:'견적서 발급'}
+];
+
+// ━━━ TOAST ━━━
+let _toastTimer;
+function toast(msg, kind='info'){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (kind==='err'?'err': kind==='ok'?'ok':'');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=>el.classList.remove('show'), 3000);
+}
+
+// ━━━ NAV ━━━
+function renderNav(){
+  const html = STEPS.map(s => `<div class="step ${STATE.step===s.n?'active':''} ${STATE.step>s.n?'done':''}" onclick="goStep(${s.n})"><div class="num"><span>${s.n}</span></div><div>${s.title}</div></div>`).join('');
+  document.getElementById('stepNav').innerHTML = html;
+}
+function goStep(n){
+  STATE.step = n;
+  document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', parseInt(s.dataset.step)===n));
+  renderNav();
+  window.scrollTo({top:0,behavior:'smooth'});
+  if (n===2 && STATE.order) { renderMatchTable(); if (!_stockEverLoaded) refreshStock(); }
+  if (n===3 && STATE.order) renderPriceTable();
+  if (n===4 && STATE.order) renderQuotePreview();
+  if (STATE.orderId) updateOrderRemote({ step: n });
+}
+
+// ━━━ API ━━━
+async function api(path, opts={}) {
+  const resp = await fetch('/api/orders' + path, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    ...opts
+  });
+  if (!resp.ok) {
+    let msg = 'HTTP ' + resp.status;
+    try { const j = await resp.json(); msg = j.error || msg; } catch(e){}
+    throw new Error(msg);
+  }
+  return resp.json();
+}
+
+// ━━━ ORDER LIST ━━━
+async function loadOrderList(){
+  try {
+    const data = await api('/');
+    const orders = data.orders || [];
+    const labels = data.status_labels || {};
+    const el = document.getElementById('orderList');
+    if (!orders.length) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--text-3);padding:6px 4px">진행 중 주문 없음</div>';
+      return;
+    }
+    el.innerHTML = orders.slice(0,10).map(o => {
+      const st = labels[o.status] || {label: o.status, color:'#666'};
+      const active = STATE.orderId === o.order_id;
+      const dt = new Date(o.updated_at);
+      const dtStr = (dt.getMonth()+1) + '/' + dt.getDate();
+      const lbl = o.label || (o.partner_company ? (o.partner_company.split(' ')[0] + ' · ' + o.line_count + '건') : (o.order_id.slice(-6)));
+      return `<div onclick="openOrder('${o.order_id}')" style="padding:8px 10px;border-radius:6px;cursor:pointer;border:1px solid ${active?'var(--accent)':'transparent'};background:${active?'var(--accent-bg)':'var(--surface-2)'};display:flex;flex-direction:column;gap:3px;position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px">
+          <div style="font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(lbl)}</div>
+          <button onclick="deleteOrder('${o.order_id}',event)" style="padding:0 4px;font-size:10px;border:none;background:transparent;color:var(--text-3);cursor:pointer" title="삭제">✕</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px">
+          <span style="background:${st.color};color:#fff;padding:1px 6px;border-radius:8px;font-weight:600">${st.label}</span>
+          <span style="color:var(--text-3)">${dtStr} · $${(o.total_usd||0).toLocaleString()}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('[orderList]', e);
+  }
+}
+
+async function openOrder(orderId){
+  try {
+    const data = await api('/' + encodeURIComponent(orderId));
+    STATE.order = data.order;
+    STATE.orderId = data.order.order_id;
+    applyOrderToUI();
+    const step = data.order.step || 1;
+    goStep(step);
+    loadOrderList();
+  } catch (e) { toast('주문 로드 실패: ' + e.message, 'err'); }
+}
+
+async function deleteOrder(orderId, ev){
+  if (ev) ev.stopPropagation();
+  if (!confirm('이 주문 삭제? (복원 불가)')) return;
+  try {
+    await api('/' + encodeURIComponent(orderId), { method: 'DELETE' });
+    if (STATE.orderId === orderId) newOrder();
+    loadOrderList();
+    toast('삭제됨', 'ok');
+  } catch (e) { toast('삭제 실패: ' + e.message, 'err'); }
+}
+
+function newOrder(){
+  STATE.orderId = null; STATE.order = null;
+  document.getElementById('parsedOrderCard').style.display = 'none';
+  document.getElementById('step1Actions').style.display = 'none';
+  document.getElementById('issueQuoteBtn').style.display = '';
+  document.getElementById('downloadQuoteBtn').style.display = 'none';
+  document.getElementById('gmailBtn').style.display = 'none';
+  document.getElementById('quoteAlertText').textContent = '"견적서 발급" 클릭 시 QUO 번호 자동 부여 + 환율 캡쳐';
+  document.querySelector('#matchTable tbody').innerHTML = '';
+  document.querySelector('#priceTable tbody').innerHTML = '';
+  goStep(1);
+  loadOrderList();
+}
+
+// ━━━ FILE UPLOAD ━━━
+let _stockEverLoaded = false;
+async function handleFile(file){
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) { toast('파일이 너무 큼 (최대 20MB)', 'err'); return; }
+  document.getElementById('parsing').style.display = 'flex';
+  try {
+    const b64 = await fileToBase64(file);
+    const parsed = await api('/parse-excel', { method: 'POST', body: JSON.stringify({ file_base64: b64, filename: file.name }) });
+    // 새 draft 주문 생성
+    const partner = STATE.order?.partner || _defaultPartner();
+    const created = await api('/', { method: 'POST', body: JSON.stringify({
+      partner,
+      items: parsed.matched,
+      unmatched: parsed.unmatched,
+      label: (file.name || '').replace(/\.[^.]+$/, '')
+    })});
+    STATE.order = created.order;
+    STATE.orderId = created.order.order_id;
+    _stockEverLoaded = false;
+    applyOrderToUI();
+    toast(parsed.matched.length + '건 매칭 / ' + parsed.unmatched.length + '건 미매칭', 'ok');
+    loadOrderList();
+  } catch (e) {
+    toast('업로드 실패: ' + e.message, 'err');
+  } finally {
+    document.getElementById('parsing').style.display = 'none';
+  }
+}
+
+function fileToBase64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => { const s = r.result || ''; const i = s.indexOf(','); res(i >= 0 ? s.slice(i+1) : s); };
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// 드래그앤드롭
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+function _defaultPartner(){
+  return {
+    name: 'TBD',
+    company: 'TEST-001',
+    address: '',
+    tel: '', fax: '', email: ''
+  };
+}
+
+// ━━━ APPLY ORDER → UI ━━━
+function applyOrderToUI(){
+  const o = STATE.order; if (!o) return;
+  // 1단계 KPI
+  document.getElementById('parsedOrderCard').style.display = 'block';
+  document.getElementById('step1Actions').style.display = 'flex';
+  document.getElementById('kpiRows').textContent = (o.items.length + (o.unmatched||[]).length);
+  document.getElementById('kpiMatched').textContent = o.items.length;
+  document.getElementById('kpiUnmatched').textContent = (o.unmatched||[]).length;
+  const rate = o.rate || 1380;
+  document.getElementById('rateInput').value = rate;
+  document.getElementById('kpiRate').textContent = rate.toLocaleString();
+  // 합계 prefill
+  const total = o.items.reduce((s,i)=>s + (i.final_fob_won||i.fob_won||0)*i.order_qty, 0);
+  document.getElementById('kpiTotal').textContent = '$' + Math.round(total/rate).toLocaleString();
+  // 미매칭 알림
+  const um = o.unmatched || [];
+  if (um.length) {
+    document.getElementById('unmatchedAlert').style.display = 'flex';
+    document.getElementById('unmatchedNote').innerHTML = `<strong>미매칭 ${um.length}건</strong> — ${um.slice(0,3).map(u => escapeHtml(u.name||u.barcode||'?')).join(' / ')}${um.length>3?' 외':''}`;
+  } else { document.getElementById('unmatchedAlert').style.display = 'none'; }
+  // 3단계 partner
+  renderPartner();
+  document.getElementById('currencyInput').value = o.currency || 'USD';
+  document.getElementById('incotermInput').value = o.incoterm || 'FOB Busan';
+  document.getElementById('validityInput').value = 14;
+  // summary 모드 prefill
+  STATE._summaryMode = o.summary_mode || false;
+  if (o.summary_label) document.getElementById('summaryLabelInput').value = o.summary_label;
+  if (o.summary_hs) document.getElementById('summaryHSInput').value = o.summary_hs;
+  setSummaryMode(STATE._summaryMode);
+  // 4단계 견적서 prefill (이미 발급된 경우)
+  if (o.quote_no) {
+    document.getElementById('issueQuoteBtn').style.display = 'none';
+    document.getElementById('downloadQuoteBtn').style.display = '';
+    document.getElementById('gmailBtn').style.display = '';
+    document.getElementById('quoteAlertText').innerHTML = `<strong>${o.quote_no}</strong> 발급됨 · 환율 캡쳐: 1 USD = ₩${(o.rate||1380).toLocaleString()} (${(o.rate_locked_at||'').slice(0,10)}) · 유효 ${o.validity_until||''}`;
+    document.getElementById('quoteAlert').className = 'alert ok';
+  } else {
+    document.getElementById('issueQuoteBtn').style.display = '';
+    document.getElementById('downloadQuoteBtn').style.display = 'none';
+    document.getElementById('gmailBtn').style.display = 'none';
+    document.getElementById('quoteAlert').className = 'alert info';
+  }
+}
+
+function renderPartner(){
+  const p = (STATE.order && STATE.order.partner) || {};
+  document.getElementById('partnerInfo').innerHTML = [
+    ['담당자', p.name||''],
+    ['회사', p.company||''],
+    ['주소', p.address||''],
+    ['전화', p.tel||''],
+    ['이메일', p.email||''],
+    ['통화', STATE.order?.currency || 'USD']
+  ].map(([k,v]) => `<div class="k">${k}</div><div class="v">${escapeHtml(v)}</div>`).join('');
+}
+
+function editPartner(){
+  const p = (STATE.order && STATE.order.partner) || {};
+  const name = prompt('담당자 이름', p.name || '');
+  if (name === null) return;
+  const company = prompt('회사명', p.company || '');
+  if (company === null) return;
+  const address = prompt('주소', p.address || '');
+  if (address === null) return;
+  const tel = prompt('전화', p.tel || '');
+  if (tel === null) return;
+  const email = prompt('이메일', p.email || '');
+  if (email === null) return;
+  STATE.order.partner = { name, company, address, tel, email };
+  updateOrderRemote({ partner: STATE.order.partner });
+  renderPartner();
+}
+
+// ━━━ STEP 2 : 매칭 + 재고 ━━━
+async function refreshStock(){
+  if (!STATE.orderId) return;
+  try {
+    const data = await api('/' + STATE.orderId + '/match-stock', { method: 'POST' });
+    STATE.warehouses = (data.warehouses || []).filter(w => w.type !== 'popup');
+    STATE.order = data.order;
+    _stockEverLoaded = true;
+    renderMatchTable();
+    toast('재고 ' + data.updated + '건 조회 완료', 'ok');
+  } catch (e) { toast('재고 조회 실패: ' + e.message, 'err'); }
+}
+
+function renderMatchTable(){
+  if (!STATE.order) return;
+  let ok=0, low=0, out=0;
+  const codes = (STATE.warehouses.length ? STATE.warehouses : [{code:'KR'},{code:'TW'},{code:'TH'}]).map(w => w.code).slice(0,3);
+  // header 동적 (KR/TW/TH 코드 고정)
+  const rows = STATE.order.items.map((i,idx) => {
+    const st = i.stock || {};
+    const total = st.total || 0;
+    const qty = i.order_qty;
+    let status, klass='';
+    if (total >= qty) { status = '<span class="badge ok">충분</span>'; ok++; }
+    else if (total > 0) { status = `<span class="badge warn">부족 (${total.toLocaleString()})</span>`; low++; klass='low-stock'; }
+    else { status = '<span class="badge err">결품</span>'; out++; klass='unmatched'; }
+    const changed = qty !== (i.original_qty||qty);
+    const origLabel = changed ? `<span style="text-decoration:line-through;color:var(--text-3);font-size:11px">${(i.original_qty||0).toLocaleString()}</span>` : `<span style="color:var(--text-3)">${(i.original_qty||qty).toLocaleString()}</span>`;
+    return `<tr class="${klass}">
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(i.barcode||'')}">${escapeHtml(i.name||'')}</td>
+      <td class="num">${(st[codes[0]]||0).toLocaleString()}</td>
+      <td class="num">${(st[codes[1]]||0).toLocaleString()}</td>
+      <td class="num">${(st[codes[2]]||0).toLocaleString()}</td>
+      <td class="num"><strong>${total.toLocaleString()}</strong></td>
+      <td class="num">${origLabel}</td>
+      <td class="num" style="white-space:nowrap">
+        <input type="text" value="${qty.toLocaleString()}" data-idx="${idx}" onchange="onQtyChange(${idx},this.value)" onfocus="this.select()" style="width:80px;text-align:right;background:rgba(251,191,36,.16);border:1px solid rgba(251,191,36,.55);color:#fde68a;padding:5px 8px;font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace">
+      </td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+  document.querySelector('#matchTable tbody').innerHTML = rows;
+  document.getElementById('kpi2Matched').textContent = STATE.order.items.length;
+  document.getElementById('kpi2Ok').textContent = ok;
+  document.getElementById('kpi2Low').textContent = low;
+  document.getElementById('kpi2Out').textContent = out;
+}
+
+function onQtyChange(idx, value){
+  const v = Math.max(0, parseInt(String(value).replace(/[^\d-]/g,''))||0);
+  STATE.order.items[idx].order_qty = v;
+  renderMatchTable();
+  if (document.querySelector('#priceTable tbody')) renderPriceTable();
+  scheduleSave();
+}
+
+function bulkQty(action){
+  STATE.order.items.forEach(i => {
+    const total = (i.stock && i.stock.total) || 0;
+    if (action === 'lowToStock') { if (total > 0 && total < (i.original_qty||i.order_qty)) i.order_qty = total; }
+    else if (action === 'outToZero') { if (total === 0) i.order_qty = 0; }
+    else if (action === 'reset') { i.order_qty = i.original_qty || i.order_qty; }
+  });
+  renderMatchTable();
+  if (document.querySelector('#priceTable tbody')) renderPriceTable();
+  scheduleSave();
+}
+
+// ━━━ STEP 3 : 가격 산정 ━━━
+function recalcAll(){
+  if (!STATE.order) return;
+  const rate = parseInt(document.getElementById('rateInput').value) || 1380;
+  STATE.order.rate = rate;
+  renderPriceTable();
+  scheduleSave();
+}
+function onCondChange(){
+  if (!STATE.order) return;
+  STATE.order.currency = document.getElementById('currencyInput').value;
+  STATE.order.incoterm = document.getElementById('incotermInput').value;
+  renderPartner();
+  scheduleSave();
+}
+
+function renderPriceTable(){
+  if (!STATE.order) return;
+  const rate = STATE.order.rate || 1380;
+  let totalListed = 0, totalFinal = 0;
+  const rows = STATE.order.items.map((i,idx) => {
+    const listed = i.fob_won || 0;
+    const fin = i.final_fob_won || listed;
+    const disc = listed > 0 ? ((listed - fin) / listed * 100) : 0;
+    const unit_usd = fin / rate;
+    const sub_krw = fin * i.order_qty;
+    const sub_usd = sub_krw / rate;
+    totalListed += listed * i.order_qty; totalFinal += sub_krw;
+    const dCls = disc > 0.5 ? 'style="color:var(--ok);font-weight:600"' : (disc < -0.5 ? 'style="color:var(--err);font-weight:600"' : 'style="color:var(--text-3)"');
+    return `<tr>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(i.barcode||'')}">${escapeHtml(i.name||'')}</td>
+      <td class="num" style="color:var(--text-2)">₩${listed.toLocaleString()}</td>
+      <td class="num"><input type="text" value="${fin.toLocaleString()}" data-idx="${idx}" onchange="onFinalChange(${idx},this.value)" onfocus="this.select()" style="width:104px;text-align:right;background:rgba(251,191,36,.16);border:1px solid rgba(251,191,36,.55);color:#fde68a;padding:5px 8px;font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace"></td>
+      <td class="num" ${dCls}>${disc.toFixed(1)}%</td>
+      <td class="num">${i.order_qty.toLocaleString()}</td>
+      <td class="num">$${unit_usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="num">₩${sub_krw.toLocaleString()}</td>
+      <td class="num"><strong style="color:var(--accent-strong)">$${sub_usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></td>
+    </tr>`;
+  }).join('');
+  document.querySelector('#priceTable tbody').innerHTML = rows;
+  const total_usd = totalFinal / rate;
+  document.getElementById('sumLines').textContent = STATE.order.items.length + ' line items';
+  document.getElementById('sumKrw').textContent = totalFinal.toLocaleString();
+  document.getElementById('sumUsd').textContent = total_usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('sumListed').textContent = totalListed.toLocaleString();
+  const diff = totalFinal - totalListed;
+  const pct = totalListed > 0 ? (diff/totalListed*100) : 0;
+  const sign = diff>=0?'+':'';
+  const sumDiffEl = document.getElementById('sumDiff');
+  sumDiffEl.textContent = `${sign}${diff.toLocaleString()}원 (${sign}${pct.toFixed(1)}%)`;
+  sumDiffEl.style.color = diff<0 ? 'var(--ok)' : (diff>0 ? 'var(--err)' : 'var(--text-3)');
+}
+
+function onFinalChange(idx, value){
+  const v = parseInt(String(value).replace(/[^\d-]/g,''))||0;
+  STATE.order.items[idx].final_fob_won = v;
+  renderPriceTable();
+  scheduleSave();
+}
+
+function bulkAdjust(pct){
+  if (pct === 'custom') {
+    const v = prompt('할인율(%) — 양수=할인, 음수=인상', '7.5');
+    if (v === null) return;
+    pct = parseFloat(v);
+    if (isNaN(pct)) { toast('숫자만 입력', 'err'); return; }
+  }
+  STATE.order.items.forEach(i => { i.final_fob_won = Math.round((i.fob_won||0) * (1 - pct/100)); });
+  renderPriceTable();
+  scheduleSave();
+}
+
+// ━━━ STEP 4 : 견적서 ━━━
+function setSummaryMode(on){
+  STATE._summaryMode = !!on;
+  if (STATE.order) STATE.order.summary_mode = STATE._summaryMode;
+  const b1 = document.getElementById('modeDetailBtn'); const b2 = document.getElementById('modeSummaryBtn');
+  if (b1 && b2) { b1.className = on ? '' : 'primary'; b2.className = on ? 'primary' : ''; }
+  document.getElementById('summaryControls').style.display = on ? 'block' : 'none';
+  scheduleSave();
+  renderQuotePreview();
+}
+function onSummaryChange(){
+  if (!STATE.order) return;
+  STATE.order.summary_label = document.getElementById('summaryLabelInput').value || 'Mr.Donothing Goods - 1 Lot';
+  STATE.order.summary_hs = document.getElementById('summaryHSInput').value || '9503.00';
+  scheduleSave();
+  renderQuotePreview();
+}
+
+async function issueQuote(){
+  if (!STATE.orderId) { toast('주문이 없습니다', 'err'); return; }
+  try {
+    const rate = parseInt(document.getElementById('rateInput').value) || 1380;
+    const validity = parseInt(document.getElementById('validityInput').value) || 14;
+    const data = await api('/' + STATE.orderId + '/issue-quote', { method: 'POST', body: JSON.stringify({ rate, validity_days: validity })});
+    STATE.order = data.order;
+    applyOrderToUI();
+    toast('견적서 ' + data.quote_no + ' 발급', 'ok');
+    setTimeout(()=>{ renderQuotePreview(); loadOrderList(); }, 200);
+  } catch (e) { toast('견적서 발급 실패: ' + e.message, 'err'); }
+}
+
+function renderQuotePreview(){
+  if (!STATE.orderId) return;
+  const iframe = document.getElementById('quotePreview');
+  iframe.src = '/api/orders/' + encodeURIComponent(STATE.orderId) + '/quote.html?ts=' + Date.now();
+}
+
+function openQuoteForPrint(){
+  if (!STATE.orderId) return;
+  window.open('/api/orders/' + encodeURIComponent(STATE.orderId) + '/quote.html', '_blank', 'noopener');
+}
+
+function openGmail(){
+  const o = STATE.order; if (!o) return;
+  const p = o.partner || {};
+  const total = (o.items||[]).reduce((s,i)=>s + (i.final_fob_won||i.fob_won||0)*i.order_qty, 0);
+  const usd = (total / (o.rate||1380)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const quoteNo = o.quote_no || 'QUO-DRAFT';
+  const subject = `[Mr.Donothing] Quotation ${quoteNo} — ${o.items.length} items, ${o.incoterm||'FOB Busan'}, ${o.currency||'USD'} $${usd}`;
+  const body = `Dear ${p.name||'Sir/Madam'},
+
+Thank you for your order. Please find attached our quotation for your reference.
+
+Order Summary
+- Items: ${o.items.length} line items
+- Total: ${o.currency||'USD'} $${usd} (KRW ₩${total.toLocaleString()} @ 1 USD = ₩${(o.rate||1380).toLocaleString()}, locked on ${(o.rate_locked_at||'').slice(0,10)})
+- Incoterm: ${o.incoterm||'FOB Busan'}
+- Validity: Quote valid until ${o.validity_until||''}
+
+Please confirm the order at your earliest convenience. Upon confirmation, we will issue a pro-forma invoice with payment instructions.
+
+Best regards,
+Sales Team · Mr.Donothing
+JEISHA Co., Ltd.
+sales@jeisha.kr · jeisha.kr`;
+  const to = p.email || '';
+  const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(url, '_blank', 'noopener');
+}
+
+// ━━━ 자동 저장 (debounce) ━━━
+let _saveTimer;
+function scheduleSave(){
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => persistOrder(), 800);
+}
+async function persistOrder(){
+  if (!STATE.orderId || !STATE.order) return;
+  try {
+    const o = STATE.order;
+    await api('/' + STATE.orderId, { method: 'PATCH', body: JSON.stringify({
+      items: o.items, partner: o.partner, currency: o.currency, incoterm: o.incoterm,
+      rate: o.rate, summary_mode: o.summary_mode, summary_label: o.summary_label, summary_hs: o.summary_hs
+    })});
+  } catch (e) { console.warn('[persist]', e.message); }
+}
+
+async function updateOrderRemote(patch){
+  if (!STATE.orderId) return;
+  try { await api('/' + STATE.orderId, { method: 'PATCH', body: JSON.stringify(patch) }); }
+  catch (e) { console.warn('[update]', e.message); }
+}
+
+// ━━━ HELPERS ━━━
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// FX prefill
+async function loadFx(){
+  try {
+    const r = await fetch('/api/fx', { credentials: 'include' });
+    if (r.ok) {
+      const fx = await r.json();
+      if (fx.USD) document.getElementById('rateInput').value = Math.round(fx.USD);
+      const k = document.getElementById('kpiRate');
+      if (k) k.textContent = Math.round(fx.USD).toLocaleString();
+    }
+  } catch(e){}
+}
+
+// ━━━ INIT ━━━
+renderNav();
+loadOrderList();
+loadFx();
+</script>
+</body>
+</html>
