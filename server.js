@@ -1293,6 +1293,88 @@ app.patch('/api/parsed-quotes/:id/reset', (req, res) => {
   res.json({ ok: true, item: it });
 });
 
+// ━━━ 페이지 직접 업로드 (2026-05-20 신설) ━━━
+// 사업화·디자인팀이 견적서 받았을 때 Drive 거치지 않고 바로 페이지에서 업로드.
+// 동작: ① Drive 인박스 폴더에 자동 저장 (감사 추적) ② 즉시 Claude 파싱
+//      ③ 인박스에 pending row 자동 등록 ④ _processed/YYYY-MM/ 으로 자동 이동
+// body: { files: [{ filename, mimeType, base64 }], submitter: { name, email } }
+// 동시에 여러 파일 가능 (각각 직렬로 처리, 한 건 실패해도 나머지 진행)
+app.post('/api/inbox/upload', express.json({ limit: '50mb' }), async (req, res) => {
+  try {
+    const folderId = process.env.INBOX_DRIVE_FOLDER_ID || '';
+    if (!folderId) return res.status(503).json({ error: 'INBOX_DRIVE_FOLDER_ID 미설정' });
+    if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+
+    const body = req.body || {};
+    const files = Array.isArray(body.files) ? body.files : [];
+    if (!files.length) return res.status(400).json({ error: 'files 배열 필요' });
+    if (files.length > 20) return res.status(400).json({ error: '한 번에 최대 20개까지' });
+
+    // 제출자 정보 — 클라이언트 input 보다 세션 사용자 우선 (위변조 방지)
+    const submitterName = (req.user && (req.user.name || req.user.displayName)) || (body.submitter && body.submitter.name) || null;
+    const submitterEmail = (req.user && req.user.email) || (body.submitter && body.submitter.email) || null;
+
+    reloadParsedDb();
+    const results = [];
+    for (const f of files) {
+      const filename = String(f.filename || '').trim();
+      const mimeType = String(f.mimeType || '').trim();
+      const b64 = String(f.base64 || '').replace(/^data:[^;]+;base64,/, '');
+      try {
+        if (!filename) throw new Error('filename 누락');
+        if (!mimeType) throw new Error('mimeType 누락');
+        if (!b64) throw new Error('base64 비어있음');
+        const buffer = Buffer.from(b64, 'base64');
+        if (!buffer.length) throw new Error('base64 디코드 실패 (빈 buffer)');
+        if (buffer.length > 30 * 1024 * 1024) throw new Error('파일이 너무 큼 (30MB 초과)');
+
+        const out = await inboxWatcher.uploadAndProcessOne({
+          folderId,
+          parsedDbPath: PARSED_DB_PATH,
+          anthropicKey: ANTHROPIC_API_KEY,
+          filename,
+          mimeType,
+          buffer,
+          submitterName,
+          submitterEmail
+        });
+        // parsedDb 메모리 갱신 (방금 push 된 항목 반영)
+        parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
+
+        results.push({
+          filename,
+          status: 'parsed',
+          recordId: out.record.id,
+          vendor: out.record.vendor,
+          country: out.record.country,
+          productCount: (out.record.products || []).length,
+          packagingCount: (out.record.packaging || []).length,
+          oneTimeCount: (out.record.oneTime || []).length,
+          driveFileId: out.record.driveFile?.id,
+          driveWebViewLink: out.record.driveFile?.webViewLink
+        });
+      } catch (err) {
+        const msg = (err && err.message) || String(err);
+        console.error('[inbox/upload] ' + filename + ' 처리 실패:', msg);
+        results.push({
+          filename,
+          status: 'failed',
+          error: msg,
+          driveFileId: err && err.driveFileId
+        });
+      }
+    }
+
+    // 캐시 재구성은 검수 완료 후에만 필요하지만, lastRun 노출 위해 reloadParsedDb
+    const ok = results.filter(r => r.status === 'parsed').length;
+    const fail = results.filter(r => r.status === 'failed').length;
+    res.json({ ok: fail === 0, total: results.length, parsed: ok, failed: fail, results });
+  } catch (e) {
+    console.error('[inbox/upload] 실패:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 인박스 watcher 즉시 1회 실행 (관리자 트리거)
 // query: ?dry=1 → DRY-RUN
 app.post('/api/admin/inbox/run-now', async (req, res) => {
