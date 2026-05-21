@@ -166,6 +166,7 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
             <button onclick="bulkQty('reset')">↺ 원래 주문수량</button>
           </div>
         </div>
+        <div class="alert info" style="margin-bottom:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div class="ico">📦</div><div style="flex:1;min-width:200px"><strong>출고 창고</strong> — 선택한 창고 합산으로 충분/부족/품절 판정 <small style="color:var(--text-3)">(이 주문에만 적용)</small></div><div id="shippingWhsPicker" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
         <div class="alert info" style="margin-bottom:12px"><div class="ico">💡</div><div>거래처에 "재고 부족분 어떻게 할지" 물어본 후 답변 받아 입력. 수량 변경 시 3단계 가격·합계 자동 재계산.</div></div>
         <div style="max-height:480px;overflow-y:auto">
           <table id="matchTable"><thead><tr><th>제품명</th><th class="num">KR</th><th class="num">TW</th><th class="num">TH</th><th class="num">총재고</th><th class="num">원주문</th><th class="num">확정 수량</th><th>상태</th></tr></thead><tbody></tbody></table>
@@ -608,20 +609,57 @@ async function refreshStock(){
     STATE.warehouses = (data.warehouses || []).filter(w => w.type !== 'popup');
     STATE.order = data.order;
     _stockEverLoaded = true;
+    renderShippingWhsPicker();
     renderMatchTable();
     toast('재고 ' + data.updated + '건 조회 완료', 'ok');
   } catch (e) { toast('재고 조회 실패: ' + e.message, 'err'); }
 }
 
+// 출고 창고 선택 — 주문별 (기본 = 한국 단일)
+function _shippingWhsCodes(){
+  const sel = STATE.order && STATE.order.shipping_warehouses;
+  if (Array.isArray(sel) && sel.length) return sel;
+  return ['KR']; // 디폴트 = 한국 단일 (가장 일반적 시나리오)
+}
+function _totalFromStock(st){
+  const codes = _shippingWhsCodes();
+  return codes.reduce((sum, c) => sum + Number((st && st[c]) || 0), 0);
+}
+function renderShippingWhsPicker(){
+  const el = document.getElementById('shippingWhsPicker');
+  if (!el) return;
+  const all = (STATE.warehouses || []).filter(w => w.type !== 'popup');
+  const codes = all.length ? all.map(w => w.code) : ['KR','TW','TH'];
+  const sel = _shippingWhsCodes();
+  el.innerHTML = codes.map(c => {
+    const checked = sel.includes(c) ? 'checked' : '';
+    return `<label style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;background:${sel.includes(c)?'rgba(251,191,36,.14)':'transparent'};color:${sel.includes(c)?'#fde68a':'var(--text-2)'}"><input type="checkbox" value="${c}" ${checked} onchange="onShippingWhsChange()" style="margin:0"> ${c}</label>`;
+  }).join('');
+}
+function onShippingWhsChange(){
+  const codes = [...document.querySelectorAll('#shippingWhsPicker input[type=checkbox]:checked')].map(el => el.value);
+  if (!codes.length) {
+    toast('최소 1개 창고를 선택하세요', 'err');
+    renderShippingWhsPicker(); // 체크 원복
+    return;
+  }
+  STATE.order.shipping_warehouses = codes;
+  renderShippingWhsPicker();
+  renderMatchTable();
+  updateOrderRemote({ shipping_warehouses: codes });
+}
+
 function renderMatchTable(){
   if (!STATE.order) return;
+  renderShippingWhsPicker();   // 창고 picker 항상 최신 상태 유지
   let ok=0, low=0, out=0;
   const codes = (STATE.warehouses.length ? STATE.warehouses : [{code:'KR'},{code:'TW'},{code:'TH'}]).map(w => w.code).slice(0,3);
   // header 동적 (KR/TW/TH 코드 고정)
   // 상태별 정렬 (이 페이지에서만): 품절(0) → 부족(1) → 충분(2). 안정 정렬 위해 원본 idx 보존.
   // STATE.order.items 본체는 mutate X — 다른 단계(3단계 가격 산정 등)는 원래 순서 유지
+  // total = 선택된 출고 창고만 합산 (_totalFromStock 사용)
   const _rankOf = (i) => {
-    const total = (i.stock||{}).total || 0;
+    const total = _totalFromStock(i.stock);
     const qty = i.order_qty;
     if (total >= qty) return 2;        // 충분
     if (total > 0)    return 1;        // 부족
@@ -632,7 +670,7 @@ function renderMatchTable(){
     .sort((a, b) => a.rank - b.rank || a.idx - b.idx);
   const rows = sortedView.map(({i, idx}) => {
     const st = i.stock || {};
-    const total = st.total || 0;
+    const total = _totalFromStock(st);
     const qty = i.order_qty;
     let status, klass='';
     if (total >= qty) { status = '<span class="badge ok">충분</span>'; ok++; }
@@ -670,7 +708,7 @@ function onQtyChange(idx, value){
 
 function bulkQty(action){
   STATE.order.items.forEach(i => {
-    const total = (i.stock && i.stock.total) || 0;
+    const total = _totalFromStock(i.stock);  // 선택된 출고 창고만 합산
     if (action === 'lowToStock') { if (total > 0 && total < (i.original_qty||i.order_qty)) i.order_qty = total; }
     else if (action === 'outToZero') { if (total === 0) i.order_qty = 0; }
     else if (action === 'reset') { i.order_qty = i.original_qty || i.order_qty; }
