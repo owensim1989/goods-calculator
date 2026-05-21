@@ -1305,7 +1305,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);" onclick="catImgClose()">✕</button>
     </div>
     <div id="cat-img-current" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"></div>
-    <div id="cat-img-drop" onclick="document.getElementById('cat-img-file').click()" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:10px;cursor:pointer;">
+    <div id="cat-img-drop" onclick="document.getElementById('cat-img-file').click()" ondragover="event.preventDefault();this.style.borderColor='var(--primary,#3b82f6)';" ondragleave="this.style.borderColor='var(--border)';" ondrop="event.preventDefault();this.style.borderColor='var(--border)';if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0]){catImgPicked(event.dataTransfer.files[0]);}" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:10px;cursor:pointer;">
       <div style="font-size:28px;">📎</div>
       <div style="font-size:12px;margin-top:4px;">클릭 또는 드래그해서 이미지 업로드 (JPG·PNG·WebP)</div>
     </div>
