@@ -153,7 +153,7 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
         <div class="kpi"><div class="label">매칭 완료</div><div class="value ok" id="kpi2Matched">0</div><div class="sub">바코드 정확 매칭</div></div>
         <div class="kpi ok"><div class="label">재고 충분</div><div class="value" id="kpi2Ok">0</div><div class="sub">출고 즉시 가능</div></div>
         <div class="kpi warn"><div class="label">재고 부족</div><div class="value" id="kpi2Low">0</div><div class="sub">일부만 출고 가능</div></div>
-        <div class="kpi err"><div class="label">결품</div><div class="value" id="kpi2Out">0</div><div class="sub">발주·생산 필요</div></div>
+        <div class="kpi err"><div class="label">품절</div><div class="value" id="kpi2Out">0</div><div class="sub">발주·생산 필요</div></div>
       </div>
       <div class="card">
         <div class="toolbar">
@@ -162,7 +162,7 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
             <button onclick="refreshStock()">🔄 재고 새로고침</button>
             <span class="muted" style="margin:0 6px">일괄:</span>
             <button onclick="bulkQty('lowToStock')">부족분 → 재고만큼</button>
-            <button onclick="bulkQty('outToZero')">결품 → 0 처리</button>
+            <button onclick="bulkQty('outToZero')">품절 → 0 처리</button>
             <button onclick="bulkQty('reset')">↺ 원래 주문수량</button>
           </div>
         </div>
@@ -618,14 +618,26 @@ function renderMatchTable(){
   let ok=0, low=0, out=0;
   const codes = (STATE.warehouses.length ? STATE.warehouses : [{code:'KR'},{code:'TW'},{code:'TH'}]).map(w => w.code).slice(0,3);
   // header 동적 (KR/TW/TH 코드 고정)
-  const rows = STATE.order.items.map((i,idx) => {
+  // 상태별 정렬 (이 페이지에서만): 품절(0) → 부족(1) → 충분(2). 안정 정렬 위해 원본 idx 보존.
+  // STATE.order.items 본체는 mutate X — 다른 단계(3단계 가격 산정 등)는 원래 순서 유지
+  const _rankOf = (i) => {
+    const total = (i.stock||{}).total || 0;
+    const qty = i.order_qty;
+    if (total >= qty) return 2;        // 충분
+    if (total > 0)    return 1;        // 부족
+    return 0;                          // 품절
+  };
+  const sortedView = STATE.order.items
+    .map((i, idx) => ({ i, idx, rank: _rankOf(i) }))
+    .sort((a, b) => a.rank - b.rank || a.idx - b.idx);
+  const rows = sortedView.map(({i, idx}) => {
     const st = i.stock || {};
     const total = st.total || 0;
     const qty = i.order_qty;
     let status, klass='';
     if (total >= qty) { status = '<span class="badge ok">충분</span>'; ok++; }
     else if (total > 0) { status = `<span class="badge warn">부족 (${total.toLocaleString()})</span>`; low++; klass='low-stock'; }
-    else { status = '<span class="badge err">결품</span>'; out++; klass='unmatched'; }
+    else { status = '<span class="badge err">품절</span>'; out++; klass='unmatched'; }
     const changed = qty !== (i.original_qty||qty);
     const origLabel = changed ? `<span style="text-decoration:line-through;color:var(--text-3);font-size:11px">${(i.original_qty||0).toLocaleString()}</span>` : `<span style="color:var(--text-3)">${(i.original_qty||qty).toLocaleString()}</span>`;
     return `<tr class="${klass}">
