@@ -7853,15 +7853,61 @@ function catImgClose(){
 }
 function catImgPicked(file){
   if (!file) return;
-  if (!file.type.startsWith('image/')) { showToast('이미지 파일만 가능', 'warn'); return; }
-  if (file.size > 10 * 1024 * 1024) { showToast('10MB 이하만 가능', 'warn'); return; }
+  const isImage = (file.type && file.type.startsWith('image/')) || /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(file.name||'');
+  if (!isImage) {
+    document.getElementById('cat-img-status').textContent = `❌ 이미지 파일만 가능 (.jpg .png .webp). 선택한 파일: ${file.name||'?'} (${file.type||'unknown'})`;
+    showToast('이미지 파일만 가능', 'warn');
+    return;
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    document.getElementById('cat-img-status').textContent = `❌ 50MB 이하만 가능. 선택한 파일: ${(file.size/1024/1024).toFixed(1)}MB`;
+    showToast('50MB 이하만 가능', 'warn');
+    return;
+  }
+  const statusEl = document.getElementById('cat-img-status');
+  statusEl.textContent = `${file.name} · ${(file.size/1024/1024).toFixed(2)}MB · 처리 중…`;
   const reader = new FileReader();
   reader.onload = (e) => {
-    _catImgDataUrl = e.target.result;
-    document.getElementById('cat-img-preview-tag').src = _catImgDataUrl;
-    document.getElementById('cat-img-preview').style.display = 'block';
-    document.getElementById('cat-img-save').disabled = false;
-    document.getElementById('cat-img-status').textContent = `${file.name} · ${(file.size/1024).toFixed(0)}KB`;
+    const origDataUrl = e.target.result;
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1920;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const needsResize = w > MAX || h > MAX || file.size > 1.5 * 1024 * 1024;
+      let outDataUrl;
+      if (needsResize) {
+        if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+        else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        outDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        // 여전히 크면 한 번 더 압축
+        if (outDataUrl.length > 15 * 1024 * 1024) {
+          outDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        }
+      } else {
+        outDataUrl = origDataUrl;
+      }
+      _catImgDataUrl = outDataUrl;
+      const outBytes = Math.round(outDataUrl.length * 0.75); // base64 → 원본 bytes
+      document.getElementById('cat-img-preview-tag').src = _catImgDataUrl;
+      document.getElementById('cat-img-preview').style.display = 'block';
+      document.getElementById('cat-img-save').disabled = false;
+      const note = needsResize
+        ? `${file.name} · 원본 ${(file.size/1024/1024).toFixed(2)}MB · 압축 후 ${(outBytes/1024/1024).toFixed(2)}MB (${w}×${h})`
+        : `${file.name} · ${(file.size/1024).toFixed(0)}KB · ${img.naturalWidth}×${img.naturalHeight}`;
+      statusEl.textContent = note;
+    };
+    img.onerror = () => {
+      statusEl.textContent = `❌ 이미지 디코딩 실패 — 파일이 손상됐거나 지원 안 되는 형식 (HEIC 등)`;
+      showToast('이미지 형식 오류', 'warn');
+    };
+    img.src = origDataUrl;
+  };
+  reader.onerror = () => {
+    statusEl.textContent = `❌ 파일 읽기 실패`;
+    showToast('파일 읽기 실패', 'warn');
   };
   reader.readAsDataURL(file);
 }
