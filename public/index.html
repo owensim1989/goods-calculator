@@ -1215,6 +1215,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </label>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catReload()">🔄 새로고침</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catBulkSyncToInventory()" title="카탈로그 전체 → mdn-inventory 일괄 sync (barcode 있는 row 만, 재고 X · price/name/image 만 등록)">📦 재고 일괄 sync</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:6px 12px;" onclick="catOpenImportMeasurements()" title="Mr.Donothing Product List 엑셀 업로드 → barcode 매칭 → 포장합무게(g) + 1박스당 갯수 일괄 import">⚖️ 무게·박스 import</button>
     </div>
 
     <!-- swap 모드 안내 -->
@@ -1254,6 +1255,45 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div id="cat-rows" style="font-size:12px;display:flex;flex-direction:column;gap:6px;max-height:640px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--input-bg);">
       <div style="text-align:center;padding:30px;color:var(--text-muted);">불러오는 중…</div>
     </div>
+  </div>
+</div>
+
+<!-- 🔍 카탈로그 제품 상세 모달 (2026-05-21) -->
+<div id="cat-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) catCloseDetail()">
+  <div style="background:var(--card);border-radius:12px;padding:20px 24px;max-width:780px;width:94%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+      <h3 style="margin:0;font-size:15px;color:var(--text);">🔍 제품 상세</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);padding:0 4px;" onclick="catCloseDetail()" title="닫기 (ESC)">✕</button>
+    </div>
+    <div id="cat-detail-body"><div style="padding:40px;text-align:center;color:var(--text-muted);">불러오는 중...</div></div>
+  </div>
+</div>
+
+<!-- 📥 무게·박스 import 모달 (2026-05-21) -->
+<div id="cat-import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) catCloseImportMeasurements()">
+  <div style="background:var(--card);border-radius:12px;padding:20px 24px;max-width:620px;width:92%;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;">
+      <h3 style="margin:0;font-size:15px;color:var(--text);">⚖️ 무게 · 박스당 갯수 일괄 import</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);" onclick="catCloseImportMeasurements()">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.6;">
+      Mr.Donothing Product List 엑셀 형식 자동 인식 — <code>Barcode</code> 컬럼과 <code>포장합무게(g)</code> / <code>Packaging</code> 컬럼을 자동으로 찾아 매칭. barcode 정확 매칭된 항목만 PATCH (이미 등록된 무게는 덮어쓰기).
+    </div>
+    <div style="border:2px dashed var(--border);border-radius:8px;padding:24px;text-align:center;cursor:pointer;margin-bottom:10px;"
+         onclick="document.getElementById('cat-import-file').click()"
+         ondragover="event.preventDefault();this.style.borderColor='var(--primary)';"
+         ondragleave="event.preventDefault();this.style.borderColor='var(--border)';"
+         ondrop="event.preventDefault();this.style.borderColor='var(--border)';catImportOnFile(event.dataTransfer.files[0]);">
+      <div style="font-size:32px;margin-bottom:6px;">📄</div>
+      <div style="font-size:12px;color:var(--text-muted);">엑셀 파일 (.xlsx, .xls) 클릭 또는 드래그</div>
+      <input type="file" id="cat-import-file" accept=".xlsx,.xls" style="display:none;" onchange="catImportOnFile(this.files[0])">
+    </div>
+    <div id="cat-import-filename" style="font-size:12px;color:var(--text);margin-bottom:8px;min-height:18px;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <button class="cp-btn cp-btn-ghost" style="font-size:12px;padding:8px 14px;" onclick="catImportRun(true)" id="cat-import-dry">🔬 시뮬레이션 (저장 안 함)</button>
+      <button class="cp-btn cp-btn-primary" style="font-size:12px;padding:8px 14px;" onclick="catImportRun(false)" id="cat-import-go" disabled>🚀 import 실행</button>
+    </div>
+    <div id="cat-import-status" style="display:none;font-size:12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;padding:10px;line-height:1.7;"></div>
   </div>
 </div>
 
@@ -7216,7 +7256,10 @@ function catRender(){
       : (_isChild
           ? ' <span style="background:rgba(167,139,250,0.10);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-style:italic;">↳ ' + escapeHtml(_cpNameMap.get(_rootId) || '원본 미등록') + '</span>'
           : '');
-    const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '') + escapeHtml(it.productName || '(이름없음)') + _seriesBadge;
+    // 이름 자체를 클릭 트리거로 — 상세 모달 (event.stopPropagation 으로 row 체크박스 토글 차단). 2026-05-21
+    const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '')
+      + '<a href="javascript:void(0)" onclick="event.stopPropagation();catOpenDetail(\''+it.id+'\')" style="color:var(--text);text-decoration:none;border-bottom:1px dotted var(--text-muted);" title="제품 상세 보기">'+escapeHtml(it.productName || '(이름없음)')+'</a>'
+      + _seriesBadge;
     const _rowExtra = _isChild ? ' style="cursor:pointer;background:rgba(167,139,250,0.04);"' : ' style="cursor:pointer;"';
     const _bcVal = it.barcode || '';
     return `
@@ -7476,6 +7519,243 @@ async function catBarcodeBlur(inputEl){
   }
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔍 제품 상세 모달 (2026-05-21 사업화팀 요청 — 이진아)
+//   제품명 클릭 → 모든 정보 (패키징·7국 소비자가·원가·HS·통관·사이즈·소재·원산지·무게·박스당)
+//   weight·packaging 은 인라인 편집 가능, 나머지는 read-only
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let _catDetailCurrent = null;
+
+function catOpenDetail(id){
+  const it = _catItems.find(x => x.id === id);
+  if (!it) { showToast('카드 정보 없음', 'warn'); return; }
+  _catDetailCurrent = it;
+  catRenderDetailInto(it);
+  const modal = document.getElementById('cat-detail-modal');
+  if (modal) modal.style.display = 'flex';
+}
+function catCloseDetail(){
+  const modal = document.getElementById('cat-detail-modal');
+  if (modal) modal.style.display = 'none';
+  _catDetailCurrent = null;
+}
+function catRenderDetailInto(it){
+  const body = document.getElementById('cat-detail-body');
+  if (!body) return;
+  const thumb = it.imageUrl || (it.hasLocalImage && it.imageId ? '/api/catalog-image/' + encodeURIComponent(it.imageId) : '');
+  const thumbHtml = thumb
+    ? '<img src="'+escapeHtml(thumb)+'" style="width:160px;height:160px;border-radius:8px;object-fit:cover;background:var(--bg);" onerror="this.style.display=\'none\'">'
+    : '<div style="width:160px;height:160px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:32px;">📦</div>';
+  const r = it.retails || {};
+  const priceRow = (label, code, val, currency) => {
+    if (val == null || val === '') return '';
+    const fmt = (currency === 'KRW') ? '₩' + Math.round(val).toLocaleString('ko-KR')
+              : (currency === 'JPY' || currency === 'IDR') ? (currency + ' ' + Math.round(val).toLocaleString())
+              : (currency + ' ' + Number(val).toLocaleString());
+    return '<tr><td style="padding:4px 8px;color:var(--text-muted);">'+label+'</td><td style="padding:4px 8px;font-family:JetBrains Mono,monospace;">'+fmt+'</td></tr>';
+  };
+  const wt = (it.weightG != null && it.weightG > 0) ? it.weightG : '';
+  const pk = it.packagingPerBox || '';
+  body.innerHTML = `
+    <div style="display:flex;gap:16px;margin-bottom:16px;align-items:flex-start;">
+      ${thumbHtml}
+      <div style="flex:1;min-width:0;">
+        <h2 style="margin:0 0 4px 0;font-size:18px;color:var(--text);">${escapeHtml(it.productName||'(이름없음)')}</h2>
+        <div style="font-size:11px;color:var(--text-muted);font-family:JetBrains Mono,monospace;margin-bottom:8px;">
+          ${it.barcode ? 'Barcode: '+escapeHtml(it.barcode)+' · ' : ''}${it.category ? 'Category: '+escapeHtml(it.category) : '카테고리 미분류'}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">HS Code: <b style="color:var(--text);">${escapeHtml(it.hsCode||'-')}</b> · 원가: <b style="color:var(--text);">${it.costKRW ? '₩'+Math.round(it.costKRW).toLocaleString('ko-KR') : '-'}</b> · 원가율: <b style="color:var(--text);">${it.원가율 ? (it.원가율*100).toFixed(1)+'%' : '-'}</b></div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">작성자: ${escapeHtml(it.작성자||'-')} · 등록일: ${escapeHtml(it.등록일||'-')} · 판매상태: <b style="color:var(--text);">${escapeHtml(it.판매상태||'-')}</b></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div style="background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">💰 7국 소비자가</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+          ${priceRow('🇰🇷 한국', 'KR', r.KR, 'KRW')}
+          ${priceRow('🇹🇼 대만', 'TW', r.TW, 'TWD')}
+          ${priceRow('🇺🇸 미국', 'US', r.US, 'USD')}
+          ${priceRow('🇹🇭 태국', 'TH', r.TH, 'THB')}
+          ${priceRow('🇭🇰 홍콩', 'HK', r.HK, 'HKD')}
+          ${priceRow('🇨🇳 중국', 'CN', r.CN, 'CNY')}
+          ${priceRow('🇮🇩 인도네시아', 'ID', r.ID, 'IDR')}
+          ${(!r.KR && !r.TW && !r.US && !r.TH && !r.HK && !r.CN && !r.ID) ? '<tr><td colspan="2" style="padding:8px;color:var(--text-muted);text-align:center;">소비자가 미입력</td></tr>' : ''}
+        </table>
+      </div>
+
+      <div style="background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:12px;">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">📐 스펙·소재</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+          <tr><td style="padding:4px 8px;color:var(--text-muted);vertical-align:top;width:90px;">사이즈</td><td style="padding:4px 8px;white-space:pre-wrap;">${escapeHtml(it.sizeMm || '-')}</td></tr>
+          <tr><td style="padding:4px 8px;color:var(--text-muted);vertical-align:top;">소재</td><td style="padding:4px 8px;white-space:pre-wrap;">${escapeHtml(it.material || '-')}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div style="background:linear-gradient(90deg,rgba(96,165,250,.06),rgba(167,139,250,.04));border:1px solid var(--primary);border-radius:8px;padding:14px;margin-bottom:8px;">
+      <div style="font-size:11px;color:var(--primary);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">⚖️ 해외 운송 참고용 (사업화팀 직접 입력 — 추후 수정 가능)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">포장합무게 (g)</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="number" id="cat-detail-weight" value="${wt}" placeholder="예: 2350" min="0" step="1"
+              style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:13px;font-family:JetBrains Mono,monospace;">
+            <button class="cp-btn cp-btn-primary" style="font-size:11px;padding:7px 12px;" onclick="catDetailSaveWeight()">저장</button>
+          </div>
+          <div id="cat-detail-weight-status" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px;"></div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">1박스당 갯수 (Packaging)</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="cat-detail-packaging" value="${escapeHtml(pk)}" placeholder="예: 4 / 10box / 16-20"
+              style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:13px;">
+            <button class="cp-btn cp-btn-primary" style="font-size:11px;padding:7px 12px;" onclick="catDetailSavePackaging()">저장</button>
+          </div>
+          <div id="cat-detail-packaging-status" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px;">숫자 (예: 4) 또는 문자 혼합 (예: 10box, 16-20) 모두 가능</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function catDetailSaveWeight(){
+  const it = _catDetailCurrent;
+  if (!it) return;
+  const el = document.getElementById('cat-detail-weight');
+  const st = document.getElementById('cat-detail-weight-status');
+  const raw = (el.value || '').toString().trim();
+  let body;
+  if (!raw) body = { weightG: null };
+  else {
+    const n = parseFloat(raw.replace(/,/g, ''));
+    if (!(n > 0) || !(n < 1000000)) { st.innerHTML = '<span style="color:var(--danger);">0 보다 큰 숫자 (~999999) 입력</span>'; return; }
+    body = { weightG: n };
+  }
+  st.innerHTML = '⏳ 저장 중...';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(it.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    it.weightG = body.weightG;
+    st.innerHTML = '<span style="color:var(--success);">✅ 저장됨</span>';
+    setTimeout(()=>{ if (st) st.innerHTML = ''; }, 2000);
+  } catch (e) {
+    st.innerHTML = '<span style="color:var(--danger);">❌ '+escapeHtml(e.message)+'</span>';
+  }
+}
+async function catDetailSavePackaging(){
+  const it = _catDetailCurrent;
+  if (!it) return;
+  const el = document.getElementById('cat-detail-packaging');
+  const st = document.getElementById('cat-detail-packaging-status');
+  const raw = (el.value || '').toString();
+  st.innerHTML = '⏳ 저장 중...';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(it.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packagingPerBox: raw })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    it.packagingPerBox = raw.trim();
+    st.innerHTML = '<span style="color:var(--success);">✅ 저장됨</span>';
+    setTimeout(()=>{ if (st) st.innerHTML = '숫자 (예: 4) 또는 문자 혼합 (예: 10box, 16-20) 모두 가능'; }, 2000);
+  } catch (e) {
+    st.innerHTML = '<span style="color:var(--danger);">❌ '+escapeHtml(e.message)+'</span>';
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📥 무게·박스 import (2026-05-21 사업화팀 요청 — 이진아)
+//   엑셀 업로드 → barcode 매칭 → bulk PATCH
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let _catImportBase64 = null;
+let _catImportFilename = '';
+function catOpenImportMeasurements(){
+  const modal = document.getElementById('cat-import-modal');
+  if (modal) modal.style.display = 'flex';
+  _catImportBase64 = null; _catImportFilename = '';
+  const fn = document.getElementById('cat-import-filename'); if (fn) fn.textContent = '';
+  const st = document.getElementById('cat-import-status'); if (st) { st.style.display='none'; st.innerHTML=''; }
+  const go = document.getElementById('cat-import-go'); if (go) { go.disabled = true; go.textContent='🚀 import 실행'; }
+}
+function catCloseImportMeasurements(){
+  const modal = document.getElementById('cat-import-modal');
+  if (modal) modal.style.display = 'none';
+}
+function catImportOnFile(file){
+  if (!file) return;
+  _catImportFilename = file.name;
+  document.getElementById('cat-import-filename').textContent = '📄 ' + file.name + ' (' + (file.size/1024/1024).toFixed(2) + ' MB)';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const arr = new Uint8Array(e.target.result);
+    let binary = '';
+    for (let i = 0; i < arr.byteLength; i++) binary += String.fromCharCode(arr[i]);
+    _catImportBase64 = btoa(binary);
+    const go = document.getElementById('cat-import-go');
+    if (go) { go.disabled = false; }
+  };
+  reader.readAsArrayBuffer(file);
+}
+async function catImportRun(dryRun){
+  if (!_catImportBase64) return;
+  const go = document.getElementById('cat-import-go');
+  const st = document.getElementById('cat-import-status');
+  st.style.display = 'block';
+  st.innerHTML = '⏳ ' + (dryRun ? '시뮬레이션 (저장 안 함)' : 'import 진행') + ' 중... barcode 매칭 + Notion PATCH';
+  go.disabled = true;
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/import-measurements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64: _catImportBase64, dryRun: !!dryRun })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    let html = '<b>'+(dryRun?'🔬 시뮬레이션 결과':'✅ Import 완료')+'</b><br>';
+    html += '• 시트: <code>'+escapeHtml(d.sheetName||'?')+'</code> · 헤더 행: '+(d.headerIdx+1)+'<br>';
+    html += '• 값 있는 행: <b>'+d.total+'</b>건<br>';
+    html += '• 매칭 성공: <b style="color:#10b981;">'+d.matched+'</b>건 → ' + (dryRun ? '<span style="color:var(--text-muted);">(저장 안 함)</span>' : '<b style="color:#10b981;">'+d.updated+'</b>건 업데이트') + '<br>';
+    html += '• 매칭 실패 (barcode 카탈로그에 없음): <b style="color:#f59e0b;">'+d.unmatched+'</b>건<br>';
+    if (d.errors && d.errors.length) {
+      html += '• <b style="color:#ef4444;">에러: '+d.errors.length+'건</b><br>';
+      html += '<details style="margin-top:8px;"><summary style="cursor:pointer;">에러 상세</summary><ul style="margin:8px 0 0 16px;font-size:11px;">';
+      d.errors.slice(0,10).forEach(e => { html += '<li>'+escapeHtml(e.barcode||'?')+': '+escapeHtml(e.error||'')+'</li>'; });
+      html += '</ul></details>';
+    }
+    if (d.unmatchedRows && d.unmatchedRows.length) {
+      html += '<details style="margin-top:8px;"><summary style="cursor:pointer;color:#f59e0b;">매칭 실패 행 상세 ('+d.unmatchedRows.length+'건)</summary><ul style="margin:8px 0 0 16px;font-size:11px;max-height:160px;overflow-y:auto;">';
+      d.unmatchedRows.slice(0,30).forEach(u => { html += '<li><code>'+escapeHtml(u.barcode)+'</code>'+(u.name?' — '+escapeHtml(u.name):'')+(u.weight?' · '+u.weight+'g':'')+(u.packaging?' · '+escapeHtml(String(u.packaging)):'')+'</li>'; });
+      if (d.unmatchedRows.length > 30) html += '<li>... 외 '+(d.unmatchedRows.length-30)+'건</li>';
+      html += '</ul></details>';
+    }
+    if (!dryRun && d.updated > 0) {
+      html += '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);color:var(--text-muted);font-size:11px;">💡 카탈로그 새로고침 후 제품명 클릭 → 상세 모달에서 무게·박스당 갯수 확인 가능</div>';
+    }
+    st.innerHTML = html;
+    if (!dryRun && d.updated > 0) {
+      go.textContent = '✅ 완료 ('+d.updated+'건)';
+      // 로컬 _catItems 도 갱신 (next render 즉시 반영) — endpoint 응답에 sample 만 있어서 reload
+      setTimeout(() => { try { catReload(); } catch(e){} }, 800);
+    } else {
+      go.disabled = false; go.textContent = '🚀 import 실행';
+    }
+  } catch (e) {
+    st.innerHTML = '❌ 실패: ' + escapeHtml(e.message);
+    go.disabled = false; go.textContent = '🚀 import 실행';
+  }
+}
+
 async function catDelete(id){
   const it = _catItems.find(x => x.id === id);
   if (!it) return;
@@ -7659,6 +7939,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (document.getElementById('cat-img-modal')?.style.display === 'flex') catImgClose();
     if (document.getElementById('cat-rename-modal')?.style.display === 'flex') catRenameClose();
+    // 2026-05-21 — 새 모달 ESC 닫기
+    if (document.getElementById('cat-detail-modal')?.style.display === 'flex') catCloseDetail();
+    if (document.getElementById('cat-import-modal')?.style.display === 'flex') catCloseImportMeasurements();
   }
 });
 

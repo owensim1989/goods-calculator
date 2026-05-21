@@ -1915,6 +1915,10 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
         // 유사 제품 가격 비교용 (2026-05-15 추가) — 스펙 + 국가별 retail
         sizeMm: getText('Size_mm'),
         material: getText('Material'),
+        // 2026-05-21 — 사업화팀 (이진아) 요청: 해외 운송 참고용 무게 + 1박스당 갯수
+        // weight_g: number (직접 측정값, 추후 수정 가능). packagingPerBox: text ("4" / "10box" / "16-20" 혼합 입력 대응)
+        weightG: getNum('포장합무게_g'),
+        packagingPerBox: getText('1박스당_갯수'),
         retails: {
           KR: getNum('Retail_KR_KRW'),
           TW: getNum('Retail_TW_TWD'),
@@ -1967,6 +1971,21 @@ app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
       const bc = b.barcode.trim();
       props['Barcode'] = { rich_text: bc ? [{ text: { content: bc } }] : [] };
       barcodeChanged = true;
+    }
+    // 2026-05-21 — 사업화팀 요청: 해외 운송 참고용 무게 + 1박스당 갯수
+    // weightG: null 허용 (비우기), 0 거부, 0 보다 큰 값만 저장 (운송비 추정 0 트랩 방지)
+    if (b.weightG === null) {
+      props['포장합무게_g'] = { number: null };
+    } else if (typeof b.weightG === 'number' && b.weightG > 0 && b.weightG < 1000000) {
+      props['포장합무게_g'] = { number: b.weightG };
+    } else if (typeof b.weightG === 'string' && b.weightG.trim()) {
+      const n = parseFloat(b.weightG.trim().replace(/,/g, ''));
+      if (n > 0 && n < 1000000) props['포장합무게_g'] = { number: n };
+    }
+    // packagingPerBox: text (혼합 입력 — "4" / "10box" / "16-20" / "#7\n16-17")
+    if (typeof b.packagingPerBox === 'string') {
+      const v = b.packagingPerBox.trim();
+      props['1박스당_갯수'] = { rich_text: v ? [{ text: { content: v.slice(0, 200) } }] : [] };
     }
     if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
     const updated = await notion.pages.update({ page_id: req.params.id, properties: props });
@@ -2098,6 +2117,129 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
   }
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📥 무게·박스당 갯수 일괄 import (2026-05-21 사업화팀 요청)
+//   body: { base64, dryRun? } — Mr.Donothing Product List 엑셀 형식
+//   동작: 첫 시트 파싱 → barcode 컬럼 자동 탐지 → weight·packaging 컬럼 자동 탐지
+//        → 카탈로그 전체 fetch → barcode 정확 매칭 → notion PATCH
+//   응답: { matched, unmatched, updated, errors, sample, unmatchedRows }
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.post('/api/consumer-pricing/catalog/import-measurements', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  if (!XLSX) return res.status(503).json({ error: 'xlsx 패키지 없음' });
+  try {
+    const { base64, dryRun } = req.body || {};
+    if (!base64 || typeof base64 !== 'string') return res.status(400).json({ error: 'base64 누락' });
+    const buf = Buffer.from(base64, 'base64');
+    if (buf.length > 20 * 1024 * 1024) return res.status(400).json({ error: '파일 너무 큼 (최대 20MB)' });
+
+    const wb = XLSX.read(buf, { type: 'buffer' });
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+    // 헤더 찾기 — barcode·weight·packaging 키워드 포함된 행
+    let headerIdx = -1;
+    let cBarcode = -1, cWeight = -1, cPackaging = -1, cName = -1;
+    for (let r = 0; r < Math.min(rows.length, 10); r++) {
+      const row = rows[r] || [];
+      let bc = -1, wt = -1, pk = -1, nm = -1;
+      for (let c = 0; c < row.length; c++) {
+        const v = String(row[c] || '').trim().toLowerCase();
+        if (!v) continue;
+        if (bc < 0 && /barcode|바코드/i.test(v)) bc = c;
+        if (wt < 0 && /(weight|무게|포장합무게)/i.test(v)) wt = c;
+        if (pk < 0 && /(packaging|박스당|포장갯수|포장 갯수)/i.test(v)) pk = c;
+        if (nm < 0 && /(product\s*name|제품명|상품명)/i.test(v)) nm = c;
+      }
+      if (bc >= 0 && (wt >= 0 || pk >= 0)) {
+        headerIdx = r; cBarcode = bc; cWeight = wt; cPackaging = pk; cName = nm;
+        break;
+      }
+    }
+    if (headerIdx < 0) return res.status(400).json({ error: 'barcode·weight·packaging 헤더 자동 탐지 실패', sheetName });
+
+    // 데이터 행 — 헤더 다음 행부터 (R3 "설명행" 도 자동 skip — barcode 가 숫자 아니면 skip)
+    const items = [];
+    for (let r = headerIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const bcRaw = row[cBarcode];
+      if (bcRaw == null || bcRaw === '') continue;
+      const barcode = String(bcRaw).trim();
+      if (!/^\d{6,}$/.test(barcode)) continue;   // 숫자 6자리 이상만 (EAN-13 등)
+      const weight = (cWeight >= 0) ? row[cWeight] : null;
+      const packaging = (cPackaging >= 0) ? row[cPackaging] : null;
+      const name = (cName >= 0) ? row[cName] : null;
+      // 두 값 다 비어있으면 skip
+      const wtNum = (typeof weight === 'number' && weight > 0) ? weight : null;
+      const pkStr = (packaging != null && packaging !== '') ? String(packaging).trim() : null;
+      if (wtNum == null && pkStr == null) continue;
+      items.push({ barcode, weight: wtNum, packaging: pkStr, name });
+    }
+
+    if (!items.length) return res.json({ ok: true, total: 0, matched: 0, unmatched: 0, updated: 0, errors: [], note: '값 있는 행 없음' });
+
+    // 카탈로그 전체 fetch (전 페이지)
+    const catByBarcode = new Map();
+    let cursor;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        page_size: 100,
+        ...(cursor ? { start_cursor: cursor } : {})
+      });
+      for (const p of resp.results) {
+        const pr = p.properties || {};
+        const bc = ((pr['Barcode']?.rich_text || []).map(t => t.plain_text || '').join('') || '').trim();
+        if (bc) catByBarcode.set(bc, p.id);
+      }
+      cursor = resp.has_more ? resp.next_cursor : null;
+    } while (cursor);
+
+    // 매칭 + (dryRun 아니면) PATCH
+    const updated = [];
+    const errors = [];
+    const unmatchedRows = [];
+    for (const it of items) {
+      const pageId = catByBarcode.get(it.barcode);
+      if (!pageId) {
+        unmatchedRows.push({ barcode: it.barcode, name: it.name, weight: it.weight, packaging: it.packaging });
+        continue;
+      }
+      if (dryRun) {
+        updated.push({ barcode: it.barcode, pageId, weight: it.weight, packaging: it.packaging });
+        continue;
+      }
+      const props = {};
+      if (it.weight != null) props['포장합무게_g'] = { number: it.weight };
+      if (it.packaging != null) props['1박스당_갯수'] = { rich_text: [{ text: { content: it.packaging.slice(0, 200) } }] };
+      try {
+        await notion.pages.update({ page_id: pageId, properties: props });
+        updated.push({ barcode: it.barcode, pageId, weight: it.weight, packaging: it.packaging });
+      } catch (e) {
+        errors.push({ barcode: it.barcode, error: e.message });
+      }
+    }
+
+    res.json({
+      ok: true,
+      sheetName,
+      headerIdx,
+      total: items.length,
+      matched: items.length - unmatchedRows.length,
+      unmatched: unmatchedRows.length,
+      updated: updated.length,
+      errors,
+      unmatchedRows,
+      dryRun: !!dryRun,
+      sample: updated.slice(0, 5)
+    });
+  } catch (e) {
+    console.error('[import-measurements 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 카탈로그 다수 항목 일괄 PATCH (카테고리 변경 등)
 // 두 가지 모드:
 //   ① 공통값 모드: { ids:[...], category?, productName? } — 같은 값을 ids 전체에 적용
@@ -2138,6 +2280,16 @@ app.post('/api/consumer-pricing/catalog/bulk-patch', async (req, res) => {
           const bc = it.barcode.trim();
           props['Barcode'] = { rich_text: bc ? [{ text: { content: bc } }] : [] };
           bcChanged = true;
+        }
+        // 2026-05-21 — 무게·박스당 갯수 일괄 import 지원
+        if (it.weightG === null) {
+          props['포장합무게_g'] = { number: null };
+        } else if (typeof it.weightG === 'number' && it.weightG > 0 && it.weightG < 1000000) {
+          props['포장합무게_g'] = { number: it.weightG };
+        }
+        if (typeof it.packagingPerBox === 'string') {
+          const v = it.packagingPerBox.trim();
+          props['1박스당_갯수'] = { rich_text: v ? [{ text: { content: v.slice(0, 200) } }] : [] };
         }
         if (!Object.keys(props).length) { results.push({ id: it.id, ok: false, error: '변경할 필드 없음' }); continue; }
         try {
@@ -5869,8 +6021,35 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 카탈로그 DB 필드 자동 보강 (멱등) — 2026-05-21 사업화팀 (이진아) 요청
+//   포장합무게_g (number) + 1박스당_갯수 (rich_text)
+//   부팅 시 1회 retrieve → 누락 시 update. 이미 있으면 skip
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function ensureCatalogExtraFields(){
+  if (!notion) return;
+  try {
+    const db = await notion.databases.retrieve({ database_id: PRODUCT_CATALOG_DB_ID });
+    const have = db.properties || {};
+    const toAdd = {};
+    if (!have['포장합무게_g']) toAdd['포장합무게_g'] = { number: { format: 'number' } };
+    if (!have['1박스당_갯수']) toAdd['1박스당_갯수'] = { rich_text: {} };
+    if (Object.keys(toAdd).length === 0) {
+      console.log('[catalog-fields] 신규 필드 모두 존재 (skip)');
+      return;
+    }
+    await notion.databases.update({ database_id: PRODUCT_CATALOG_DB_ID, properties: toAdd });
+    console.log('[catalog-fields] ✅ 추가 완료:', Object.keys(toAdd).join(', '));
+  } catch (e) {
+    console.error('[catalog-fields] 실패:', e.body || e.message);
+  }
+}
+
 // ━━━ 서버 시작 ━━━
 app.listen(PORT, async () => {
+
+// 카탈로그 필드 멱등 보강 (best-effort, 비차단)
+setImmediate(() => { ensureCatalogExtraFields().catch(()=>{}); });
 
 // ── Drive 통합 백업 (2026-04-25) ──
 try {
