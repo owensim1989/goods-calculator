@@ -725,7 +725,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="sidebar-group-title">미스터두낫띵</div>
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
-      <a class="sidebar-item" href="orders.html" target="_blank" rel="noopener" title="새 창에서 열림">📥 주문 처리</a>
+      <button class="sidebar-item" data-page="orders" onclick="switchPage(this)">📥 주문 처리</button>
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">기타</div>
@@ -1170,13 +1170,15 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <span style="font-size:11px;color:var(--text-muted);font-weight:400;margin-left:auto;">Notion 제품 카탈로그 DB · 179제품</span>
     </h3>
 
-    <div style="display:flex;justify-content:flex-end;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
+    <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()" title="FOB·CIF 22열 + 이미지 임베드. 해외 바이어 발송용">📥 제품 리스트</button>
+      <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcelWithStock()" title="제품 리스트 + 창고별(한국/대만/태국) 실시간 재고. 사내 영업·생산팀용" style="background:#10b981;">📦 제품 리스트(재고 포함)</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:2px;">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none;" title="체크 시 FOB(Won)·FOB(discount rate)·CIF(Asia avg) 3개 컬럼 제거. 외부 바이어 발송용">
         <input type="checkbox" id="cpExportHideFobChk" style="cursor:pointer;" onchange="_cpRememberHideFob(this)">
         🔒 FOB·CIF 원가 숨김 (외부 공유용)
       </label>
-      <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()" title="FOB·CIF 22열 + 이미지 임베드. 해외 바이어 발송용">📥 제품 리스트</button>
-      <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcelWithStock()" title="제품 리스트 + 창고별(한국/대만/태국) 실시간 재고. 사내 영업·생산팀용" style="background:#10b981;">📦 제품 리스트(재고 포함)</button>
     </div>
 
   </div>
@@ -1199,7 +1201,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
     <!-- 옵션 C — 검색 풀폭 1줄 -->
     <div style="margin-bottom:10px;">
-      <input id="cat-search" type="text" placeholder="🔍 제품명·HS Code·작성자 검색…" oninput="catRender()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;box-sizing:border-box;">
+      <input id="cat-search" type="text" placeholder="🔍 검색" oninput="catRender()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;box-sizing:border-box;">
     </div>
 
     <!-- 옵션 C — 카테고리 + 필터 4종 한 줄 -->
@@ -1217,16 +1219,16 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <option value="기타">기타</option>
       </select>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-        <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음만</span>
+        <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음</span>
       </label>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="Barcode 필드가 비어있는 항목만 표시">
-        <input type="checkbox" id="cat-filter-nobarcode" onchange="catRender()"> <span>⚠️ 바코드 없음만</span>
+        <input type="checkbox" id="cat-filter-nobarcode" onchange="catRender()"> <span>⚠️ 바코드 없음</span>
       </label>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="Barcode 있지만 mdn-inventory 에 미등록 — 일괄 sync 누르면 등록됨">
-        <input type="checkbox" id="cat-filter-nosync" onchange="catRender()"> <span>🔌 미동기화만</span>
+        <input type="checkbox" id="cat-filter-nosync" onchange="catRender()"> <span>🔌 미동기화</span>
       </label>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="카테고리 미분류 항목만 표시">
-        <input type="checkbox" id="cat-filter-nocat" onchange="catRender()"> <span>🏷️ 미분류만</span>
+        <input type="checkbox" id="cat-filter-nocat" onchange="catRender()"> <span>🏷️ 미분류</span>
       </label>
     </div>
 
@@ -1279,6 +1281,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div id="cat-detail-body"><div style="padding:40px;text-align:center;color:var(--text-muted);">불러오는 중...</div></div>
   </div>
+</div>
+
+<!-- 탭6: 📥 주문 처리 — orders.html iframe 임베드 (lazy load, 상태 보존) -->
+<div class="tab-page" id="page-orders" style="padding:0;max-width:none;margin:0;">
+  <iframe id="ordersIframe" title="주문 처리" src="about:blank" style="width:100%;height:calc(100vh - 60px);border:0;display:block;background:transparent;" allowtransparency="true"></iframe>
 </div>
 
 <!-- 📥 무게·박스 import 모달 (2026-05-21) -->
@@ -1393,14 +1400,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cat-row .cat-barcode-input.saving{border-color:#fbbf24;background:rgba(251,191,36,.06);}
 .cat-row .cat-barcode-input.saved{border-color:#22c55e;background:rgba(34,197,94,.06);}
 .cat-row .cat-barcode-input.error{border-color:var(--danger);background:rgba(239,68,68,.06);}
-.cat-row .actions{display:flex;gap:3px;justify-content:flex-end;opacity:0;transition:opacity .15s ease;}
-.cat-row:hover .actions,.cat-row:focus-within .actions{opacity:1;}
+.cat-row .actions{display:flex;gap:3px;justify-content:flex-end;}
 .cat-row .actions button{padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;}
 .cat-row .actions button:hover{background:var(--bg);}
 .cat-row .actions button.danger{color:var(--danger);border-color:rgba(239,68,68,.3);}
 .cat-row .actions button.danger:hover{background:rgba(239,68,68,.1);}
-/* 터치 환경 (hover 불가) — 항상 표시 fallback */
-@media (hover:none){.cat-row .actions{opacity:1;}}
 .cat-empty-cat{color:var(--danger);font-weight:600;}
 @media(max-width:680px){
   .cat-row{grid-template-columns:50px 1fr;gap:6px;}
@@ -1976,6 +1980,13 @@ function switchPage(item){
   // catalog 진입 시 데이터 로드
   if(item.dataset.page==='catalog'){
     if(typeof catInit==='function') catInit();
+  }
+  // orders 진입 — iframe lazy load (첫 진입 시만 src 박음, 이후 reload 안 함 → 상태 보존)
+  if(item.dataset.page==='orders'){
+    const ifr = document.getElementById('ordersIframe');
+    if (ifr && (!ifr.src || ifr.src === 'about:blank' || ifr.src.endsWith('about:blank'))) {
+      ifr.src = 'orders.html';
+    }
   }
 }
 function toggleSidebar(){
@@ -7111,9 +7122,9 @@ function _renderInvStockBadge(catalogId) {
     return '<span style="background:rgba(160,160,160,0.18);color:#888;' + base + '" title="mdn-inventory 등록됨, 재고 0">📦 재고 0</span>';
   }
   if (v <= 5) {
-    return '<span style="background:rgba(255,220,90,0.18);color:#b08a00;' + base + '" title="mdn-inventory 재고">📦 ' + v + '개</span>';
+    return '<span style="background:rgba(255,220,90,0.18);color:#b08a00;' + base + '" title="mdn-inventory 재고">📦 ' + v.toLocaleString('ko-KR') + '개</span>';
   }
-  return '<span style="background:rgba(110,231,183,0.18);color:#1d9e75;' + base + '" title="mdn-inventory 재고">📦 ' + v + '개</span>';
+  return '<span style="background:rgba(110,231,183,0.18);color:#1d9e75;' + base + '" title="mdn-inventory 재고">📦 ' + v.toLocaleString('ko-KR') + '개</span>';
 }
 async function catBulkSyncToInventory() {
   if (!confirm('카탈로그 전체 → mdn-inventory 일괄 sync 진행할까요?\n\n• barcode 있는 row 만 sync (없으면 skip)\n• 재고는 건드리지 않음 (name/price/image/category 만 upsert)\n• 시간이 좀 걸릴 수 있습니다 (페이지마다 ~1초)')) return;
@@ -7289,7 +7300,7 @@ function catRender(){
           : '');
     // 이름 자체를 클릭 트리거로 — 상세 모달 (event.stopPropagation 으로 row 체크박스 토글 차단). 2026-05-21
     const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '')
-      + '<a href="javascript:void(0)" onclick="event.stopPropagation();catOpenDetail(\''+it.id+'\')" style="color:var(--text);text-decoration:none;border-bottom:1px dotted var(--text-muted);" title="제품 상세 보기">'+escapeHtml(it.productName || '(이름없음)')+'</a>'
+      + '<a href="javascript:void(0)" onclick="event.stopPropagation();catOpenDetail(\''+it.id+'\')" style="color:var(--text);text-decoration:none;" title="제품 상세 보기">'+escapeHtml(it.productName || '(이름없음)')+'</a>'
       + _seriesBadge;
     const _rowExtra = _isChild ? ' style="cursor:pointer;background:rgba(167,139,250,0.04);"' : ' style="cursor:pointer;"';
     const _bcVal = it.barcode || '';
@@ -7299,7 +7310,6 @@ function catRender(){
         <div class="cat-thumb">${thumbHtml}</div>
         <div>
           <div class="name">${_nameDisplay}${_renderInvStockBadge(it.id)}</div>
-          <div class="meta">HS ${escapeHtml(it.hsCode || '-')} · ₩${(it.retailKR||0).toLocaleString('ko-KR')} · ${escapeHtml(it.작성자 || '-')} · ${escapeHtml(it.등록일 || '-')}</div>
         </div>
         <div class="cat-barcode-wrap" onclick="event.stopPropagation();">
           <input type="text" class="cat-barcode-input" data-id="${it.id}" data-original="${escapeHtml(_bcVal)}" value="${escapeHtml(_bcVal)}" placeholder="Barcode 입력" inputmode="numeric" autocomplete="off"
