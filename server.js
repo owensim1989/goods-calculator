@@ -4241,6 +4241,8 @@ const _buyerExcelHandler = async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 모듈 미설치 — 서버 재배포 필요 (npm install exceljs sharp)' });
   const includeStock = req.path.includes('with-stock');
+  // 🔒 FOB·CIF 원가 숨김 옵션 (2026-05-22) — ?hideFob=1 시 FOB(Won)·FOB(discount rate)·CIF(Asia) 3컬럼 제거. 외부 바이어 발송용
+  const hideFob = req.query.hideFob === '1' || req.query.hideFob === 'true';
   if (includeStock && (!INVENTORY_API_URL || !INVENTORY_API_KEY)) {
     return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 환경변수 미설정 — 재고 포함 엑셀 사용 불가' });
   }
@@ -4434,6 +4436,11 @@ const _buyerExcelHandler = async (req, res) => {
     ];
     // 컬럼 너비 — Series 컬럼 (E) 18 추가
     const widths = [5, 14, 14, 32, 18, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
+    // 🔒 hideFob=1 — FOB(Won)·FOB(discount rate)·CIF(Asia) 3컬럼 splice (index 14~16, 0-based)
+    if (hideFob) {
+      headers.splice(14, 3);
+      widths.splice(14, 3);
+    }
 
     // 재고 컬럼 추가 (includeStock=true 일 때) — 총합 + 창고별 (영문)
     if (includeStock) {
@@ -4526,6 +4533,8 @@ const _buyerExcelHandler = async (req, res) => {
         getText('HS_Code'), getText('Size_mm'), getText('Material'),
         getSel('원산지') || '', 발주수량, amount, getText('비고')
       ];
+      // hideFob=1 — FOB·CIF 3컬럼 splice (headers·widths 와 동일 index)
+      if (hideFob) rowValues.splice(14, 3);
       // 재고 컬럼 추가 (includeStock=true) — 총합 + 창고별
       if (includeStock) {
         const stockByWh = (barcode && stockMap[barcode]) || {};
@@ -4551,19 +4560,29 @@ const _buyerExcelHandler = async (req, res) => {
       //   기존 G/H/J/K/L/M/N/P/U/V → 신규 H/I/K/L/M/N/O/Q/V/W
       //   기존 I (US 소수점) → 신규 J
       //   기존 O (FOB %) → 신규 P
-      sheet.getCell(`P${rowNum}`).numFmt = '0%';   // FOB_discount_rate
-      ['H','I','K','L','M','N','O','Q','V','W'].forEach(col => {
-        sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
-      });
-      sheet.getCell(`J${rowNum}`).numFmt = '#,##0.0';   // US 0.5 라운딩
-      // 재고 컬럼 numFmt (Y 이후 동적) — 총합 컬럼은 bold
+      // hideFob=1 일 때는 FOB(O)·FOB%(P)·CIF(Q) 3컬럼 사라져서 그 뒤가 모두 3칸 좌측 이동:
+      //   V(OrderQty)→S / W(Total)→T
+      if (!hideFob) {
+        sheet.getCell(`P${rowNum}`).numFmt = '0%';   // FOB_discount_rate
+        ['H','I','K','L','M','N','O','Q','V','W'].forEach(col => {
+          sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
+        });
+      } else {
+        // FOB 3컬럼 제거 후 OrderQty=S / Total=T
+        ['H','I','K','L','M','N','S','T'].forEach(col => {
+          sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
+        });
+      }
+      sheet.getCell(`J${rowNum}`).numFmt = '#,##0.0';   // US 0.5 라운딩 (FOB 앞이라 hideFob 와 무관)
+      // 재고 컬럼 numFmt — base 컬럼 수 (!hideFob=24 / hideFob=21) + 1 부터 동적
       if (includeStock) {
-        const totalColIdx = 25; // 24 base + 1 (총합)
+        const baseColCount = hideFob ? 21 : 24;
+        const totalColIdx = baseColCount + 1;
         const totalColLetter = _colIndexToLetter(totalColIdx);
         sheet.getCell(`${totalColLetter}${rowNum}`).numFmt = '#,##0';
         sheet.getCell(`${totalColLetter}${rowNum}`).font = { bold: true };
         for (let i = 0; i < stockWarehouses.length; i++) {
-          const colLetter = _colIndexToLetter(26 + i);
+          const colLetter = _colIndexToLetter(baseColCount + 2 + i);
           sheet.getCell(`${colLetter}${rowNum}`).numFmt = '#,##0';
         }
       }
@@ -4620,8 +4639,12 @@ const _buyerExcelHandler = async (req, res) => {
     const filename = includeStock
       ? `Mr.Donothing_Product_List_with_Stock_${today}.xlsx`
       : `Mr.Donothing_Product_List_${today}.xlsx`;
+    // 파일명에 _no-cost suffix — hideFob=1 일 때 외부 발송용임을 구분
+    const _filename = hideFob
+      ? filename.replace(/\.xlsx$/, '_no-cost.xlsx')
+      : filename;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader('Content-Disposition', `attachment; filename="${_filename}"; filename*=UTF-8''${encodeURIComponent(_filename)}`);
     res.setHeader('X-Images-Embedded', String(imagesEmbedded));
     res.send(Buffer.from(buf));
   } catch (e) {

@@ -1169,7 +1169,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       신제품 사업성 검토에서 <b>승인</b>된 프로젝트가 자동 등록됩니다. 이 화면에서는 카탈로그 전체에 대한 일괄 도구를 사용할 수 있습니다.
     </p>
 
-    <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+    <div style="display:flex;justify-content:flex-end;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none;" title="체크 시 FOB(Won)·FOB(discount rate)·CIF(Asia avg) 3개 컬럼 제거. 외부 바이어 발송용">
+        <input type="checkbox" id="cpExportHideFobChk" style="cursor:pointer;" onchange="_cpRememberHideFob(this)">
+        🔒 FOB·CIF 원가 숨김 (외부 공유용)
+      </label>
       <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcel()" title="FOB·CIF 22열 + 이미지 임베드. 해외 바이어 발송용">📥 제품 리스트</button>
       <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcelWithStock()" title="제품 리스트 + 창고별(한국/대만/태국) 실시간 재고. 사내 영업·생산팀용" style="background:#10b981;">📦 제품 리스트(재고 포함)</button>
     </div>
@@ -3371,13 +3375,29 @@ async function cpRunAssign(overwrite){
   }
 }
 
+// 🔒 FOB·CIF 숨김 옵션 (2026-05-22) — 체크박스 → localStorage 영속 + URL query 부착
+function _cpHideFobQS(){
+  try { const c = document.getElementById('cpExportHideFobChk'); return (c && c.checked) ? '?hideFob=1' : ''; }
+  catch(e) { return ''; }
+}
+function _cpRememberHideFob(chk){
+  try { localStorage.setItem('cpExportHideFob', chk.checked ? '1' : '0'); } catch(e) {}
+}
+// 페이지 진입 시 체크박스 상태 복원
+document.addEventListener('DOMContentLoaded', ()=>{
+  try {
+    const c = document.getElementById('cpExportHideFobChk');
+    if (c) c.checked = (localStorage.getItem('cpExportHideFob') === '1');
+  } catch(e) {}
+});
+
 async function cpExportBuyerExcel(){
   const btn = event && event.target;
   const origLabel = btn ? btn.textContent : '';
   try {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ 생성 중...'; }
     if (typeof showToast === 'function') showToast('엑셀 생성 중... (카탈로그 전체 조회)', 'info');
-    const r = await fetch('/api/consumer-pricing/catalog/export');
+    const r = await fetch('/api/consumer-pricing/catalog/export' + _cpHideFobQS());
     if (!r.ok) {
       const err = await r.json().catch(()=>({error:'서버 오류 (HTTP '+r.status+')'}));
       throw new Error(err.error || '다운로드 실패');
@@ -3409,7 +3429,7 @@ async function cpExportBuyerExcelWithStock(){
   try {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ 생성 중... (재고 조회)'; }
     if (typeof showToast === 'function') showToast('엑셀 생성 중... (카탈로그 + mdn-inventory 재고 조회)', 'info');
-    const r = await fetch('/api/consumer-pricing/catalog/export-with-stock');
+    const r = await fetch('/api/consumer-pricing/catalog/export-with-stock' + _cpHideFobQS());
     if (!r.ok) {
       const err = await r.json().catch(()=>({error:'서버 오류 (HTTP '+r.status+')'}));
       throw new Error(err.error || '다운로드 실패');
