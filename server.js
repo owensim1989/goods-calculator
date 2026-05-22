@@ -4352,6 +4352,32 @@ const _buyerExcelHandler = async (req, res) => {
       allPages.length = 0;
       allPages.push(...flat);
     }
+    // 3차 그룹화 (2026-05-22): 카테고리 내 product name prefix (" - " 앞) 으로 sub-group.
+    //   "Stand Acrylic - Birthday" / "Stand Acrylic - January 3rd" / "Stand Acrylic - Bath tub" 등
+    //   등록일 다르고 시리즈 root link 도 안 걸려 있어도 같은 prefix 끼리 자연 모음.
+    //   첫 등장 위치 기준 (같은 카테고리 안에서). 시리즈 root 그룹화는 이미 처리됐으므로
+    //   같은 root 끼리는 prefix 동일 → 인접 유지 / prefix 다른 root 끼리는 별개 그룹.
+    {
+      const _prefixOf = (p) => {
+        const n = prodName(p) || '';
+        const i = n.indexOf(' - ');
+        return (i >= 0 ? n.slice(0, i) : n).trim().toLowerCase();
+      };
+      const groups = [];                 // [{ key, rows:[...] }] 첫 등장 순
+      const seen = new Map();            // key → group ref
+      for (const p of allPages){
+        const cat = catIdx(p);
+        const pref = _prefixOf(p);
+        const key = cat + '|' + pref;
+        let g = seen.get(key);
+        if (!g){ g = { key, rows: [] }; groups.push(g); seen.set(key, g); }
+        g.rows.push(p);
+      }
+      const flat2 = [];
+      for (const g of groups) flat2.push(...g.rows);
+      allPages.length = 0;
+      allPages.push(...flat2);
+    }
 
     // 2026-05-05 — 단종/Out of stock 항목은 바이어 엑셀에서 제외 (제품리스트 다운로드 정합성)
     const _gSelStatus = (p) => (p.properties?.판매상태?.select?.name) || null;
