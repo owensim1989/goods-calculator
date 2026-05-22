@@ -1066,10 +1066,10 @@ ${o.validity_until ? '- Validity: Quote valid until ' + o.validity_until : ''}
 
 ${o.invoice_no ? `Payment Instructions (Foreign Exchange Wire Transfer)
 Beneficiary: JEISHA CO., LTD.
-Bank: Shinhan Bank, Seoul, Republic of Korea
-Swift Code: SHBKKRSE
-Account No: 100-035-************
-Bank Address: 20, Sejong-daero 9-gil, Jung-gu, Seoul, 04513, Korea
+Bank: Kookmin Bank (KB), Seoul, Republic of Korea
+Swift Code: CZNBKRSE
+Account No: 612968-11-002904
+Bank Address: 26, Gukjaegeumyung-Ro-8-Gil, Yeongdeungpo-Gu, Seoul, South Korea (07331)
 
 Please instruct your bank to remit USD $${usd} with reference: ${o.invoice_no}
 
@@ -1080,7 +1080,7 @@ Please let us know if you have any questions.
 Best regards,
 Sales Team · Mr.Donothing
 JEISHA Co., Ltd.
-sales@jeisha.kr · jeisha.kr`;
+info@jeisha.kr · jeisha.kr`;
   return { subject, body, to: p.email || '' };
 }
 
@@ -1091,7 +1091,7 @@ function renderEmailPreview(){
   if (!el) return;
   el.innerHTML = `
     <div style="background:#ece6d5;padding:14px 18px;border-bottom:1px solid #d4ccb8;font-size:12.5px;color:#1a1a1a;margin:-24px -26px 18px -26px;border-radius:8px 8px 0 0">
-      <div style="margin-bottom:4px"><strong>From</strong> sales@jeisha.kr (you)</div>
+      <div style="margin-bottom:4px"><strong>From</strong> info@jeisha.kr (you)</div>
       <div style="margin-bottom:4px"><strong>To</strong> ${escapeHtml(to)}</div>
       <div><strong>Subject</strong> ${escapeHtml(subject)}</div>
     </div>
