@@ -98,6 +98,40 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
 </head>
 <body>
 <div class="toast" id="toast"></div>
+
+<!-- 거래처 편집 모달 — 6 prompt() 연쇄 대체 (localStorage 임시저장 지원) -->
+<div id="partnerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)">
+  <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.6)">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:600;letter-spacing:-0.02em">🏢 거래처 정보 편집</div>
+        <div class="muted" id="partnerDraftHint" style="margin-top:3px"></div>
+      </div>
+      <button class="ghost" onclick="closePartnerModal(false)" title="닫기 (변경 안 함)">✕</button>
+    </div>
+    <div style="padding:18px 22px">
+      <div class="grid g2">
+        <div><label>담당자 이름</label><input type="text" id="pmName" placeholder="예: John Smith"></div>
+        <div><label>회사명</label><input type="text" id="pmCompany" placeholder="예: ABC Trading Co."></div>
+      </div>
+      <div style="margin-top:12px"><label>주소</label><input type="text" id="pmAddress" placeholder="예: 1-2-3 Shibuya, Tokyo, Japan"></div>
+      <div class="grid g3" style="margin-top:12px">
+        <div><label>전화</label><input type="text" id="pmTel" placeholder="+81-3-1234-5678"></div>
+        <div><label>팩스</label><input type="text" id="pmFax" placeholder="(선택)"></div>
+        <div><label>이메일</label><input type="text" id="pmEmail" placeholder="contact@example.com"></div>
+      </div>
+      <div class="alert info" style="margin-top:14px;margin-bottom:0"><div class="ico">💾</div><div>입력 중 자동 임시저장 — 다른 페이지로 이동 후 돌아와도 그대로 복원됩니다. <strong>저장</strong>해야 주문에 반영.</div></div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px">
+      <button class="ghost" onclick="clearPartnerDraft()" title="임시저장 초기화">🗑 초기화</button>
+      <div class="row">
+        <button onclick="closePartnerModal(false)">취소</button>
+        <button class="primary" onclick="closePartnerModal(true)">💾 저장 + 적용</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="app">
   <aside>
     <h1>📥 주문 처리</h1>
@@ -189,7 +223,7 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
           <div class="grid g2">
             <div><label>통화</label><select id="currencyInput" onchange="onCondChange()"><option>USD</option><option>HKD</option><option>EUR</option><option>KRW</option><option>JPY</option><option>CNY</option><option>TWD</option><option>THB</option></select></div>
             <div><label>인코텀즈</label><select id="incotermInput" onchange="onCondChange()"><option>FOB Busan</option><option>CIF</option><option>EXW</option></select></div>
-            <div><label>환율 (1 USD = ₩)</label><input type="number" id="rateInput" value="1380" oninput="recalcAll()"><div class="muted" style="margin-top:4px">📍 EXIM 환율 자동 prefill · 발급 시 캡쳐</div></div>
+            <div><label id="rateLabel">환율 (1 USD = ₩)</label><input type="number" id="rateInput" value="1380" oninput="onRateManualInput()" step="0.01"><div class="muted" style="margin-top:4px" id="rateHint">📍 EXIM 환율 자동 prefill · 발급 시 캡쳐</div></div>
             <div><label>유효 기간 (일)</label><input type="number" id="validityInput" value="14" min="1" max="60"><div class="muted" style="margin-top:4px">기본 14일</div></div>
           </div>
         </div>
@@ -326,8 +360,19 @@ const STATE = {
   step: 1,
   orderId: null,
   order: null,    // 서버에서 받아온 raw order
-  warehouses: []  // KR/TW/TH 코드 + 라벨
+  warehouses: [], // KR/TW/TH 코드 + 라벨
+  fx: null        // /api/fx 캐시 (USD/HKD/TWD/JPY/CNY/THB)
 };
+
+// 기본 환율 fallback (loadFx 실패 시)
+const FX_FALLBACK = { USD: 1380, HKD: 177, TWD: 43, JPY: 9.2, CNY: 190, THB: 40, EUR: 1500, KRW: 1 };
+function _fxFor(currency){
+  if (!currency) currency = 'USD';
+  if (currency === 'KRW') return 1;
+  const src = STATE.fx || FX_FALLBACK;
+  const v = src[currency];
+  return (typeof v === 'number' && v > 0) ? v : (FX_FALLBACK[currency] || 1380);
+}
 
 const STEPS = [
   {n:1,title:'주문서 인입'},
@@ -518,9 +563,19 @@ function applyOrderToUI(){
   document.getElementById('kpiRows').textContent = (o.items.length + (o.unmatched||[]).length);
   document.getElementById('kpiMatched').textContent = o.items.length;
   document.getElementById('kpiUnmatched').textContent = (o.unmatched||[]).length;
-  const rate = o.rate || 1380;
+  // 환율 우선순위: ① 사용자 수동 입력값 (o.manual_rate) ② 현재 통화의 EXIM 환율 ③ 1380 fallback
+  const cur = o.currency || 'USD';
+  let rate;
+  if (o.manual_rate && Number(o.rate) > 0) {
+    rate = Number(o.rate);
+  } else {
+    rate = _fxFor(cur);
+    // 자동 prefill 결과를 state 에 즉시 반영 (server save 는 다음 patch 때)
+    o.rate = rate;
+  }
   document.getElementById('rateInput').value = rate;
-  document.getElementById('kpiRate').textContent = rate.toLocaleString();
+  document.getElementById('kpiRate').textContent = Math.round(rate).toLocaleString();
+  _updateRateLabel(cur, o.manual_rate);
   // 합계 prefill
   const total = o.items.reduce((s,i)=>s + (i.final_fob_won||i.fob_won||0)*i.order_qty, 0);
   document.getElementById('kpiTotal').textContent = '$' + Math.round(total/rate).toLocaleString();
@@ -584,22 +639,104 @@ function renderPartner(){
   ].map(([k,v]) => `<div class="k">${k}</div><div class="v">${escapeHtml(v)}</div>`).join('');
 }
 
-function editPartner(){
-  const p = (STATE.order && STATE.order.partner) || {};
-  const name = prompt('담당자 이름', p.name || '');
-  if (name === null) return;
-  const company = prompt('회사명', p.company || '');
-  if (company === null) return;
-  const address = prompt('주소', p.address || '');
-  if (address === null) return;
-  const tel = prompt('전화', p.tel || '');
-  if (tel === null) return;
-  const email = prompt('이메일', p.email || '');
-  if (email === null) return;
-  STATE.order.partner = { name, company, address, tel, email };
-  updateOrderRemote({ partner: STATE.order.partner });
-  renderPartner();
+// ━━━ 거래처 편집 모달 (6 prompt 연쇄 → 일괄 입력 + localStorage 임시저장) ━━━
+const _PARTNER_FIELDS = ['name', 'company', 'address', 'tel', 'fax', 'email'];
+const _PARTNER_INPUT_IDS = { name:'pmName', company:'pmCompany', address:'pmAddress', tel:'pmTel', fax:'pmFax', email:'pmEmail' };
+
+function _partnerDraftKey(){
+  return 'orders_partner_draft_' + (STATE.orderId || 'new');
 }
+function _loadPartnerDraft(){
+  try {
+    const raw = localStorage.getItem(_partnerDraftKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+function _savePartnerDraft(){
+  try {
+    const d = {};
+    for (const f of _PARTNER_FIELDS) {
+      const el = document.getElementById(_PARTNER_INPUT_IDS[f]);
+      if (el) d[f] = el.value || '';
+    }
+    d._ts = Date.now();
+    localStorage.setItem(_partnerDraftKey(), JSON.stringify(d));
+    const hint = document.getElementById('partnerDraftHint');
+    if (hint) {
+      const t = new Date(d._ts);
+      hint.textContent = '💾 임시저장됨 ' + String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
+      hint.style.color = 'var(--ok)';
+    }
+  } catch(e){ console.warn('[partnerDraft]', e); }
+}
+function _clearPartnerDraftStorage(){
+  try { localStorage.removeItem(_partnerDraftKey()); } catch(e){}
+}
+function clearPartnerDraft(){
+  if (!confirm('입력 중인 내용을 모두 비울까요? (저장되어 있는 거래처 정보는 그대로)')) return;
+  for (const f of _PARTNER_FIELDS) {
+    const el = document.getElementById(_PARTNER_INPUT_IDS[f]);
+    if (el) el.value = '';
+  }
+  _clearPartnerDraftStorage();
+  const hint = document.getElementById('partnerDraftHint');
+  if (hint) { hint.textContent = '임시저장 초기화됨'; hint.style.color = 'var(--text-3)'; }
+}
+function editPartner(){
+  if (!STATE.order) { toast('주문이 없습니다', 'err'); return; }
+  const p = STATE.order.partner || {};
+  const draft = _loadPartnerDraft();
+  // 우선순위: 임시저장 (다른 페이지 갔다가 돌아온 경우) > 저장된 partner > 빈 값
+  const initial = draft || p;
+  for (const f of _PARTNER_FIELDS) {
+    const el = document.getElementById(_PARTNER_INPUT_IDS[f]);
+    if (el) {
+      el.value = initial[f] || '';
+      el.oninput = _savePartnerDraft;   // 입력 시 즉시 임시저장
+    }
+  }
+  const hint = document.getElementById('partnerDraftHint');
+  if (hint) {
+    if (draft && draft._ts) {
+      const t = new Date(draft._ts);
+      hint.textContent = '↩ 임시저장 복원됨 (' + String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0') + ')';
+      hint.style.color = 'var(--accent-strong)';
+    } else {
+      hint.textContent = '입력 중 자동 임시저장';
+      hint.style.color = 'var(--text-3)';
+    }
+  }
+  document.getElementById('partnerModal').style.display = 'flex';
+  setTimeout(() => { const f = document.getElementById('pmName'); if (f) f.focus(); }, 50);
+}
+function closePartnerModal(save){
+  const modal = document.getElementById('partnerModal');
+  if (!modal) return;
+  if (save) {
+    const np = {};
+    for (const f of _PARTNER_FIELDS) {
+      const el = document.getElementById(_PARTNER_INPUT_IDS[f]);
+      np[f] = el ? (el.value || '').trim() : '';
+    }
+    STATE.order.partner = np;
+    updateOrderRemote({ partner: np });
+    renderPartner();
+    _clearPartnerDraftStorage();   // 저장됐으니 임시저장은 비움
+    toast('거래처 정보 저장됨', 'ok');
+  }
+  // 취소 시 임시저장은 보존 (다음 편집 때 복원)
+  modal.style.display = 'none';
+}
+// ESC 키로 모달 닫기 (취소)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const m = document.getElementById('partnerModal');
+    if (m && m.style.display !== 'none') closePartnerModal(false);
+  }
+});
+// 모달 배경 클릭 시 닫기 (취소)
+const _pmEl = document.getElementById('partnerModal');
+if (_pmEl) _pmEl.addEventListener('click', (e) => { if (e.target === _pmEl) closePartnerModal(false); });
 
 // ━━━ STEP 2 : 매칭 + 재고 ━━━
 async function refreshStock(){
@@ -720,18 +857,51 @@ function bulkQty(action){
 
 // ━━━ STEP 3 : 가격 산정 ━━━
 function recalcAll(){
+  // 환율 input 변경 (구 호환). 이후 사용자가 입력했음을 표시
   if (!STATE.order) return;
-  const rate = parseInt(document.getElementById('rateInput').value) || 1380;
+  const rate = parseFloat(document.getElementById('rateInput').value) || 1380;
   STATE.order.rate = rate;
+  renderPriceTable();
+  scheduleSave();
+}
+function onRateManualInput(){
+  if (!STATE.order) return;
+  const v = parseFloat(document.getElementById('rateInput').value);
+  if (!isFinite(v) || v <= 0) return;
+  STATE.order.rate = v;
+  STATE.order.manual_rate = true;           // 통화 변경 시 자동 prefill 막음
+  _updateRateLabel(STATE.order.currency || 'USD', true);
+  document.getElementById('kpiRate').textContent = Math.round(v).toLocaleString();
   renderPriceTable();
   scheduleSave();
 }
 function onCondChange(){
   if (!STATE.order) return;
-  STATE.order.currency = document.getElementById('currencyInput').value;
+  const prevCur = STATE.order.currency || 'USD';
+  const newCur = document.getElementById('currencyInput').value;
+  STATE.order.currency = newCur;
   STATE.order.incoterm = document.getElementById('incotermInput').value;
+  // 통화 변경 + 사용자가 환율 수동 입력 안 했으면 → 새 통화의 환율로 자동 prefill
+  if (newCur !== prevCur && !STATE.order.manual_rate) {
+    const r = _fxFor(newCur);
+    STATE.order.rate = r;
+    document.getElementById('rateInput').value = r;
+    document.getElementById('kpiRate').textContent = Math.round(r).toLocaleString();
+  }
+  _updateRateLabel(newCur, !!STATE.order.manual_rate);
   renderPartner();
+  renderPriceTable();
   scheduleSave();
+}
+function _updateRateLabel(currency, manual){
+  const lbl = document.getElementById('rateLabel');
+  const hint = document.getElementById('rateHint');
+  if (lbl) lbl.textContent = `환율 (1 ${currency || 'USD'} = ₩)`;
+  if (hint) {
+    hint.textContent = manual
+      ? `✏️ 수동 입력됨 · 발급 시 캡쳐 (자동 prefill 해제됨, 통화 바꿔도 유지)`
+      : `📍 EXIM 환율 자동 prefill · ${currency || 'USD'} 기준 · 발급 시 캡쳐`;
+  }
 }
 
 function renderPriceTable(){
@@ -954,7 +1124,8 @@ async function persistOrder(){
     const o = STATE.order;
     await api('/' + STATE.orderId, { method: 'PATCH', body: JSON.stringify({
       items: o.items, partner: o.partner, currency: o.currency, incoterm: o.incoterm,
-      rate: o.rate, summary_mode: o.summary_mode, summary_label: o.summary_label, summary_hs: o.summary_hs
+      rate: o.rate, manual_rate: !!o.manual_rate,
+      summary_mode: o.summary_mode, summary_label: o.summary_label, summary_hs: o.summary_hs
     })});
   } catch (e) { console.warn('[persist]', e.message); }
 }
@@ -968,23 +1139,39 @@ async function updateOrderRemote(patch){
 // ━━━ HELPERS ━━━
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// FX prefill
+// FX prefill — fxCache 전체 캐시 (USD/HKD/TWD/JPY/CNY/THB) + 통화별 prefill 지원
 async function loadFx(){
   try {
     const r = await fetch('/api/fx', { credentials: 'include' });
     if (r.ok) {
       const fx = await r.json();
-      if (fx.USD) document.getElementById('rateInput').value = Math.round(fx.USD);
-      const k = document.getElementById('kpiRate');
-      if (k) k.textContent = Math.round(fx.USD).toLocaleString();
+      STATE.fx = fx;  // 전체 캐시 (이후 _fxFor(currency) 가 통화별 환율 반환)
+      // 현재 주문 있으면 자동 prefill 재시도 (manual_rate 안 박힌 경우)
+      if (STATE.order && !STATE.order.manual_rate) {
+        const cur = STATE.order.currency || 'USD';
+        const r2 = _fxFor(cur);
+        STATE.order.rate = r2;
+        const ri = document.getElementById('rateInput');
+        if (ri) ri.value = r2;
+        const k = document.getElementById('kpiRate');
+        if (k) k.textContent = Math.round(r2).toLocaleString();
+        _updateRateLabel(cur, false);
+      } else if (!STATE.order) {
+        // 페이지 첫 진입 (주문 없음) — USD 환율로 input 초기값 prefill
+        const usd = _fxFor('USD');
+        const ri = document.getElementById('rateInput');
+        if (ri) ri.value = usd;
+        const k = document.getElementById('kpiRate');
+        if (k) k.textContent = Math.round(usd).toLocaleString();
+      }
     }
-  } catch(e){}
+  } catch(e){ console.warn('[loadFx]', e); }
 }
 
 // ━━━ INIT ━━━
 renderNav();
-loadOrderList();
-loadFx();
+// FX 먼저 로드해야 새 주문 prefill 정확. loadOrderList 는 병렬 OK
+loadFx().then(() => loadOrderList());
 </script>
 </body>
 </html>
