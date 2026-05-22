@@ -4639,9 +4639,9 @@ const _buyerExcelHandler = async (req, res) => {
     const filename = includeStock
       ? `Mr.Donothing_Product_List_with_Stock_${today}.xlsx`
       : `Mr.Donothing_Product_List_${today}.xlsx`;
-    // 파일명에 _no-cost suffix — hideFob=1 일 때 외부 발송용임을 구분
-    const _filename = hideFob
-      ? filename.replace(/\.xlsx$/, '_no-cost.xlsx')
+    // 파일명 — hideFob=1 (외부 발송용) 은 기본 이름 / hideFob=0 (FOB·CIF 포함 사내용) 은 _with-FOB-CIF suffix
+    const _filename = !hideFob
+      ? filename.replace(/\.xlsx$/, '_with-FOB-CIF.xlsx')
       : filename;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${_filename}"; filename*=UTF-8''${encodeURIComponent(_filename)}`);
