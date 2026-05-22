@@ -7,28 +7,47 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 :root{
-  --bg:#1f1f1f; --surface:#2a2a2a; --surface-2:#353535; --line:#3d3d3d;
-  --sidebar:#191919;
-  --text:#e8e6e3; --text-2:#a8a6a2; --text-3:#6e6c69;
-  --accent:#c9a27a; --accent-strong:#d9b48c; --accent-bg:rgba(201,162,122,.14);
-  --ok:#6ee7b7; --warn:#fb923c; --err:#ef4444; --info:#4da1ff;
+  /* GOODS OS dark slate 톤 통일 (2026-05-22) */
+  --bg:#0f172a; --surface:#1e293b; --surface-2:#334155; --line:#334155;
+  --sidebar:#1e293b;
+  --text:#e2e8f0; --text-2:#94a3b8; --text-3:#64748b;
+  --accent:#60a5fa; --accent-strong:#93c5fd; --accent-bg:rgba(96,165,250,.14);
+  --ok:#34d399; --warn:#fbbf24; --err:#f87171; --info:#60a5fa;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;font-size:14px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em}
-.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
-aside{background:var(--sidebar);border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;height:100vh;overflow-y:auto}
-aside h1{font-size:15px;font-weight:600;margin-bottom:4px;letter-spacing:-0.02em}
-aside .sub{font-size:11px;color:var(--text-3);margin-bottom:24px;font-family:'JetBrains Mono',monospace}
-.steps{display:flex;flex-direction:column;gap:2px}
-.step{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid transparent;transition:all .12s;color:var(--text-2)}
-.step:hover{background:var(--surface);color:var(--text)}
-.step.active{background:var(--accent-bg);border-color:rgba(201,162,122,.35);color:var(--accent-strong);font-weight:600}
-.step .num{width:22px;height:22px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text-2);flex-shrink:0;font-family:'JetBrains Mono',monospace}
-.step.active .num{background:var(--accent);color:#1f1f1f}
-.step.done .num{background:var(--ok);color:#1f1f1f}
-.step.done .num::before{content:"✓";font-family:inherit}
+/* 옵션 A — 사이드바 폐기 + 상단 가로 stepper (2026-05-22) */
+.app{display:block;min-height:100vh}
+.page-header{padding:24px 40px 0;max-width:1400px;margin:0 auto;}
+.page-header h1{font-size:18px;font-weight:600;letter-spacing:-0.02em;margin-bottom:4px;}
+.page-header .sub{font-size:11px;color:var(--text-3);font-family:'JetBrains Mono',monospace;}
+.steps{display:flex;gap:0;align-items:flex-start;padding:18px 0 10px;}
+.step{display:flex;flex-direction:column;align-items:center;flex:1;gap:6px;cursor:pointer;transition:opacity .12s;}
+.step.upcoming{opacity:.55}
+.step:hover{opacity:1}
+.step .num{width:28px;height:28px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text-2);font-family:'JetBrains Mono',monospace;border:1px solid var(--line);transition:all .12s}
+.step .label{font-size:11px;color:var(--text-2);text-align:center;letter-spacing:-0.01em}
+.step.active .num{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.step.active .label{color:var(--accent-strong);font-weight:600}
+.step.done .num{background:var(--ok);color:var(--bg);border-color:var(--ok)}
+.step.done .num::before{content:"✓"}
 .step.done .num span{display:none}
-main{padding:32px 40px;max-width:1400px;width:100%}
+.step-line{flex:0 0 24px;height:1px;background:var(--line);align-self:center;margin-top:-18px;}
+.step.done + .step-line{background:var(--ok)}
+.progress-strip{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;font-size:11px;color:var(--text-2);flex-wrap:wrap}
+.progress-strip .progress-title{font-weight:600;color:var(--text);font-size:12px}
+.progress-strip .progress-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.progress-strip .progress-chips .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg);border:1px solid var(--line);border-radius:14px;font-size:11px;cursor:pointer;transition:all .12s;color:var(--text-2)}
+.progress-strip .progress-chips .chip:hover{border-color:var(--accent);color:var(--accent-strong)}
+.progress-strip .progress-chips .chip.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-strong)}
+.progress-strip button{padding:4px 10px;font-size:11px}
+main{padding:0 40px 32px;max-width:1400px;width:100%;margin:0 auto;}
+@media (max-width:900px){
+  .page-header{padding:16px 20px 0}
+  main{padding:0 20px 24px}
+  .step .label{font-size:10px}
+  .step-line{flex:0 0 12px}
+}
 .hero{margin-bottom:24px}
 .hero h2{font-size:22px;font-weight:600;margin-bottom:6px;letter-spacing:-0.02em}
 .hero .desc{color:var(--text-2);font-size:13px;line-height:1.6}
@@ -72,7 +91,7 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
 .dropzone.drag{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-strong)}
 .dropzone .icon{font-size:30px;margin-bottom:8px}
 .dropzone h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px}
-.partner-card{background:linear-gradient(135deg,var(--accent-bg),var(--surface));border:1px solid rgba(201,162,122,.35);border-radius:10px;padding:16px 18px}
+.partner-card{background:linear-gradient(135deg,var(--accent-bg),var(--surface));border:1px solid rgba(96,165,250,.35);border-radius:10px;padding:16px 18px}
 .partner-card h3{font-size:13px;font-weight:600;margin-bottom:10px;color:var(--accent-strong);letter-spacing:-0.01em}
 .partner-card .info{display:grid;grid-template-columns:80px 1fr;gap:6px 14px;font-size:12px}
 .partner-card .info .k{color:var(--text-3);font-weight:500}
@@ -85,7 +104,7 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
 .alert.err{background:rgba(239,68,68,.1);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
 .alert .ico{font-size:15px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap}
-.summary-bar{background:linear-gradient(135deg,var(--surface),var(--surface-2));border:1px solid rgba(201,162,122,.35);border-radius:8px;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.summary-bar{background:linear-gradient(135deg,var(--surface),var(--surface-2));border:1px solid rgba(96,165,250,.35);border-radius:8px;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .summary-bar .lhs{font-size:12px;color:var(--text-2)}
 .summary-bar .lhs strong{color:var(--text);font-weight:600}
 .summary-bar .rhs{font-size:22px;font-weight:600;color:var(--accent-strong);font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;letter-spacing:-0.02em}
@@ -133,24 +152,18 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
 </div>
 
 <div class="app">
-  <aside>
+  <div class="page-header">
     <h1>📥 주문 처리</h1>
-    <div class="sub">goods.jeisha.kr</div>
+    <div class="sub">goods.jeisha.kr · 단계 이동 시 자동 저장 (서버 sync)</div>
     <div class="steps" id="stepNav"></div>
-    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">📋 진행 중 주문</div>
-        <button onclick="newOrder()" style="padding:3px 8px;font-size:10px" title="새 주문 시작">+ 새로</button>
-      </div>
-      <div id="orderList" style="display:flex;flex-direction:column;gap:4px;font-size:12px"></div>
-    </div>
-    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:11px;color:var(--text-3);line-height:1.6">
-      <div style="margin-bottom:6px;font-weight:600;color:var(--text-2)">💡 서버 자동 저장</div>
-      단계 이동 시 server <code style="background:var(--surface-2);padding:1px 4px;border-radius:3px;font-size:10px">data/orders.json</code> 에 저장. PC·세션 무관 복원
-    </div>
-  </aside>
+  </div>
 
   <main>
+    <div class="progress-strip">
+      <span class="progress-title">📋 진행 중 주문</span>
+      <span class="progress-chips" id="orderList"></span>
+      <button onclick="newOrder()" title="새 주문 시작">+ 새로</button>
+    </div>
     <!-- STEP 1 : 인입 -->
     <section class="section active" data-step="1">
       <div class="hero"><h2>1. 주문서 인입</h2><div class="desc">거래처가 회신한 22컬럼 바이어 엑셀을 업로드 — Order Qty 가 채워진 행만 자동 추출.</div></div>
@@ -393,9 +406,14 @@ function toast(msg, kind='info'){
   _toastTimer = setTimeout(()=>el.classList.remove('show'), 3000);
 }
 
-// ━━━ NAV ━━━
+// ━━━ NAV (가로 stepper, 2026-05-22 옵션 A) ━━━
 function renderNav(){
-  const html = STEPS.map(s => `<div class="step ${STATE.step===s.n?'active':''} ${STATE.step>s.n?'done':''}" onclick="goStep(${s.n})"><div class="num"><span>${s.n}</span></div><div>${s.title}</div></div>`).join('');
+  const items = STEPS.map(s => {
+    const cls = STATE.step===s.n ? 'active' : (STATE.step>s.n ? 'done' : 'upcoming');
+    return `<div class="step ${cls}" onclick="goStep(${s.n})"><div class="num"><span>${s.n}</span></div><div class="label">${s.title}</div></div>`;
+  });
+  // 사이에 line 삽입
+  const html = items.reduce((acc, cur, idx) => idx === 0 ? cur : acc + '<div class="step-line"></div>' + cur, '');
   document.getElementById('stepNav').innerHTML = html;
 }
 function goStep(n){
@@ -434,25 +452,23 @@ async function loadOrderList(){
     const labels = data.status_labels || {};
     const el = document.getElementById('orderList');
     if (!orders.length) {
-      el.innerHTML = '<div style="font-size:11px;color:var(--text-3);padding:6px 4px">진행 중 주문 없음</div>';
+      el.innerHTML = '<span style="font-size:11px;color:var(--text-3);">진행 중 주문 없음</span>';
       return;
     }
-    el.innerHTML = orders.slice(0,10).map(o => {
+    // 가로 chip 형태 (옵션 A — 2026-05-22)
+    el.innerHTML = orders.slice(0,12).map(o => {
       const st = labels[o.status] || {label: o.status, color:'#666'};
       const active = STATE.orderId === o.order_id;
       const dt = new Date(o.updated_at);
       const dtStr = (dt.getMonth()+1) + '/' + dt.getDate();
       const lbl = o.label || (o.partner_company ? (o.partner_company.split(' ')[0] + ' · ' + o.line_count + '건') : (o.order_id.slice(-6)));
-      return `<div onclick="openOrder('${o.order_id}')" style="padding:8px 10px;border-radius:6px;cursor:pointer;border:1px solid ${active?'var(--accent)':'transparent'};background:${active?'var(--accent-bg)':'var(--surface-2)'};display:flex;flex-direction:column;gap:3px;position:relative">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px">
-          <div style="font-weight:600;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(lbl)}</div>
-          <button onclick="deleteOrder('${o.order_id}',event)" style="padding:0 4px;font-size:10px;border:none;background:transparent;color:var(--text-3);cursor:pointer" title="삭제">✕</button>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px">
-          <span style="background:${st.color};color:#fff;padding:1px 6px;border-radius:8px;font-weight:600">${st.label}</span>
-          <span style="color:var(--text-3)">${dtStr} · $${(o.total_usd||0).toLocaleString()}</span>
-        </div>
-      </div>`;
+      const tooltip = `${st.label} · ${dtStr} · $${(o.total_usd||0).toLocaleString()}`;
+      return `<span class="chip ${active?'active':''}" onclick="openOrder('${o.order_id}')" title="${escapeHtml(tooltip)}">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${st.color};"></span>
+        <span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(lbl)}</span>
+        <span style="color:var(--text-3);font-size:10px;">${dtStr}</span>
+        <span onclick="deleteOrder('${o.order_id}',event)" style="cursor:pointer;color:var(--text-3);margin-left:2px;" title="삭제">✕</span>
+      </span>`;
     }).join('');
   } catch (e) {
     console.error('[orderList]', e);
