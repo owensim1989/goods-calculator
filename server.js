@@ -1313,6 +1313,10 @@ app.post('/api/inbox/upload', express.json({ limit: '50mb' }), async (req, res) 
     // 제출자 정보 — 클라이언트 input 보다 세션 사용자 우선 (위변조 방지)
     const submitterName = (req.user && (req.user.name || req.user.displayName)) || (body.submitter && body.submitter.name) || null;
     const submitterEmail = (req.user && req.user.email) || (body.submitter && body.submitter.email) || null;
+    // 사용자가 명시 선택한 발급 국가 (2026-05-25 신설) — AI 추출 결과보다 우선
+    // 단, 알려진 옵션만 통과 (validation)
+    const ALLOWED_UPLOAD_COUNTRIES = ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타'];
+    const userCountry = body.country && ALLOWED_UPLOAD_COUNTRIES.includes(body.country) ? body.country : null;
 
     reloadParsedDb();
     const results = [];
@@ -1336,7 +1340,8 @@ app.post('/api/inbox/upload', express.json({ limit: '50mb' }), async (req, res) 
           mimeType,
           buffer,
           submitterName,
-          submitterEmail
+          submitterEmail,
+          userCountry
         });
         // parsedDb 메모리 갱신 (방금 push 된 항목 반영)
         parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);

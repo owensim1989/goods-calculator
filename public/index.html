@@ -184,6 +184,20 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-dropzone-btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px -6px rgba(124,58,237,0.6);}
 .inbox-dropzone-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
 .inbox-dropzone input[type=file]{display:none;}
+/* 업로드 시 국가 선택 — 2026-05-25 */
+.inbox-dropzone-country{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px dashed rgba(124,58,237,0.25);margin-top:14px;flex-wrap:wrap;}
+.inbox-dropzone-country label{font-size:12px;font-weight:600;color:var(--text-muted);}
+.inbox-dropzone-country select{padding:8px 12px;font-size:12.5px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);min-width:200px;cursor:pointer;}
+.inbox-dropzone-country select:focus{outline:2px solid rgba(124,58,237,0.4);outline-offset:-1px;border-color:#7c3aed;}
+.inbox-dropzone-country .hint{font-size:11px;color:var(--text-muted);}
+/* 인박스 국가 필터 칩 */
+.inbox-country-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+.inbox-country-chips .lbl{font-size:11.5px;color:var(--text-muted);margin-right:6px;font-weight:500;}
+.inbox-country-chip{padding:6px 12px;font-size:12px;font-weight:500;border-radius:18px;border:1px solid var(--border);background:var(--card);color:var(--text-muted);cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:5px;}
+.inbox-country-chip:hover{border-color:#7c3aed;color:var(--text);}
+.inbox-country-chip.active{background:linear-gradient(135deg,#7c3aed,#dc2626);color:#fff;border-color:#7c3aed;font-weight:600;box-shadow:0 3px 8px -2px rgba(124,58,237,0.4);}
+.inbox-country-chip .cnt{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 5px;border-radius:8px;font-size:10px;background:rgba(127,127,127,0.15);font-weight:600;font-family:'JetBrains Mono','SF Mono',monospace;}
+.inbox-country-chip.active .cnt{background:rgba(255,255,255,0.25);color:#fff;}
 
 /* 업로드 진행 패널 */
 .inbox-upload-progress{margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card);}
@@ -1461,6 +1475,24 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </div>
     </div>
     <input type="file" id="inboxFileInput" multiple accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/*" onchange="inboxOnFilesPicked(event)">
+    <!-- 국가 선택 — 2026-05-25 -->
+    <div class="inbox-dropzone-country" onclick="event.stopPropagation();">
+      <label for="inboxUploadCountry">🌐 발급 국가:</label>
+      <select id="inboxUploadCountry">
+        <option value="">자동 (AI 추출 우선)</option>
+        <option value="한국">🇰🇷 한국</option>
+        <option value="중국">🇨🇳 중국</option>
+        <option value="대만">🇹🇼 대만</option>
+        <option value="태국">🇹🇭 태국</option>
+        <option value="베트남">🇻🇳 베트남</option>
+        <option value="일본">🇯🇵 일본</option>
+        <option value="홍콩">🇭🇰 홍콩</option>
+        <option value="미국">🇺🇸 미국</option>
+        <option value="인도네시아">🇮🇩 인도네시아</option>
+        <option value="기타">🌐 기타</option>
+      </select>
+      <span class="hint">선택 시 AI 추출 결과보다 우선 적용됩니다</span>
+    </div>
   </div>
 
   <!-- 업로드 진행 표시 -->
@@ -1502,6 +1534,13 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <button class="active" data-status="pending" onclick="switchParsedTab('pending')">⏳ 미검수 <span class="count" id="inboxPillPending">0</span></button>
     <button data-status="approved" onclick="switchParsedTab('approved')">✅ 검수완료 <span class="count" id="inboxPillApproved">0</span></button>
     <button data-status="rejected" onclick="switchParsedTab('rejected')">❌ 반려 <span class="count" id="inboxPillRejected">0</span></button>
+  </div>
+
+  <!-- 국가 칩 필터 — 2026-05-25 신설 -->
+  <div class="inbox-country-chips" id="inboxCountryChips">
+    <span class="lbl">🌐 국가:</span>
+    <button class="inbox-country-chip active" data-country="all" onclick="setInboxCountryFilter('all')">전체 <span class="cnt" id="inboxCntAll">0</span></button>
+    <!-- 동적 칩 — loadParsedList 호출 시 setInboxCountryChips 가 채움 -->
   </div>
 
   <!-- 리스트 -->
@@ -1777,8 +1816,10 @@ function initFilters(){
   const allCatsSet=new Set(), allProdsSet=new Set(), allCountriesSet=new Set();
   DATA.forEach(d=>{if(d.품목)allCatsSet.add(d.품목);(d.품명||[]).forEach(n=>allProdsSet.add(n));if(d.국가)allCountriesSet.add(d.국가);});
   allCats=[...allCatsSet];allProds=[...allProdsSet];allCountries=[...allCountriesSet];
-  if(!allCountries.includes('국내'))allCountries.unshift('국내');
-  if(!allCountries.includes('중국')&&!allCountries.includes('기타해외')){allCountries.push('중국','기타해외');}
+  // 2026-05-25 신 9개 국가 보강 + 옛 호환 (데이터 0건이어도 옵션 노출). 데이터 있으면 자동으로도 잡힘
+  ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타','국내','기타해외'].forEach(c => {
+    if(!allCountries.includes(c)) allCountries.push(c);
+  });
   // 드롭다운 체크박스 초기화
   initCheckDD('p-cat','p-cat-menu','p-cat-label',allCats);
   initCheckDD('p-prod','p-prod-menu','p-prod-label',allProds);
@@ -6431,7 +6472,16 @@ function cpUpdateHSConfirmBadge(){
 
 // ━━━ 📨 견적 인박스 (Drive 자동 파싱 검수) ━━━
 const AI_CATEGORIES = ['피규어 및 인형','의류','문구','홈리빙','프린트/스티커','키링/잡화','모바일악세사리','광고물','시공'];
-const AI_COUNTRIES = ['국내','중국','기타해외'];
+// 국가 옵션 — 2026-05-25 확장 (옛 '국내·중국·기타해외' 3개 → 9개 세분화)
+// 옛 데이터 ('국내' 등) 는 통합DB 필터에서 데이터 기반으로 자동 노출되므로 회귀 X
+const AI_COUNTRIES = ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타'];
+// 국가별 국기 emoji (UI 칩·표시용)
+const AI_COUNTRY_FLAGS = {
+  '한국':'🇰🇷','중국':'🇨🇳','대만':'🇹🇼','태국':'🇹🇭','베트남':'🇻🇳','일본':'🇯🇵',
+  '홍콩':'🇭🇰','미국':'🇺🇸','인도네시아':'🇮🇩','기타':'🌐',
+  '국내':'🇰🇷','기타해외':'🌐'  // 옛 데이터 호환
+};
+function aiCountryFlag(c){ return AI_COUNTRY_FLAGS[c] || '🌐'; }
 
 async function loadParsedSummary(){
   try{
@@ -6486,7 +6536,101 @@ function switchParsedTab(status){
   loadParsedList(status);
 }
 
+// 인박스 국가 필터 state — 'all' 또는 국가명 (예 '중국'). 탭 전환에도 유지
+let _inboxCountryFilter = 'all';
+// 현재 status 와 raw items 보관 — 칩 클릭 시 재필터·재렌더에 사용
+let _inboxLastStatus = 'pending';
+let _inboxLastItems = [];
+
+function _aiInboxItemCountry(it){
+  // 사용자 override 우선 → AI 추출 country
+  const ov = it && it.manualOverrides && it.manualOverrides.국가;
+  return ov || (it && it.country) || null;
+}
+
+function setInboxCountryFilter(country){
+  _inboxCountryFilter = country || 'all';
+  // 칩 active 상태 갱신
+  document.querySelectorAll('.inbox-country-chip').forEach(c => c.classList.toggle('active', c.dataset.country === _inboxCountryFilter));
+  _renderInboxList();
+}
+
+function _renderInboxCountryChips(items){
+  const wrap = document.getElementById('inboxCountryChips');
+  if(!wrap) return;
+  // 칩 별 갯수 집계
+  const counts = {};
+  let unassigned = 0;
+  items.forEach(it => {
+    const c = _aiInboxItemCountry(it);
+    if(!c){ unassigned++; return; }
+    counts[c] = (counts[c]||0) + 1;
+  });
+  // 전체 칩 갯수
+  const allEl = document.getElementById('inboxCntAll');
+  if(allEl) allEl.textContent = items.length;
+  // 동적 칩 (전체 칩 다음에 append)
+  // 기존 동적 칩 제거 (active class 갱신 시 깜빡임 방지 — innerHTML 직접 교체)
+  const lbl = wrap.querySelector('.lbl');
+  const allBtn = wrap.querySelector('[data-country="all"]');
+  // 정렬: AI_COUNTRIES 우선 (지정 순서) + 그 외 발견된 옛 국가 + '미지정' 마지막
+  const known = AI_COUNTRIES.filter(c => counts[c]);
+  const legacy = Object.keys(counts).filter(c => !AI_COUNTRIES.includes(c)).sort();
+  const ordered = known.concat(legacy);
+  // 기존 동적 칩 모두 제거
+  Array.from(wrap.children).forEach(c => {
+    if(c !== lbl && c !== allBtn) wrap.removeChild(c);
+  });
+  // 발견된 국가 칩 append
+  ordered.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'inbox-country-chip' + (_inboxCountryFilter === c ? ' active' : '');
+    btn.dataset.country = c;
+    btn.onclick = () => setInboxCountryFilter(c);
+    btn.innerHTML = aiCountryFlag(c) + ' ' + escapeHtml(c) + ' <span class="cnt">' + counts[c] + '</span>';
+    wrap.appendChild(btn);
+  });
+  // 미지정 칩 (country 가 없는 카드가 있을 때만)
+  if(unassigned > 0){
+    const btn = document.createElement('button');
+    btn.className = 'inbox-country-chip' + (_inboxCountryFilter === '__unassigned__' ? ' active' : '');
+    btn.dataset.country = '__unassigned__';
+    btn.onclick = () => setInboxCountryFilter('__unassigned__');
+    btn.innerHTML = '❔ 미지정 <span class="cnt">' + unassigned + '</span>';
+    wrap.appendChild(btn);
+  }
+  // 전체 칩 active 갱신
+  if(allBtn) allBtn.classList.toggle('active', _inboxCountryFilter === 'all');
+}
+
+function _renderInboxList(){
+  const body = document.getElementById('aiModalBody');
+  if(!body) return;
+  const status = _inboxLastStatus;
+  const items = _inboxLastItems || [];
+  // 국가 필터 적용
+  let filtered;
+  if(_inboxCountryFilter === 'all') filtered = items;
+  else if(_inboxCountryFilter === '__unassigned__') filtered = items.filter(it => !_aiInboxItemCountry(it));
+  else filtered = items.filter(it => _aiInboxItemCountry(it) === _inboxCountryFilter);
+  if(!filtered.length){
+    let empty;
+    if(!items.length){
+      empty = status==='pending' ? {ico:'🎉', ttl:'미검수 항목이 없습니다', sub:'모든 견적이 검수 완료되었거나, Drive 인박스에 새 파일이 없습니다. <br>오른쪽 상단 ⚡ 지금 확인 버튼으로 즉시 스캔할 수 있어요.'}
+                : status==='approved' ? {ico:'🗂️', ttl:'검수완료된 항목이 아직 없습니다', sub:'미검수 탭에서 ✅ 검수완료를 눌러주세요.'}
+                : {ico:'🧹', ttl:'반려된 항목이 없습니다', sub:'파싱 오류나 중복 견적은 여기에 모입니다.'};
+    } else {
+      const cnLabel = _inboxCountryFilter === '__unassigned__' ? '미지정' : _inboxCountryFilter;
+      empty = {ico:'🌐', ttl:'"' + cnLabel + '" 국가에 해당하는 항목이 없습니다', sub:'다른 국가 칩을 클릭하거나 🌐 전체로 돌아가세요.'};
+    }
+    body.innerHTML = '<div class="inbox-empty"><div class="ico">'+empty.ico+'</div><div class="ttl">'+empty.ttl+'</div><div class="sub">'+empty.sub+'</div></div>';
+  } else {
+    body.innerHTML = filtered.map(it => renderParsedCard(it, status)).join('');
+  }
+}
+
 async function loadParsedList(status){
+  _inboxLastStatus = status;
   const body = document.getElementById('aiModalBody');
   body.innerHTML = '<div class="inbox-empty"><div class="ico">⏳</div><div class="ttl">불러오는 중...</div></div>';
   // pending 탭 새로고침 시 기존 편집 state 비움 — 서버 응답 기준으로 다시 초기화
@@ -6494,14 +6638,9 @@ async function loadParsedList(status){
   try{
     const r = await fetch('/api/parsed-quotes?status=' + encodeURIComponent(status));
     const j = await r.json();
-    if(!j.items || !j.items.length){
-      const empty = status==='pending' ? {ico:'🎉', ttl:'미검수 항목이 없습니다', sub:'모든 견적이 검수 완료되었거나, Drive 인박스에 새 파일이 없습니다. <br>오른쪽 상단 ⚡ 지금 확인 버튼으로 즉시 스캔할 수 있어요.'}
-                  : status==='approved' ? {ico:'🗂️', ttl:'검수완료된 항목이 아직 없습니다', sub:'미검수 탭에서 ✅ 검수완료를 눌러주세요.'}
-                  : {ico:'🧹', ttl:'반려된 항목이 없습니다', sub:'파싱 오류나 중복 견적은 여기에 모입니다.'};
-      body.innerHTML = '<div class="inbox-empty"><div class="ico">'+empty.ico+'</div><div class="ttl">'+empty.ttl+'</div><div class="sub">'+empty.sub+'</div></div>';
-      return;
-    }
-    body.innerHTML = j.items.map(it => renderParsedCard(it, status)).join('');
+    _inboxLastItems = (j.items || []);
+    _renderInboxCountryChips(_inboxLastItems);
+    _renderInboxList();
   }catch(e){
     body.innerHTML = '<div class="inbox-empty"><div class="ico">⚠️</div><div class="ttl">로드 실패</div><div class="sub">'+escapeHtml(e.message)+'</div></div>';
   }
@@ -6953,6 +7092,8 @@ async function inboxStartUpload(filesArr){
       _inboxSetRowStatus(i, 'uploading');
       const base64 = await _inboxReadAsBase64(file);
       _inboxSetRowStatus(i, 'parsing');
+      // 사용자가 명시 선택한 국가 (default '' = AI 자동 추출)
+      const userCountry = (document.getElementById('inboxUploadCountry')||{}).value || '';
       const r = await fetch('/api/inbox/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6961,7 +7102,8 @@ async function inboxStartUpload(filesArr){
           submitter: {
             name: (window._goodsUser && window._goodsUser.name) || null,
             email: (window._goodsUser && window._goodsUser.email) || null
-          }
+          },
+          country: userCountry || null
         })
       });
       const j = await r.json();
