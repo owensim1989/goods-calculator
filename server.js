@@ -1480,29 +1480,89 @@ app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => 
   }
 });
 
+// 백그라운드 import 진행 상태 추적 (in-memory, 단일 작업)
+let _archiveImportJob = null;
+
 app.post('/api/admin/drive-folder-import', express.json(), async (req, res) => {
   try {
-    const { folderId, fileIds, dryRun, userCountry, recursive } = req.body || {};
+    const { folderId, fileIds, dryRun, userCountry, recursive, sync } = req.body || {};
     if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
     if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
-    const r = await inboxWatcher.importDriveFolder({
-      folderId,
-      fileIds: Array.isArray(fileIds) ? fileIds : null,
-      dryRun: !!dryRun,
-      parsedDbPath: PARSED_DB_PATH,
-      anthropicKey: ANTHROPIC_API_KEY,
-      userCountry: userCountry || null,
-      recursive: !!recursive
-    });
-    if (!dryRun) {
-      reloadParsedDb();
-      rebuildCacheWithParsed();
+
+    // dryRun 또는 sync=true 면 동기 처리 (즉시 결과 응답)
+    if (dryRun || sync) {
+      const r = await inboxWatcher.importDriveFolder({
+        folderId,
+        fileIds: Array.isArray(fileIds) ? fileIds : null,
+        dryRun: !!dryRun,
+        parsedDbPath: PARSED_DB_PATH,
+        anthropicKey: ANTHROPIC_API_KEY,
+        userCountry: userCountry || null,
+        recursive: !!recursive,
+        cacheItems: (cache && cache.items) || []
+      });
+      if (!dryRun) { reloadParsedDb(); rebuildCacheWithParsed(); }
+      return res.json({ ok: true, ...r });
     }
-    res.json({ ok: true, ...r });
+
+    // 백그라운드 처리 (default) — 즉시 응답, 실 처리는 setImmediate
+    if (_archiveImportJob && _archiveImportJob.status === 'running') {
+      return res.status(409).json({ error: '이미 다른 import 작업 진행 중', currentJob: _archiveImportJob });
+    }
+    _archiveImportJob = {
+      jobId: 'import-' + Date.now(),
+      folderId,
+      startedAt: new Date().toISOString(),
+      status: 'running',
+      total: Array.isArray(fileIds) ? fileIds.length : null,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      potentialDuplicates: 0,
+      lastResult: null,
+      finishedAt: null,
+      error: null
+    };
+    const job = _archiveImportJob;
+    setImmediate(async () => {
+      try {
+        const r = await inboxWatcher.importDriveFolder({
+          folderId,
+          fileIds: Array.isArray(fileIds) ? fileIds : null,
+          dryRun: false,
+          parsedDbPath: PARSED_DB_PATH,
+          anthropicKey: ANTHROPIC_API_KEY,
+          userCountry: userCountry || null,
+          recursive: !!recursive,
+          cacheItems: (cache && cache.items) || []
+        });
+        job.processed = r.total || 0;
+        job.success = r.success || 0;
+        job.failed = r.failed || 0;
+        job.skipped = r.skipped || 0;
+        job.potentialDuplicates = (r.results||[]).filter(x => x.potentialDuplicateCount > 0).length;
+        job.lastResult = r;
+        job.status = 'completed';
+        job.finishedAt = new Date().toISOString();
+        reloadParsedDb(); rebuildCacheWithParsed();
+      } catch (err) {
+        job.status = 'failed';
+        job.error = err.message;
+        job.finishedAt = new Date().toISOString();
+        console.error('[archive-import] background 실패:', err);
+      }
+    });
+    res.json({ ok: true, queued: true, jobId: job.jobId, message: '백그라운드 처리 시작 — /api/admin/drive-folder-import/status 로 진행 상황 확인' });
   } catch (e) {
     console.error('[archive-import] import 실패:', e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// 백그라운드 job 진행 상황 조회
+app.get('/api/admin/drive-folder-import/status', (req, res) => {
+  res.json({ ok: true, job: _archiveImportJob || { status: 'idle' } });
 });
 
 // ━━━ 실시간 환율 (한국수출입은행 1차 + open.er-api.com 폴백) ━━━

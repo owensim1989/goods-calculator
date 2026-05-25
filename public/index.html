@@ -6759,16 +6759,32 @@ function renderParsedCard(it, status){
   const reviewedInfo = (status!=='pending' && it.reviewedBy) ?
     '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">'+(status==='approved'?'✅ 검수':'❌ 반려')+' by '+escapeHtml(it.reviewedBy)+' · '+new Date(it.reviewedAt).toLocaleString('ko-KR')+(it.rejectReason?' · '+escapeHtml(it.rejectReason):'')+'</div>' : '';
 
+  // 잠재 중복 배지 — archive folder import 시 통합DB 와 vendor 매칭된 경우
+  const potDups = it._potentialDuplicates || [];
+  const archivePath = it.archiveFolderPath || '';
+  const dupWarning = potDups.length ? (
+    '<div style="margin:8px 0;padding:8px 10px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.06);border-radius:6px;font-size:11.5px;">'+
+      '<div style="font-weight:600;color:#d97706;">⚠️ 잠재 중복 '+potDups.length+'건 (통합DB)</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.55;">'+
+        potDups.slice(0,3).map(d => '· '+escapeHtml(d.cacheVendor||'?')+' / '+escapeHtml(d.cache품명||'?')+' / 수량 '+(d.cache수량||'?')+' / '+(d.cache제작비?Number(d.cache제작비).toLocaleString():'?')+' '+(d.cache통화||'')).join('<br>')+
+      '</div>'+
+      '<div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">검수 전 통합DB 와 비교 후 진짜 중복이면 ❌ 반려해주세요.</div>'+
+    '</div>'
+  ) : '';
+  const archiveBadge = archivePath ? '<div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;">📂 archive: '+escapeHtml(archivePath)+'</div>' : '';
+
   return '<div class="ai-card '+(isPending?'':'reviewed')+'" data-id="'+it.id+'">'+
     '<div class="ai-card-head">'+
       '<div>'+
         '<div class="name">📄 '+escapeHtml(file.name||'(파일명 없음)')+'</div>'+
         '<div class="meta">제출: '+escapeHtml(submittedBy)+' · '+escapeHtml(created)+
         (file.webViewLink?' · <a href="'+file.webViewLink+'" target="_blank">Drive에서 열기 ↗</a>':'')+'</div>'+
+        archiveBadge+
         reviewedInfo+
       '</div>'+
       '<div style="font-size:11px;color:var(--text-muted);">통화 '+(it.currency||'?')+' · '+products.length+'제품'+(packagingCnt?'·포장 '+packagingCnt:'')+(oneTimeCnt?'·일회성 '+oneTimeCnt:'')+'</div>'+
     '</div>'+
+    dupWarning+
     (isPending ? '<div class="ai-card-grid">'+
       '<div><label>거래처</label><input id="ov-vendor-'+it.id+'" value="'+escapeAttr(overrides.거래처||it.vendor||'')+'"></div>'+
       '<div><label>국가</label><select id="ov-country-'+it.id+'"><option value="">— 선택 —</option>'+countryOptions+'</select></div>'+
