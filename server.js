@@ -53,6 +53,12 @@ let ExcelJS = null; try { ExcelJS = require('exceljs'); } catch(e) { console.war
 // ━━━ 카탈로그 이미지 디렉터리 (Railway Volume 또는 로컬) ━━━
 const CATALOG_IMAGE_DIR = process.env.CATALOG_IMAGE_DIR || (process.env.NODE_ENV === 'production' ? '/data/catalog-images' : path.join(__dirname, 'data', 'catalog-images'));
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://goods.jeisha.kr';
+
+// ━━━ 영속 데이터 디렉터리 (Railway Persistent Volume /data 또는 로컬) ━━━
+// goods-cache.json·parsed-quotes.json 이 컨테이너 file system 에 있어 deploy 마다 휘발하던 문제 해결 (2026-05-26)
+// CATALOG_IMAGE_DIR 과 동일하게 production 은 이미 마운트된 /data 볼륨 사용. env PARSED_DB_DIR 로 override 가능
+const PERSIST_DATA_DIR = process.env.PARSED_DB_DIR || (process.env.NODE_ENV === 'production' ? '/data' : path.join(__dirname, 'data'));
+try { fs.mkdirSync(PERSIST_DATA_DIR, { recursive: true }); console.log('[persist] data dir:', PERSIST_DATA_DIR); } catch(e) { console.warn('[persist] dir 생성 실패:', e.message); }
 try {
   fs.mkdirSync(CATALOG_IMAGE_DIR, { recursive: true });
   fs.mkdirSync(path.join(CATALOG_IMAGE_DIR, 'thumb'), { recursive: true });
@@ -296,7 +302,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 // ━━━ 캐시 ━━━
-const CACHE_PATH = path.join(__dirname, 'data', 'goods-cache.json');
+const CACHE_PATH = path.join(PERSIST_DATA_DIR, 'goods-cache.json');
 
 function loadCache() {
   try {
@@ -322,7 +328,7 @@ function saveCache(data) {
 let cache = loadCache();
 
 // ━━━ AI 파싱 인박스 자체 DB (2026-04-25 신규) ━━━
-const PARSED_DB_PATH = path.join(__dirname, 'data', 'parsed-quotes.json');
+const PARSED_DB_PATH = path.join(PERSIST_DATA_DIR, 'parsed-quotes.json');
 const inboxWatcher = require('./lib/inbox-watcher');
 let parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
 
@@ -338,6 +344,50 @@ function rebuildCacheWithParsed() {
   const baseItems = (cache.items || []).filter(it => !it._isAiParsed);
   cache.items = [...baseItems, ...aiItems];
   saveCache(cache);
+}
+
+// ━━━ 검수완료 항목 → 노션 통합DB 영구 push (2026-05-26) ━━━
+// parsedDb (영속 볼륨) 에 더해 노션 통합DB 에도 영구 row 로 남겨 휘발·유실 이중 방지.
+// push 후엔 parsedToCacheItems 가 skip → syncFromNotion 이 base item 으로 가져옴 (중복 집계 방지)
+async function pushApprovedItemToUnifiedDb(it) {
+  if (!notion) return null;
+  // manualOverrides 반영된 머지 product 행 — parsedToCacheItems 와 동일 로직 재사용
+  // (clone 에 notionPushed:false 강제 — skip 가드에 걸리지 않게)
+  const rows = inboxWatcher.parsedToCacheItems({ items: [{ ...it, reviewStatus: 'approved', notionPushed: false }] });
+  if (!rows.length) return null;
+  const created = [];
+  for (const r of rows) {
+    const properties = {
+      '프로젝트명': { title: [{ text: { content: String(r.프로젝트명 || '[AI] 견적').substring(0, 1900) } }] },
+    };
+    if (r.품목) properties['품목'] = { select: { name: String(r.품목).substring(0, 100) } };
+    if (Array.isArray(r.품명) && r.품명.length) properties['품명'] = { multi_select: r.품명.filter(Boolean).map(n => ({ name: String(n).substring(0, 100) })) };
+    if (r.거래처) properties['거래처'] = { select: { name: String(r.거래처).substring(0, 100) } };
+    if (r.국가) properties['국가'] = { select: { name: String(r.국가).substring(0, 100) } };
+    if (r.수량 != null) properties['수량'] = { number: Number(r.수량) };
+    properties['디자인종수'] = { number: Number(r.디자인종수) || 1 };
+    if (r.제작비 != null) properties['제작비'] = { number: Math.round(Number(r.제작비)) };  // 개당단가 는 formula → 제작비/수량 으로 자동 계산
+    if (r.상세스펙) properties['상세스펙'] = { rich_text: [{ text: { content: String(r.상세스펙).substring(0, 1900) } }] };
+    if (r.통화) properties['통화'] = { select: { name: String(r.통화).substring(0, 20) } };
+    properties['거래상태'] = { select: { name: r.거래상태 || '견적접수' } };
+    properties['데이터유형'] = { select: { name: r.데이터유형 || 'AI파싱' } };
+    if (r.데이터출처) properties['데이터출처'] = { rich_text: [{ text: { content: String(r.데이터출처).substring(0, 1900) } }] };
+    const page = await notion.pages.create({ parent: { database_id: UNIFIED_DB_ID }, properties });
+    created.push(page);
+  }
+  return created;
+}
+
+// 되돌리기·반려 시 이미 push 된 노션 row archive (재승인 시 stale·중복 방지). archive = 휴지통(복구 가능), hard delete X
+function archivePushedNotionPages(pageIds, ctx) {
+  if (!notion || !Array.isArray(pageIds) || !pageIds.length) return;
+  setImmediate(async () => {
+    for (const pid of pageIds) {
+      try { await notion.pages.update({ page_id: pid, archived: true }); }
+      catch (e) { console.error(`[${ctx}] 노션 archive 실패`, pid, e.message); }
+    }
+    console.log(`[${ctx}] 노션 통합DB ${pageIds.length} rows archive 완료`);
+  });
 }
 
 // ━━━ Notion → 캐시 동기화 ━━━
@@ -1263,8 +1313,36 @@ app.patch('/api/parsed-quotes/:id/approve', (req, res) => {
   const updated = inboxWatcher.approveItem(parsedDb, req.params.id, reviewedBy, overrides);
   if (!updated) return res.status(404).json({ error: 'not_found' });
   inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
-  rebuildCacheWithParsed();
-  res.json({ ok: true, item: updated });
+  rebuildCacheWithParsed();  // 즉시 가시성 (notionPushed 아직 false → aiItem 으로 노출)
+  const willPush = !!(notion && !updated.notionPushed);
+  res.json({ ok: true, item: updated, notionPushQueued: willPush });
+
+  // 노션 통합DB 영구 push (best-effort, 응답 후) — 휘발·유실 이중 방지
+  if (willPush) {
+    setImmediate(async () => {
+      try {
+        const pages = await pushApprovedItemToUnifiedDb(updated);
+        if (pages && pages.length) {
+          reloadParsedDb();
+          const cur = (parsedDb.items || []).find(x => x.id === updated.id);
+          if (cur) {
+            cur.notionPushed = true;
+            cur.notionPageIds = pages.map(p => p.id);
+            cur.notionPushedAt = new Date().toISOString();
+            inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+          }
+          // 방금 만든 노션 row 를 cache 에 즉시 주입 후 rebuild → aiItem 중복 제거 + 즉시 반영
+          pages.forEach(pg => { try { cache.items.push(parsePage(pg)); } catch (_) {} });
+          rebuildCacheWithParsed();
+          saveCache(cache);
+          console.log(`[parsed-approve] 노션 통합DB push 완료 — ${pages.length} rows (src ${updated.id})`);
+        }
+      } catch (e) {
+        // 실패 시 notionPushed 는 false 로 유지 → aiItem fallback 으로 계속 노출 (유실 X). 재승인 시 재시도 가능
+        console.error('[parsed-approve] 노션 push 실패 (aiItem fallback 유지):', e.message);
+      }
+    });
+  }
 });
 
 // 반려 (reject)
@@ -1272,10 +1350,16 @@ app.patch('/api/parsed-quotes/:id/approve', (req, res) => {
 app.patch('/api/parsed-quotes/:id/reject', (req, res) => {
   reloadParsedDb();
   const { reviewedBy, reason } = req.body || {};
+  const target = (parsedDb.items || []).find(x => x.id === req.params.id);
+  const prevPageIds = target && Array.isArray(target.notionPageIds) ? target.notionPageIds : [];
+  const wasPushed = !!(target && target.notionPushed);
   const updated = inboxWatcher.rejectItem(parsedDb, req.params.id, reviewedBy, reason);
   if (!updated) return res.status(404).json({ error: 'not_found' });
+  // 이미 노션에 push 됐던 항목을 반려 → 잘못된 데이터가 corpus 에 남지 않게 노션 row archive + flag 해제
+  if (wasPushed) { updated.notionPushed = false; updated.notionPageIds = null; updated.notionPushedAt = null; }
   inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
   rebuildCacheWithParsed();
+  if (wasPushed) archivePushedNotionPages(prevPageIds, 'parsed-reject');
   res.json({ ok: true, item: updated });
 });
 
@@ -1284,12 +1368,19 @@ app.patch('/api/parsed-quotes/:id/reset', (req, res) => {
   reloadParsedDb();
   const it = (parsedDb.items || []).find(x => x.id === req.params.id);
   if (!it) return res.status(404).json({ error: 'not_found' });
+  const prevPageIds = Array.isArray(it.notionPageIds) ? it.notionPageIds : [];
+  const wasPushed = !!it.notionPushed;
   it.reviewStatus = 'pending';
   it.reviewedBy = null;
   it.reviewedAt = null;
   it.rejectReason = null;
+  // 되돌리면 노션 영구 row 도 archive — 재승인 시 (수정본) 새로 push 되어 stale·중복 방지
+  it.notionPushed = false;
+  it.notionPageIds = null;
+  it.notionPushedAt = null;
   inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
   rebuildCacheWithParsed();
+  if (wasPushed) archivePushedNotionPages(prevPageIds, 'parsed-reset');
   res.json({ ok: true, item: it });
 });
 
@@ -6251,7 +6342,8 @@ try {
   const path = require('path');
   const driveBackup = require('./lib/backup-to-drive');
   const localJson = [
-    path.join(__dirname, 'data', 'goods-cache.json'),
+    CACHE_PATH,                 // 영속 볼륨 (/data) — goods-cache.json
+    PARSED_DB_PATH,             // 영속 볼륨 (/data) — parsed-quotes.json (AI 검수 인박스, Drive 백업으로 3중 보호)
     path.join(__dirname, 'data', 'quote-adoption.json')
   ];
   driveBackup.scheduleDailyBackup({
