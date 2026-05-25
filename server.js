@@ -1405,11 +1405,56 @@ app.post('/api/admin/inbox/run-now', async (req, res) => {
 // 원본 폴더 파일은 그대로 유지 (archive 구조 보존)
 app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => {
   try {
-    const { folderId, recursive } = req.body || {};
+    const { folderId, recursive, diag } = req.body || {};
     if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
     reloadParsedDb();
     const r = await inboxWatcher.previewDriveFolder({ folderId, parsedDb, recursive: !!recursive });
-    res.json({ ok: true, ...r });
+
+    // 진단 정보 (diag=true 시) — SA email + 폴더 metadata + raw listing 확인
+    let diagInfo = null;
+    if (diag) {
+      diagInfo = { sa_email: null, folder_meta: null, folder_meta_error: null, raw_root_listing: null, raw_listing_error: null };
+      // SA email 추출
+      try {
+        const sa = process.env.GOOGLE_SA_KEY_BASE64 || '';
+        if (sa) {
+          const obj = JSON.parse(Buffer.from(sa, 'base64').toString('utf-8'));
+          diagInfo.sa_email = obj.client_email || null;
+        }
+      } catch (e) { diagInfo.sa_email_error = e.message; }
+      // 폴더 metadata
+      try {
+        const { getDriveClient } = require('./lib/backup-to-drive');
+        const drive = await getDriveClient();
+        try {
+          const meta = await drive.files.get({
+            fileId: folderId,
+            fields: 'id, name, mimeType, parents, owners(emailAddress, displayName), driveId, capabilities, createdTime, modifiedTime',
+            supportsAllDrives: true
+          });
+          diagInfo.folder_meta = meta.data;
+        } catch (e) {
+          diagInfo.folder_meta_error = e.message + (e.errors ? ' ' + JSON.stringify(e.errors) : '');
+        }
+        // raw listing — 폴더 안 모든 항목 (필터 전, 폴더 포함)
+        try {
+          const list = await drive.files.list({
+            q: "'" + folderId + "' in parents and trashed = false",
+            fields: 'files(id, name, mimeType, owners(emailAddress))',
+            pageSize: 50,
+            supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives'
+          });
+          diagInfo.raw_root_listing = {
+            count: (list.data.files||[]).length,
+            items: (list.data.files||[]).map(f => ({ name: f.name, mime: f.mimeType, owner: (f.owners&&f.owners[0]&&f.owners[0].emailAddress)||null }))
+          };
+        } catch (e) {
+          diagInfo.raw_listing_error = e.message;
+        }
+      } catch (e) { diagInfo.drive_client_error = e.message; }
+    }
+
+    res.json({ ok: true, ...r, diag: diagInfo });
   } catch (e) {
     console.error('[archive-import] preview 실패:', e);
     res.status(500).json({ error: e.message });
