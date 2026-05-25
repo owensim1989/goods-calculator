@@ -1399,81 +1399,56 @@ app.post('/api/admin/inbox/run-now', async (req, res) => {
   }
 });
 
+// ━━━ parsed-quotes 일괄 삭제 (2026-05-25 신설 — archive import 정리용) ━━━
+// body: { source: 'archive-folder-import' | 'drive-inbox' | 'page-upload', dryRun?: boolean }
+// 매칭되는 record 모두 hard delete + parsedDb.json 백업 (data/parsed-quotes.backup-*.json)
+app.post('/api/admin/parsed-quotes/bulk-delete-by-source', express.json(), async (req, res) => {
+  try {
+    const { source, dryRun } = req.body || {};
+    if (!source) return res.status(400).json({ error: 'source 필요 (예 archive-folder-import)' });
+    reloadParsedDb();
+    const matches = (parsedDb.items || []).filter(it => it.source === source);
+    if (dryRun) {
+      return res.json({
+        ok: true, dryRun: true, source,
+        matchCount: matches.length,
+        totalBefore: (parsedDb.items||[]).length,
+        sample: matches.slice(0, 5).map(m => ({ id: m.id, fileName: m.driveFile && m.driveFile.name, vendor: m.vendor }))
+      });
+    }
+    // 백업 — data/parsed-quotes.backup-YYYYMMDD-HHMMSS.json
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backupPath = PARSED_DB_PATH.replace(/\.json$/, '.backup-' + ts + '.json');
+    fs.writeFileSync(backupPath, JSON.stringify(parsedDb, null, 2));
+    // 삭제
+    parsedDb.items = (parsedDb.items || []).filter(it => it.source !== source);
+    inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+    reloadParsedDb();
+    rebuildCacheWithParsed();
+    res.json({
+      ok: true,
+      source,
+      deletedCount: matches.length,
+      totalAfter: (parsedDb.items||[]).length,
+      backupPath: backupPath.replace(__dirname + '/', '')
+    });
+  } catch (e) {
+    console.error('[bulk-delete] 실패:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ━━━ Drive 아카이브 폴더 일괄 import (2026-05-25 신설) ━━━
 // preview = 폴더 안 파일 list + 기존 parsedDb 와 중복 체크 (driveFile.id + name 2중)
 // import  = 컨펌 후 실제 import. 각 파일 처리 직전 한 번 더 freshDb 비교 (race 대비)
 // 원본 폴더 파일은 그대로 유지 (archive 구조 보존)
 app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => {
   try {
-    const { folderId, recursive, diag } = req.body || {};
+    const { folderId, recursive } = req.body || {};
     if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
     reloadParsedDb();
     const r = await inboxWatcher.previewDriveFolder({ folderId, parsedDb, recursive: !!recursive });
-
-    // 진단 정보 (diag=true 시) — SA email + 폴더 metadata + raw listing 확인
-    let diagInfo = null;
-    if (diag) {
-      diagInfo = { sa_email: null, folder_meta: null, folder_meta_error: null, raw_root_listing: null, raw_listing_error: null };
-      // SA email 추출
-      try {
-        const sa = process.env.GOOGLE_SA_KEY_BASE64 || '';
-        if (sa) {
-          const obj = JSON.parse(Buffer.from(sa, 'base64').toString('utf-8'));
-          diagInfo.sa_email = obj.client_email || null;
-        }
-      } catch (e) { diagInfo.sa_email_error = e.message; }
-      // 폴더 metadata
-      try {
-        const { getDriveClient } = require('./lib/backup-to-drive');
-        const drive = await getDriveClient();
-        try {
-          const meta = await drive.files.get({
-            fileId: folderId,
-            fields: 'id, name, mimeType, parents, owners(emailAddress, displayName), driveId, capabilities, createdTime, modifiedTime',
-            supportsAllDrives: true
-          });
-          diagInfo.folder_meta = meta.data;
-        } catch (e) {
-          diagInfo.folder_meta_error = e.message + (e.errors ? ' ' + JSON.stringify(e.errors) : '');
-        }
-        // raw listing — 폴더 안 모든 항목 (필터 전, 폴더 포함)
-        try {
-          const list = await drive.files.list({
-            q: "'" + folderId + "' in parents and trashed = false",
-            fields: 'files(id, name, mimeType, owners(emailAddress))',
-            pageSize: 50,
-            supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives'
-          });
-          diagInfo.raw_root_listing = {
-            count: (list.data.files||[]).length,
-            items: (list.data.files||[]).map(f => ({ id: f.id, name: f.name, mime: f.mimeType, owner: (f.owners&&f.owners[0]&&f.owners[0].emailAddress)||null }))
-          };
-          // 추가 진단 — 첫 폴더 1개 직접 listing 시도 (Shared Drive 권한 상속 진단)
-          const firstSub = (list.data.files||[]).find(f => f.mimeType === 'application/vnd.google-apps.folder');
-          if (firstSub) {
-            try {
-              const subList = await drive.files.list({
-                q: "'" + firstSub.id + "' in parents and trashed = false",
-                fields: 'files(id, name, mimeType)',
-                pageSize: 20,
-                supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives'
-              });
-              diagInfo.sub_test = {
-                target: firstSub.name,
-                count: (subList.data.files||[]).length,
-                items: (subList.data.files||[]).slice(0,10).map(f => ({ name: f.name, mime: f.mimeType }))
-              };
-            } catch (e) {
-              diagInfo.sub_test_error = e.message;
-            }
-          }
-        } catch (e) {
-          diagInfo.raw_listing_error = e.message;
-        }
-      } catch (e) { diagInfo.drive_client_error = e.message; }
-    }
-
-    res.json({ ok: true, ...r, diag: diagInfo });
+    res.json({ ok: true, ...r });
   } catch (e) {
     console.error('[archive-import] preview 실패:', e);
     res.status(500).json({ error: e.message });
