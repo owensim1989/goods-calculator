@@ -1446,8 +1446,27 @@ app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => 
           });
           diagInfo.raw_root_listing = {
             count: (list.data.files||[]).length,
-            items: (list.data.files||[]).map(f => ({ name: f.name, mime: f.mimeType, owner: (f.owners&&f.owners[0]&&f.owners[0].emailAddress)||null }))
+            items: (list.data.files||[]).map(f => ({ id: f.id, name: f.name, mime: f.mimeType, owner: (f.owners&&f.owners[0]&&f.owners[0].emailAddress)||null }))
           };
+          // 추가 진단 — 첫 폴더 1개 직접 listing 시도 (Shared Drive 권한 상속 진단)
+          const firstSub = (list.data.files||[]).find(f => f.mimeType === 'application/vnd.google-apps.folder');
+          if (firstSub) {
+            try {
+              const subList = await drive.files.list({
+                q: "'" + firstSub.id + "' in parents and trashed = false",
+                fields: 'files(id, name, mimeType)',
+                pageSize: 20,
+                supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives'
+              });
+              diagInfo.sub_test = {
+                target: firstSub.name,
+                count: (subList.data.files||[]).length,
+                items: (subList.data.files||[]).slice(0,10).map(f => ({ name: f.name, mime: f.mimeType }))
+              };
+            } catch (e) {
+              diagInfo.sub_test_error = e.message;
+            }
+          }
         } catch (e) {
           diagInfo.raw_listing_error = e.message;
         }
