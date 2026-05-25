@@ -87,6 +87,18 @@ a.sidebar-item:hover{color:var(--text);}
 .ai-card-products th{background:var(--card-2,#f8f9fa);padding:6px 8px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);}
 .ai-card-products td{padding:6px 8px;border-bottom:1px solid var(--border);}
 .ai-card-products tr:last-child td{border-bottom:none;}
+/* 미검수 인라인 편집 input/select (2026-05-25) */
+.ai-card-products.editable td{padding:3px 4px;}
+.ai-card-products.editable input,.ai-card-products.editable select{width:100%;padding:5px 7px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);box-sizing:border-box;font-family:inherit;}
+.ai-card-products.editable input[type=number]{text-align:right;font-family:'JetBrains Mono','SF Mono',monospace;}
+.ai-card-products.editable input:focus,.ai-card-products.editable select:focus{outline:2px solid rgba(124,58,237,0.4);outline-offset:-1px;border-color:#7c3aed;}
+.ai-card-products.editable input.calc-readonly{background:rgba(127,127,127,0.08);color:var(--text-muted);font-style:italic;}
+.ai-card-products.editable td.row-del{width:32px;text-align:center;padding:3px 0;}
+.ai-card-products.editable .row-del button{background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:4px 6px;border-radius:4px;line-height:1;}
+.ai-card-products.editable .row-del button:hover{background:rgba(220,38,38,0.1);}
+.ai-card-products.editable tfoot td{background:var(--card-2,#f8f9fa);padding:6px 8px;border-top:1px solid var(--border);}
+.ai-card-products.editable .row-add-btn{background:transparent;border:1px dashed rgba(124,58,237,0.4);color:#7c3aed;padding:6px 12px;font-size:11.5px;font-weight:600;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all 0.15s;}
+.ai-card-products.editable .row-add-btn:hover{background:rgba(124,58,237,0.08);border-style:solid;}
 .ai-card-extras{font-size:11px;color:var(--text-muted);margin:6px 0;}
 .ai-card-extras details{margin-top:4px;}
 .ai-card-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
@@ -6477,6 +6489,8 @@ function switchParsedTab(status){
 async function loadParsedList(status){
   const body = document.getElementById('aiModalBody');
   body.innerHTML = '<div class="inbox-empty"><div class="ico">⏳</div><div class="ttl">불러오는 중...</div></div>';
+  // pending 탭 새로고침 시 기존 편집 state 비움 — 서버 응답 기준으로 다시 초기화
+  if(status === 'pending') _aiEditState.clear();
   try{
     const r = await fetch('/api/parsed-quotes?status=' + encodeURIComponent(status));
     const j = await r.json();
@@ -6493,6 +6507,105 @@ async function loadParsedList(status){
   }
 }
 
+// 통화 7종 (business.partners 와 동일)
+const AI_CURRENCIES = ['KRW','USD','EUR','TWD','JPY','CNY','THB'];
+
+// 미검수 항목 편집 상태 — overrides.products 머지된 결과를 메모리에 보관
+// (DOM 에서 매번 read 하지 않고 별도 store. 행 추가/삭제 시 안전)
+const _aiEditState = new Map(); // id => products[] (편집 중인 카드만)
+
+function _aiInitEditState(it){
+  if(_aiEditState.has(it.id)) return _aiEditState.get(it.id);
+  const ovProducts = (it.manualOverrides && Array.isArray(it.manualOverrides.products)) ? it.manualOverrides.products : [];
+  const base = (it.products || []).map((p, idx) => {
+    const ov = ovProducts[idx] || {};
+    return {
+      name: ov.name != null ? ov.name : (p.name || ''),
+      qty: ov.qty != null ? ov.qty : (p.qty != null ? p.qty : ''),
+      unitPrice: ov.unitPrice != null ? ov.unitPrice : (p.unitPrice != null ? p.unitPrice : ''),
+      currency: ov.currency || p.currency || it.currency || '',
+      totalAmount: ov.totalAmount != null ? ov.totalAmount : (p.totalAmount != null ? p.totalAmount : ''),
+      // 스펙: material / size 합쳐서 한 input. notes 는 별도 보존 (편집 X)
+      spec: ov.spec != null ? ov.spec : [p.material, p.size].filter(Boolean).join(' / '),
+      notes: ov.notes != null ? ov.notes : (p.notes || '')
+    };
+  });
+  // overrides 에 base 보다 많은 row 가 있으면 추가 (사용자가 행 추가했던 경우)
+  for(let i = base.length; i < ovProducts.length; i++){
+    const ov = ovProducts[i] || {};
+    base.push({
+      name: ov.name || '',
+      qty: ov.qty != null ? ov.qty : '',
+      unitPrice: ov.unitPrice != null ? ov.unitPrice : '',
+      currency: ov.currency || it.currency || '',
+      totalAmount: ov.totalAmount != null ? ov.totalAmount : '',
+      spec: ov.spec || '',
+      notes: ov.notes || ''
+    });
+  }
+  _aiEditState.set(it.id, base);
+  return base;
+}
+
+function _aiRenderProductTable(it, isPending){
+  if(!isPending){
+    // 검수완료/반려: 기존 read-only 테이블 유지
+    const products = it.products || [];
+    const ovProducts = (it.manualOverrides && Array.isArray(it.manualOverrides.products)) ? it.manualOverrides.products : [];
+    const merged = products.map((p, idx) => {
+      const ov = ovProducts[idx] || {};
+      return {
+        name: ov.name != null ? ov.name : p.name,
+        qty: ov.qty != null ? ov.qty : p.qty,
+        unitPrice: ov.unitPrice != null ? ov.unitPrice : p.unitPrice,
+        currency: ov.currency || p.currency || it.currency,
+        totalAmount: ov.totalAmount != null ? ov.totalAmount : p.totalAmount,
+        material: ov.spec != null ? ov.spec : [p.material, p.size].filter(Boolean).join(' / ')
+      };
+    });
+    // overrides 에 추가된 행
+    for(let i = products.length; i < ovProducts.length; i++){
+      const ov = ovProducts[i] || {};
+      merged.push({ name: ov.name, qty: ov.qty, unitPrice: ov.unitPrice, currency: ov.currency || it.currency, totalAmount: ov.totalAmount, material: ov.spec });
+    }
+    const rows = merged.map(p =>
+      '<tr><td>'+escapeHtml(p.name||'')+'</td>'+
+      '<td>'+(p.qty==null||p.qty===''?'-':p.qty)+'</td>'+
+      '<td>'+(p.unitPrice==null||p.unitPrice===''?'-':p.unitPrice)+'</td>'+
+      '<td>'+(p.currency||'')+'</td>'+
+      '<td>'+(p.totalAmount==null||p.totalAmount===''?'-':p.totalAmount)+'</td>'+
+      '<td>'+escapeHtml(p.material||'-')+'</td></tr>'
+    ).join('');
+    return '<div class="ai-card-products"><table>'+
+      '<thead><tr><th>제품명</th><th>수량</th><th>단가</th><th>통화</th><th>총액</th><th>스펙</th></tr></thead>'+
+      '<tbody>'+(rows||'<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:14px;">제품 라인 없음</td></tr>')+'</tbody>'+
+    '</table></div>';
+  }
+  // 미검수: 인라인 편집
+  const products = _aiInitEditState(it);
+  const currencyOpts = (selected) => AI_CURRENCIES.map(c =>
+    '<option value="'+c+'"'+(c===selected?' selected':'')+'>'+c+'</option>'
+  ).join('');
+  const rows = products.map((p, idx) =>
+    '<tr data-row="'+idx+'">'+
+      '<td><input type="text" data-f="name" data-idx="'+idx+'" value="'+escapeAttr(p.name||'')+'" placeholder="제품명"></td>'+
+      '<td style="width:90px;"><input type="number" step="any" min="0" data-f="qty" data-idx="'+idx+'" value="'+escapeAttr(p.qty)+'" placeholder="수량"></td>'+
+      '<td style="width:110px;"><input type="number" step="any" min="0" data-f="unitPrice" data-idx="'+idx+'" value="'+escapeAttr(p.unitPrice)+'" placeholder="단가"></td>'+
+      '<td style="width:78px;"><select data-f="currency" data-idx="'+idx+'"><option value="">—</option>'+currencyOpts(p.currency)+'</select></td>'+
+      '<td style="width:110px;"><input type="number" step="any" min="0" data-f="totalAmount" data-idx="'+idx+'" value="'+escapeAttr(p.totalAmount)+'" placeholder="자동" title="비워두면 수량×단가 자동"></td>'+
+      '<td><input type="text" data-f="spec" data-idx="'+idx+'" value="'+escapeAttr(p.spec||'')+'" placeholder="재질 / 사이즈"></td>'+
+      '<td class="row-del"><button type="button" onclick="aiDelRow(\''+it.id+'\','+idx+')" title="행 삭제">✕</button></td>'+
+    '</tr>'
+  ).join('');
+  return '<div class="ai-card-products editable" id="ai-prods-'+it.id+'"><table>'+
+    '<thead><tr><th>제품명</th><th>수량</th><th>단가</th><th>통화</th><th>총액</th><th>스펙 (재질 / 사이즈)</th><th></th></tr></thead>'+
+    '<tbody onchange="aiOnRowChange(\''+it.id+'\',event)" oninput="aiOnRowInput(\''+it.id+'\',event)">'+
+      (rows||'<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:14px;">제품 라인 없음 — 아래 + 추가</td></tr>')+
+    '</tbody>'+
+    '<tfoot><tr><td colspan="7"><button type="button" class="row-add-btn" onclick="aiAddRow(\''+it.id+'\')">＋ 행 추가</button></td></tr></tfoot>'+
+  '</table></div>';
+}
+
 function renderParsedCard(it, status){
   const isPending = status === 'pending';
   const overrides = it.manualOverrides || {};
@@ -6502,15 +6615,6 @@ function renderParsedCard(it, status){
   const file = it.driveFile || {};
   const submittedBy = file.ownerEmail || file.ownerName || '?';
   const created = it.createdAt ? new Date(it.createdAt).toLocaleString('ko-KR') : '';
-
-  const productRows = products.map(p =>
-    '<tr><td>'+escapeHtml(p.name||'')+'</td>'+
-    '<td>'+(p.qty||'-')+'</td>'+
-    '<td>'+(p.unitPrice||'-')+'</td>'+
-    '<td>'+(p.currency||it.currency||'')+'</td>'+
-    '<td>'+(p.totalAmount||'-')+'</td>'+
-    '<td>'+escapeHtml([p.material,p.size].filter(Boolean).join(' / ')||'-')+'</td></tr>'
-  ).join('');
 
   const categoryOptions = AI_CATEGORIES.map(c => '<option value="'+c+'"'+((overrides.품목||'')===c?' selected':'')+'>'+c+'</option>').join('');
   const countryOptions = AI_COUNTRIES.map(c => '<option value="'+c+'"'+((overrides.국가||it.country||'')===c?' selected':'')+'>'+c+'</option>').join('');
@@ -6541,13 +6645,79 @@ function renderParsedCard(it, status){
       '<div><label>국가</label><select id="ov-country-'+it.id+'"><option value="">— 선택 —</option>'+countryOptions+'</select></div>'+
       '<div><label>품목</label><select id="ov-category-'+it.id+'"><option value="">— 선택 —</option>'+categoryOptions+'</select></div>'+
     '</div>' : '') +
-    '<div class="ai-card-products"><table>'+
-      '<thead><tr><th>제품명</th><th>수량</th><th>단가</th><th>통화</th><th>총액</th><th>스펙</th></tr></thead>'+
-      '<tbody>'+(productRows||'<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:14px;">제품 라인 없음</td></tr>')+'</tbody>'+
-    '</table></div>'+
+    _aiRenderProductTable(it, isPending) +
     ((packagingCnt||oneTimeCnt) ? '<div class="ai-card-extras"><details><summary>📦 포장 '+packagingCnt+'건 / 💰 일회성 '+oneTimeCnt+'건 (참고만, 합집합 제외)</summary><pre style="font-size:11px;background:var(--card-2,#f5f5f5);padding:8px;border-radius:5px;overflow:auto;">'+escapeHtml(JSON.stringify({packaging:it.packaging,oneTime:it.oneTime},null,2))+'</pre></details></div>' : '') +
     '<div class="ai-card-actions">'+actions+'</div>'+
   '</div>';
+}
+
+// ── 인라인 편집 핸들러 ──────────────────────────────────────
+function aiOnRowInput(id, ev){
+  const t = ev.target;
+  if(!t || !t.dataset) return;
+  const f = t.dataset.f, idxStr = t.dataset.idx;
+  if(f == null || idxStr == null) return;
+  const idx = Number(idxStr);
+  const arr = _aiEditState.get(id);
+  if(!arr || !arr[idx]) return;
+  if(f === 'qty' || f === 'unitPrice' || f === 'totalAmount'){
+    arr[idx][f] = t.value === '' ? '' : Number(t.value);
+    // 수량·단가 변경 시 totalAmount 자동 (사용자가 수동 입력한 적 없을 때만)
+    if((f === 'qty' || f === 'unitPrice') && !arr[idx]._totalManual){
+      const q = Number(arr[idx].qty), u = Number(arr[idx].unitPrice);
+      if(q > 0 && u > 0){
+        arr[idx].totalAmount = Math.round(q * u * 100) / 100;
+        const totalInput = document.querySelector('#ai-prods-'+id+' input[data-f="totalAmount"][data-idx="'+idx+'"]');
+        if(totalInput) totalInput.value = arr[idx].totalAmount;
+      }
+    }
+    if(f === 'totalAmount' && t.value !== '') arr[idx]._totalManual = true;
+    if(f === 'totalAmount' && t.value === '') delete arr[idx]._totalManual;
+  } else {
+    arr[idx][f] = t.value;
+  }
+}
+function aiOnRowChange(id, ev){
+  // change 는 select 용 (currency)
+  aiOnRowInput(id, ev);
+}
+function aiAddRow(id){
+  const arr = _aiEditState.get(id);
+  if(!arr) return;
+  // 마지막 행의 통화 가져와 기본값으로 (대부분 같은 통화)
+  const lastCur = arr.length ? arr[arr.length-1].currency : '';
+  arr.push({ name:'', qty:'', unitPrice:'', currency:lastCur||'', totalAmount:'', spec:'', notes:'' });
+  _aiRerenderTable(id);
+}
+function aiDelRow(id, idx){
+  const arr = _aiEditState.get(id);
+  if(!arr) return;
+  arr.splice(idx, 1);
+  _aiRerenderTable(id);
+}
+function _aiRerenderTable(id){
+  // 카드 전체 다시 그리는 대신 테이블만 교체 (편집 중 위 form 값 보존)
+  const wrap = document.getElementById('ai-prods-'+id);
+  if(!wrap) return;
+  // 임시 it 객체 만들지 않고 직접 tbody 재생성
+  const arr = _aiEditState.get(id);
+  const tbody = wrap.querySelector('tbody');
+  if(!tbody || !arr) return;
+  const currencyOpts = (selected) => AI_CURRENCIES.map(c =>
+    '<option value="'+c+'"'+(c===selected?' selected':'')+'>'+c+'</option>'
+  ).join('');
+  const rows = arr.map((p, idx) =>
+    '<tr data-row="'+idx+'">'+
+      '<td><input type="text" data-f="name" data-idx="'+idx+'" value="'+escapeAttr(p.name||'')+'" placeholder="제품명"></td>'+
+      '<td style="width:90px;"><input type="number" step="any" min="0" data-f="qty" data-idx="'+idx+'" value="'+escapeAttr(p.qty)+'" placeholder="수량"></td>'+
+      '<td style="width:110px;"><input type="number" step="any" min="0" data-f="unitPrice" data-idx="'+idx+'" value="'+escapeAttr(p.unitPrice)+'" placeholder="단가"></td>'+
+      '<td style="width:78px;"><select data-f="currency" data-idx="'+idx+'"><option value="">—</option>'+currencyOpts(p.currency)+'</select></td>'+
+      '<td style="width:110px;"><input type="number" step="any" min="0" data-f="totalAmount" data-idx="'+idx+'" value="'+escapeAttr(p.totalAmount)+'" placeholder="자동" title="비워두면 수량×단가 자동"></td>'+
+      '<td><input type="text" data-f="spec" data-idx="'+idx+'" value="'+escapeAttr(p.spec||'')+'" placeholder="재질 / 사이즈"></td>'+
+      '<td class="row-del"><button type="button" onclick="aiDelRow(\''+id+'\','+idx+')" title="행 삭제">✕</button></td>'+
+    '</tr>'
+  ).join('');
+  tbody.innerHTML = rows || '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:14px;">제품 라인 없음 — 아래 + 추가</td></tr>';
 }
 
 function escapeHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -6558,6 +6728,23 @@ async function approveParsed(id){
   const v1 = document.getElementById('ov-vendor-'+id); if(v1 && v1.value) overrides.거래처 = v1.value.trim();
   const v2 = document.getElementById('ov-country-'+id); if(v2 && v2.value) overrides.국가 = v2.value;
   const v3 = document.getElementById('ov-category-'+id); if(v3 && v3.value) overrides.품목 = v3.value;
+  // 인라인 편집된 products 머지
+  const editedProducts = _aiEditState.get(id);
+  if(Array.isArray(editedProducts) && editedProducts.length){
+    overrides.products = editedProducts.map(p => {
+      const out = {};
+      if(p.name != null && p.name !== '') out.name = String(p.name).trim();
+      if(p.qty !== '' && p.qty != null) out.qty = Number(p.qty);
+      if(p.unitPrice !== '' && p.unitPrice != null) out.unitPrice = Number(p.unitPrice);
+      if(p.currency) out.currency = p.currency;
+      if(p.totalAmount !== '' && p.totalAmount != null) out.totalAmount = Number(p.totalAmount);
+      if(p.spec != null && p.spec !== '') out.spec = String(p.spec).trim();
+      if(p.notes != null && p.notes !== '') out.notes = String(p.notes).trim();
+      return out;
+    });
+    // 빈 행만 있는 경우 (제품명 없음) 필터링
+    overrides.products = overrides.products.filter(p => p.name || p.qty || p.unitPrice || p.totalAmount || p.spec);
+  }
   const reviewedBy = prompt('검수자 이름을 입력하세요 (예: 심영민)', localStorage.getItem('aiReviewer')||'');
   if(!reviewedBy) return;
   localStorage.setItem('aiReviewer', reviewedBy);
@@ -6567,6 +6754,7 @@ async function approveParsed(id){
       body: JSON.stringify({reviewedBy, overrides})
     });
     if(!r.ok) throw new Error((await r.json()).error || r.statusText);
+    _aiEditState.delete(id); // 검수완료 후 메모리 정리
     loadParsedList('pending');
     loadParsedSummary();
   }catch(e){ alert('검수완료 실패: '+e.message); }
