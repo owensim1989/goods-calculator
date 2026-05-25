@@ -1399,6 +1399,47 @@ app.post('/api/admin/inbox/run-now', async (req, res) => {
   }
 });
 
+// ━━━ Drive 아카이브 폴더 일괄 import (2026-05-25 신설) ━━━
+// preview = 폴더 안 파일 list + 기존 parsedDb 와 중복 체크 (driveFile.id + name 2중)
+// import  = 컨펌 후 실제 import. 각 파일 처리 직전 한 번 더 freshDb 비교 (race 대비)
+// 원본 폴더 파일은 그대로 유지 (archive 구조 보존)
+app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => {
+  try {
+    const { folderId } = req.body || {};
+    if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
+    reloadParsedDb();
+    const r = await inboxWatcher.previewDriveFolder({ folderId, parsedDb });
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error('[archive-import] preview 실패:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/drive-folder-import', express.json(), async (req, res) => {
+  try {
+    const { folderId, fileIds, dryRun, userCountry } = req.body || {};
+    if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
+    if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+    const r = await inboxWatcher.importDriveFolder({
+      folderId,
+      fileIds: Array.isArray(fileIds) ? fileIds : null,
+      dryRun: !!dryRun,
+      parsedDbPath: PARSED_DB_PATH,
+      anthropicKey: ANTHROPIC_API_KEY,
+      userCountry: userCountry || null
+    });
+    if (!dryRun) {
+      reloadParsedDb();
+      rebuildCacheWithParsed();
+    }
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error('[archive-import] import 실패:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ━━━ 실시간 환율 (한국수출입은행 1차 + open.er-api.com 폴백) ━━━
 let fxCache = { USD: 1380, RMB: 190, CNY: 190, TWD: 43, HKD: 177, THB: 40, JPY: 9.2, IDR: 0.087, source: null, updatedAt: null };
 const https = require('https');
