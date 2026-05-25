@@ -1405,10 +1405,10 @@ app.post('/api/admin/inbox/run-now', async (req, res) => {
 // 원본 폴더 파일은 그대로 유지 (archive 구조 보존)
 app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => {
   try {
-    const { folderId } = req.body || {};
+    const { folderId, recursive } = req.body || {};
     if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
     reloadParsedDb();
-    const r = await inboxWatcher.previewDriveFolder({ folderId, parsedDb });
+    const r = await inboxWatcher.previewDriveFolder({ folderId, parsedDb, recursive: !!recursive });
     res.json({ ok: true, ...r });
   } catch (e) {
     console.error('[archive-import] preview 실패:', e);
@@ -1418,7 +1418,7 @@ app.post('/api/admin/drive-folder-preview', express.json(), async (req, res) => 
 
 app.post('/api/admin/drive-folder-import', express.json(), async (req, res) => {
   try {
-    const { folderId, fileIds, dryRun, userCountry } = req.body || {};
+    const { folderId, fileIds, dryRun, userCountry, recursive } = req.body || {};
     if (!folderId) return res.status(400).json({ error: 'folderId 필요' });
     if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
     const r = await inboxWatcher.importDriveFolder({
@@ -1427,7 +1427,8 @@ app.post('/api/admin/drive-folder-import', express.json(), async (req, res) => {
       dryRun: !!dryRun,
       parsedDbPath: PARSED_DB_PATH,
       anthropicKey: ANTHROPIC_API_KEY,
-      userCountry: userCountry || null
+      userCountry: userCountry || null,
+      recursive: !!recursive
     });
     if (!dryRun) {
       reloadParsedDb();
