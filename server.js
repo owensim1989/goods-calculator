@@ -616,9 +616,7 @@ app.get('/api/products', (req, res) => {
     const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
     // 통화 필드 우선, 없으면 국가 기반 추정 (fallback)
     const currency = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
-    const fxRate = currency === 'USD' ? fxCache.USD
-                 : currency === 'RMB' ? fxCache.RMB
-                 : 1;
+    const fxRate = fxOf(currency);
     // 원본 단가(원래 통화) — Notion formula: 제작비 ÷ 수량
     const 원본단가 = it.개당단가;
     // ① 제작단가: KRW 환산
@@ -701,7 +699,7 @@ app.get('/api/compare', (req, res) => {
     const adjustedPrices = records.map(r => {
       if (r.개당단가 == null) return null;
       const cur = r.통화 || (r.국가 === '중국' || r.국가 === '기타해외' ? 'USD' : 'KRW');
-      const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+      const fx = fxOf(cur);
       const krw = Math.round(r.개당단가 * fx);
       const 부대합계 = (r.해외운송비 || 0) + (r.관세 || 0) + (r.부가세 || 0) + (r.기타부대비용 || 0);
       if (r.부대비용상태 === '확정' && 부대합계 > 0 && r.수량 > 0) {
@@ -752,7 +750,7 @@ app.get('/api/budget', (req, res) => {
       if (it.개당단가 != null) {
         const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
         const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
-        const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+        const fx = fxOf(cur);
         const krwPrice = Math.round(it.개당단가 * fx);
         const adjustedPrice = 국가 && 국가 !== it.국가 ? null : Math.round(krwPrice * (1 + surcharge.rate));
         if (adjustedPrice != null && adjustedPrice > 0) {
@@ -856,12 +854,21 @@ app.post('/api/items', async (req, res) => {
 // MOQ·신뢰도 헬퍼 (2026-04-25 추가)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// 통화 → KRW 환율 (fxCache 기반). 모든 통화 처리 + CNY/RMB 동의어 + KRW=1. 미지원 통화는 1 (안전 fallback)
+// (2026-05-27) 이전엔 USD·RMB 만 분기하고 TWD·THB·JPY·HKD·IDR·CNY 는 fx=1 로 환산 누락 → 외화 단가가 원화로 취급되던 버그 수정
+function fxOf(cur) {
+  if (!cur || cur === 'KRW') return 1;
+  if (cur === 'RMB' || cur === 'CNY') return fxCache.CNY || fxCache.RMB || 1;  // 코드 관례 RMB ↔ ISO/AI 출력 CNY 통합
+  const r = fxCache[cur];
+  return (typeof r === 'number' && r > 0) ? r : 1;
+}
+
 // 단일 행의 KRW 환산 단가 (부대비용 포함)
 function getKrwPrice(it) {
   if (it.개당단가 == null) return null;
   const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
   const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
-  const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+  const fx = fxOf(cur);
   const krw = Math.round(it.개당단가 * fx);
   const 부대합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
   const is확정 = it.부대비용상태 === '확정' && 부대합계 > 0;
@@ -1029,7 +1036,7 @@ app.get('/api/quote-assist', (req, res) => {
   const enriched = items.map(it => {
     const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
     const cur = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
-    const fx = cur === 'USD' ? fxCache.USD : cur === 'RMB' ? fxCache.RMB : 1;
+    const fx = fxOf(cur);
     const krw = it.개당단가 != null ? Math.round(it.개당단가 * fx) : null;
 
     // 확정 부대비용 처리
