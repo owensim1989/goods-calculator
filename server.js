@@ -275,24 +275,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// 미스터두낫띵·사업화 페이지 전용 API 서버측 가드
-// (사업화지원 + 두낫띵 + 관리자만. 클라이언트 _hasRestrictedAccess 와 동일 룰)
-// 우회 차단 — 직접 fetch로 호출해도 403
-app.use((req, res, next) => {
-  const p = req.path || '';
-  // 화이트리스트: cross-origin 공개 API + 사이드바 뱃지 → 통과
-  if (p.startsWith('/api/parsed-quotes/summary')) return next();
-  if (p.startsWith('/api/catalog-image/')) return next();
-  // 가드 대상: 미스터두낫띵·사업화 전용 데이터 API
-  if (p.startsWith('/api/consumer-pricing') ||
-      p.startsWith('/api/parsed-quotes') ||
-      p.startsWith('/api/customs-observations') ||
-      p === '/api/catalog-image-debug') {
-    return auth.requireRestrictedAccess(req, res, next);
-  }
-  next();
-});
-
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
@@ -349,14 +331,31 @@ function rebuildCacheWithParsed() {
 // ━━━ 검수완료 항목 → 노션 통합DB 영구 push (2026-05-26) ━━━
 // parsedDb (영속 볼륨) 에 더해 노션 통합DB 에도 영구 row 로 남겨 휘발·유실 이중 방지.
 // push 후엔 parsedToCacheItems 가 skip → syncFromNotion 이 base item 으로 가져옴 (중복 집계 방지)
+const _approvePushing = new Set();  // 진행 중인 approve push id (같은 프로세스 더블클릭 동시 push 방지)
 async function pushApprovedItemToUnifiedDb(it) {
   if (!notion) return null;
   // manualOverrides 반영된 머지 product 행 — parsedToCacheItems 와 동일 로직 재사용
   // (clone 에 notionPushed:false 강제 — skip 가드에 걸리지 않게)
   const rows = inboxWatcher.parsedToCacheItems({ items: [{ ...it, reviewStatus: 'approved', notionPushed: false }] });
   if (!rows.length) return null;
+  // 멱등 가드: 데이터출처 에 박는 고유 source 마커. 같은 마커 row 가 이미 노션에 있으면 재생성 X
+  // (더블클릭·재시도·notionPushed 저장 전 crash 후 재승인 모두 안전 — publish-to-catalog 패턴)
+  const srcMarker = `[src:${it.id}]`;
+  try {
+    const existing = await notion.databases.query({
+      database_id: UNIFIED_DB_ID,
+      filter: { property: '데이터출처', rich_text: { contains: srcMarker } }
+    });
+    if (existing.results && existing.results.length) {
+      console.log(`[parsed-approve] 멱등 — 이미 push 됨 (${existing.results.length} rows, ${srcMarker}) → 재생성 skip`);
+      return existing.results;
+    }
+  } catch (e) {
+    console.warn('[parsed-approve] 중복 체크 query 실패 (계속 진행):', e.message);
+  }
   const created = [];
   for (const r of rows) {
+    const dataSrc = (String(r.데이터출처 || '') + ` ${srcMarker}`).trim().substring(0, 1900);
     const properties = {
       '프로젝트명': { title: [{ text: { content: String(r.프로젝트명 || '[AI] 견적').substring(0, 1900) } }] },
     };
@@ -371,7 +370,7 @@ async function pushApprovedItemToUnifiedDb(it) {
     if (r.통화) properties['통화'] = { select: { name: String(r.통화).substring(0, 20) } };
     properties['거래상태'] = { select: { name: r.거래상태 || '견적접수' } };
     properties['데이터유형'] = { select: { name: r.데이터유형 || 'AI파싱' } };
-    if (r.데이터출처) properties['데이터출처'] = { rich_text: [{ text: { content: String(r.데이터출처).substring(0, 1900) } }] };
+    properties['데이터출처'] = { rich_text: [{ text: { content: dataSrc } }] };
     const page = await notion.pages.create({ parent: { database_id: UNIFIED_DB_ID }, properties });
     created.push(page);
   }
@@ -1265,10 +1264,11 @@ app.post('/api/manufacturer-quotes', express.json({ limit: '1mb' }), async (req,
       properties,
     });
 
-    // 메모리 cache.items 즉시 push (다음 sync 까지 즉시 반영)
+    // 메모리 cache.items 즉시 push + 디스크 저장 (/api/items 와 일관 — 재시작 시 휘발 방지)
     const newItem = parsePage(created);
     cache.items = cache.items || [];
     cache.items.push(newItem);
+    saveCache(cache);
 
     res.json({ ok: true, id: created.id, item: newItem });
   } catch (e) {
@@ -1321,11 +1321,13 @@ app.patch('/api/parsed-quotes/:id/approve', (req, res) => {
   if (!updated) return res.status(404).json({ error: 'not_found' });
   inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
   rebuildCacheWithParsed();  // 즉시 가시성 (notionPushed 아직 false → aiItem 으로 노출)
-  const willPush = !!(notion && !updated.notionPushed);
+  // 더블클릭 가드: 이미 push 진행 중이면 큐잉 안 함 (notionPushed 저장 전 재요청 → 중복 row 방지)
+  const willPush = !!(notion && !updated.notionPushed && !_approvePushing.has(updated.id));
   res.json({ ok: true, item: updated, notionPushQueued: willPush });
 
   // 노션 통합DB 영구 push (best-effort, 응답 후) — 휘발·유실 이중 방지
   if (willPush) {
+    _approvePushing.add(updated.id);
     setImmediate(async () => {
       try {
         const pages = await pushApprovedItemToUnifiedDb(updated);
@@ -1347,6 +1349,8 @@ app.patch('/api/parsed-quotes/:id/approve', (req, res) => {
       } catch (e) {
         // 실패 시 notionPushed 는 false 로 유지 → aiItem fallback 으로 계속 노출 (유실 X). 재승인 시 재시도 가능
         console.error('[parsed-approve] 노션 push 실패 (aiItem fallback 유지):', e.message);
+      } finally {
+        _approvePushing.delete(updated.id);
       }
     });
   }
