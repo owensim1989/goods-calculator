@@ -745,7 +745,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">기타</div>
-      <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">견적 인박스 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
+      <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">받은 견적서 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
       <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">통관 데이터</button>
     </div>
     <div class="sidebar-group sidebar-group-soon">
@@ -6492,7 +6492,7 @@ async function loadParsedSummary(){
     if(btn){
       btn.classList.toggle('idle', n === 0);
       btn.title = n === 0
-        ? '견적 인박스 — 자동 파싱 결과 검수 (대기 0건 — 클릭해서 즉시 실행 가능)'
+        ? '받은 견적서 — 자동 파싱 결과 검수 (대기 0건 — 클릭해서 즉시 실행 가능)'
         : '검수 대기 ' + n + '건';
     }
     if(sideBadge){
