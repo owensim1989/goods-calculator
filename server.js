@@ -402,6 +402,8 @@ function extractProp(page, name, type) {
       return p.number;
     case 'select':
       return p.select?.name || null;
+    case 'checkbox':
+      return p.checkbox === true;
     case 'multi_select':
       return (p.multi_select || []).map(s => s.name);
     case 'date':
@@ -467,6 +469,9 @@ function parsePage(page) {
     견적ID: extractProp(page, '견적ID', 'rich_text'),     // ESTIMATE_DB row id link
     견적일자: extractProp(page, '견적일자', 'date'),
     유효기간: extractProp(page, '유효기간', 'date'),
+    // ━━ 업체 추천 (2026-05-29) — "이 견적건(이 제품·이 업체)이 좋았다" 견적 단위 ★ ━━
+    추천: extractProp(page, '추천', 'checkbox') || false,
+    추천메모: extractProp(page, '추천메모', 'rich_text') || '',
   };
 }
 
@@ -493,6 +498,9 @@ async function ensureUnifiedDbQuoteFields() {
     if (!existing['견적ID'])   toAdd['견적ID']   = { rich_text: {} };
     if (!existing['견적일자']) toAdd['견적일자'] = { date: {} };
     if (!existing['유효기간']) toAdd['유효기간'] = { date: {} };
+    // 업체 추천 (2026-05-29) — 견적 단위 ★ + 한줄 코멘트
+    if (!existing['추천'])     toAdd['추천']     = { checkbox: {} };
+    if (!existing['추천메모']) toAdd['추천메모'] = { rich_text: {} };
 
     if (Object.keys(toAdd).length === 0) return; // 이미 다 있음
     await notion.databases.update({
@@ -1162,6 +1170,8 @@ app.get('/api/manufacturer-quotes', (req, res) => {
     견적일자: i.견적일자 || i.발주일 || null,
     유효기간: i.유효기간 || null,
     비고: i.비고 || null,
+    추천: i.추천 || false,
+    추천메모: i.추천메모 || null,
   })).filter(h => h.개당단가 != null);
 
   // 통계 (발주확정 + NULL 만 — 미채택·견적단계 제외, 평균 왜곡 방지)
@@ -1273,6 +1283,35 @@ app.post('/api/manufacturer-quotes', express.json({ limit: '1mb' }), async (req,
     res.json({ ok: true, id: created.id, item: newItem });
   } catch (e) {
     console.error('[manufacturer-quotes POST]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 업체 추천 토글 (2026-05-29) — 견적 단위 ★ + 한줄 코멘트
+// 제품 단가 화면에서 "이 견적건(이 제품·이 업체)이 좋았다" 표시
+// 세션 인증 자동 적용 (PUBLIC_PATHS 미등록 → 로그인 필요)
+// 회귀 방지 #5: 통째 properties 교체 금지 — 추천·추천메모 두 property 만 명시
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.patch('/api/products/:id/recommend', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion 미설정' });
+  const { id } = req.params;
+  const rec = !!(req.body && req.body.추천);
+  const memo = rec ? String((req.body && req.body.추천메모) || '').substring(0, 1900) : '';
+  try {
+    await notion.pages.update({
+      page_id: id,
+      properties: {
+        '추천': { checkbox: rec },
+        '추천메모': { rich_text: memo ? [{ text: { content: memo } }] : [] },
+      },
+    });
+    // 메모리 cache.items 즉시 갱신 (다음 sync 까지 즉시 반영) + 디스크 저장
+    const it = (cache.items || []).find(x => x.id === id);
+    if (it) { it.추천 = rec; it.추천메모 = memo; saveCache(cache); }
+    res.json({ ok: true, id, 추천: rec, 추천메모: memo });
+  } catch (e) {
+    console.error('[recommend PATCH]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

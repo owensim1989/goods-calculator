@@ -309,6 +309,14 @@ tbody tr:hover{background:var(--primary-light);}
 .cat-dd-item input[type="checkbox"]{accent-color:var(--primary);width:16px;height:16px;cursor:pointer;}
 /* 선택된 행 하이라이트 */
 #product-tbody tr.row-selected{background:color-mix(in srgb,var(--primary) 10%,var(--bg));}
+/* 업체 추천 ★ (2026-05-29) */
+.rec-star{background:none;border:none;cursor:pointer;font-size:15px;color:var(--text-muted);padding:0 4px 0 0;line-height:1;vertical-align:baseline;transition:color .15s,transform .1s;}
+.rec-star:hover{transform:scale(1.25);color:#f5b301;}
+.rec-star.on{color:#f5b301;}
+.rec-memo{font-size:10px;color:#f5b301;margin-top:2px;line-height:1.35;}
+.rec-vendor-badge{display:inline-block;font-size:10px;font-weight:600;color:#92400e;background:color-mix(in srgb,#f5b301 30%,transparent);border-radius:4px;padding:1px 6px;margin-left:4px;cursor:help;vertical-align:middle;}
+#product-tbody tr.rec-row{background:color-mix(in srgb,#f5b301 8%,var(--bg));}
+#product-tbody tr.rec-row:hover{background:color-mix(in srgb,#f5b301 14%,var(--bg));}
 /* 체크박스 다크모드 */
 input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);border:1px solid var(--border);border-radius:3px;appearance:auto;}
 [data-theme="dark"] input[type="checkbox"]{color-scheme:dark;}
@@ -2196,9 +2204,34 @@ function searchProducts(){
     }else{
       제작비HTML=`<span style="color:var(--text-muted)">-</span>`;
     }
-    return`<tr style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${i.거래처||'-'}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    const recStar=`<button class="rec-star${i.추천?' on':''}" onclick="event.stopPropagation();toggleRecommend('${i.id}',event)" title="${i.추천?'추천 업체 — 클릭하면 해제':'이 업체를 추천으로 표시'}">${i.추천?'★':'☆'}</button>`;
+    const recMemo=(i.추천&&i.추천메모)?`<div class="rec-memo">💬 ${escapeHtml(i.추천메모)}</div>`:'';
+    return`<tr class="${i.추천?'rec-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
+}
+// 업체 추천 토글 (2026-05-29) — 견적 단위 ★ + 한줄 코멘트
+async function toggleRecommend(id, ev){
+  if(ev) ev.stopPropagation();
+  const item=DATA.find(x=>x.id===id);
+  const turnOn=!(item&&item.추천);
+  let memo='';
+  if(turnOn){
+    memo=prompt('이 업체를 추천하는 이유 (선택 — 예: 납기 빠름·품질 좋음·소통 원활):',(item&&item.추천메모)||'');
+    if(memo===null) return; // 취소
+    memo=memo.trim();
+  }
+  try{
+    const res=await fetch('/api/products/'+encodeURIComponent(id)+'/recommend',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({추천:turnOn,추천메모:memo})
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const j=await res.json();
+    if(item){item.추천=j.추천;item.추천메모=j.추천메모;}
+    searchProducts();
+    showToast(turnOn?'⭐ 추천 업체로 표시했어요':'추천을 해제했어요');
+  }catch(e){ showToast('저장 실패: '+e.message); }
 }
 function switchChartMode(mode,btn){
   chartMode=mode;
@@ -3129,7 +3162,7 @@ function searchVendorCompare(){
     // 통화 환산 후 KRW 단가
     const krwPrices=recs.map(r=>{if(r.개당단가==null)return null;const cur=r.통화||'KRW';const fx=cur==='USD'?FX.USD:cur==='RMB'?FX.RMB:1;return Math.round(r.개당단가*fx);}).filter(Boolean);
     const cur0=recs[0]?.통화||'KRW';
-    return{거래처:g.거래처,국가:g.국가,통화:cur0,건수:recs.length,최저단가:krwPrices.length?Math.min(...krwPrices):null,평균단가:krwPrices.length?Math.round(krwPrices.reduce((a,b)=>a+b,0)/krwPrices.length):null,평균단가_부대비용포함:krwPrices.length?Math.round(krwPrices.reduce((a,b)=>a+b,0)/krwPrices.length*(1+rate)):null,납품실적:recs.filter(r=>r.거래상태==='납품완료').length,최근발주:recs.map(r=>r.발주일).filter(Boolean).sort().reverse()[0]||null,평균제작일수:avgD};
+    return{거래처:g.거래처,국가:g.국가,통화:cur0,건수:recs.length,최저단가:krwPrices.length?Math.min(...krwPrices):null,평균단가:krwPrices.length?Math.round(krwPrices.reduce((a,b)=>a+b,0)/krwPrices.length):null,평균단가_부대비용포함:krwPrices.length?Math.round(krwPrices.reduce((a,b)=>a+b,0)/krwPrices.length*(1+rate)):null,납품실적:recs.filter(r=>r.거래상태==='납품완료').length,최근발주:recs.map(r=>r.발주일).filter(Boolean).sort().reverse()[0]||null,평균제작일수:avgD,추천건수:recs.filter(r=>r.추천).length,추천메모들:recs.filter(r=>r.추천&&r.추천메모).map(r=>r.추천메모)};
   }).sort((a,b)=>(a.평균단가_부대비용포함||Infinity)-(b.평균단가_부대비용포함||Infinity));
   if(!comp.length){['vendor-table-wrap','vendor-chart-wrap','vendor-recommend'].forEach(id=>document.getElementById(id).style.display='none');document.getElementById('vendor-empty').style.display='block';return;}
   document.getElementById('vendor-empty').style.display='none';document.getElementById('vendor-title').textContent=`거래처 비교 — ${prod}`;
@@ -3139,12 +3172,13 @@ function searchVendorCompare(){
     const isOS=v.국가==='중국'||v.국가==='기타해외';
     if(dl!=null&&v.평균제작일수){const nd=v.평균제작일수+(isOS?10:0);if(dl>=nd+7){score+=25;reasons.push('납기 여유');}else if(dl>=nd){score+=10;reasons.push('납기 빠듯');}else{score-=isOS?40:20;reasons.push(isOS?'해외생산 불가 (납기초과+운송)':'납기초과 위험');}}else{score+=12;}
     if(v.최근발주){const rc=gDays(v.최근발주);if(rc!=null&&rc>-180){score+=10;reasons.push('최근 거래');}}
+    if(v.추천건수>0){score+=30;reasons.push(`👍 직접 추천 ${v.추천건수}건`);}
     return{...v,score,reasons};
   }).sort((a,b)=>b.score-a.score);
   const best=scored[0];document.getElementById('vendor-rec-title').textContent=`추천: ${best.거래처} (${best.국가})`;
   const rp=[];if(best.reasons.length)rp.push(best.reasons.join(', '));if(best.평균단가_부대비용포함)rp.push(`평균단가 ${fmtP(best.평균단가_부대비용포함)}`);if(best.평균제작일수)rp.push(`평균 제작기간 ${best.평균제작일수}일`);
   document.getElementById('vendor-rec-reason').textContent=rp.join(' · ');document.getElementById('vendor-recommend').style.display='block';
-  document.getElementById('vendor-tbody').innerHTML=scored.map((v,i)=>{const d=dl!=null&&v.평균제작일수?evalDL(dl,{국가:v.국가,제작일수:v.평균제작일수}):{c:'',t:''};const fxMin=fmtFx(v.최저단가,v.통화);const fxAvg=fmtFx(v.평균단가,v.통화);const fxAvgS=fmtFx(v.평균단가_부대비용포함,v.통화);return`<tr><td>${i===0?'<span style="color:var(--primary);font-weight:700;font-size:16px;">★</span>':''}</td><td><strong>${v.거래처}</strong></td><td>${cB(v.국가)}</td><td>${v.건수}</td><td class="price">${fmtP(v.최저단가)}${fxMin}</td><td class="price">${fmtP(v.평균단가)}${fxAvg}</td><td class="price">${fmtP(v.평균단가_부대비용포함)}${fxAvgS}</td><td>${v.납품실적}건</td><td>${v.평균제작일수?v.평균제작일수+'일':'-'}</td><td>${v.최근발주||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span>`:'-'}</td></tr>`;}).join('');
+  document.getElementById('vendor-tbody').innerHTML=scored.map((v,i)=>{const d=dl!=null&&v.평균제작일수?evalDL(dl,{국가:v.국가,제작일수:v.평균제작일수}):{c:'',t:''};const fxMin=fmtFx(v.최저단가,v.통화);const fxAvg=fmtFx(v.평균단가,v.통화);const fxAvgS=fmtFx(v.평균단가_부대비용포함,v.통화);return`<tr><td>${i===0?'<span style="color:var(--primary);font-weight:700;font-size:16px;">★</span>':''}</td><td><strong>${v.거래처}</strong>${v.추천건수>0?` <span class="rec-vendor-badge"${v.추천메모들.length?` title="${escapeHtml(v.추천메모들.join(' / '))}"`:''}>👍 추천</span>`:''}</td><td>${cB(v.국가)}</td><td>${v.건수}</td><td class="price">${fmtP(v.최저단가)}${fxMin}</td><td class="price">${fmtP(v.평균단가)}${fxAvg}</td><td class="price">${fmtP(v.평균단가_부대비용포함)}${fxAvgS}</td><td>${v.납품실적}건</td><td>${v.평균제작일수?v.평균제작일수+'일':'-'}</td><td>${v.최근발주||'-'}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span>`:'-'}</td></tr>`;}).join('');
   document.getElementById('vendor-table-wrap').style.display='block';
   renderVendorBar(scored);document.getElementById('vendor-chart-wrap').style.display='block';
 }
