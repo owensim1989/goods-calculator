@@ -205,6 +205,16 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-upload-row .badge.parsed{background:rgba(16,185,129,0.15);color:#10b981;}
 .inbox-upload-row .badge.failed{background:rgba(220,38,38,0.15);color:#dc2626;}
 .inbox-upload-row .err{font-size:10.5px;color:#dc2626;margin-top:3px;line-height:1.4;}
+.inbox-reset-btn{background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:3px 10px;font-size:11px;cursor:pointer;margin-left:10px;flex-shrink:0;}
+.inbox-reset-btn:hover{color:var(--text);border-color:var(--text-muted);}
+/* 메일·텍스트 직접 분석 (2026-05-29) */
+.inbox-text-box{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--card);padding:14px;}
+.inbox-text-head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px;}
+.inbox-text-head .ttl{font-weight:600;font-size:13px;color:var(--text);}
+.inbox-text-head .sub{font-size:11px;color:var(--text-muted);}
+.inbox-text-box textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:90px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);padding:10px 12px;font-size:13px;line-height:1.5;font-family:inherit;}
+.inbox-text-box textarea:focus{outline:none;border-color:var(--primary);}
+.inbox-text-actions{display:flex;justify-content:flex-end;margin-top:10px;}
 
 @media (max-width:680px){
   .inbox-hero{padding:24px 20px;}
@@ -1440,22 +1450,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
 <!-- 탭6: 📨 견적 인박스 (Drive 자동 파싱 검수) — 화려 UI v2 -->
 <div class="tab-page inbox-page" id="page-ai-review">
-  <!-- 히어로 헤더 -->
-  <div class="inbox-hero">
-    <div class="inbox-hero-inner">
-      <div class="inbox-hero-title">
-        <div class="inbox-hero-emoji">📤</div>
-        <div>
-          <h1>받은 견적서 업로드</h1>
-        </div>
-      </div>
-      <div class="inbox-hero-actions">
-        <button class="inbox-hero-btn" id="runInboxBtn" onclick="runInboxNow(false)">⚡ 지금 확인</button>
-        <button class="inbox-hero-btn ghost" onclick="runInboxNow(true)">🧪 DRY-RUN</button>
-      </div>
-    </div>
-  </div>
-
   <!-- 직접 업로드 드롭존 (2026-05-20 신규) -->
   <div class="inbox-dropzone" id="inboxDropzone" onclick="inboxOpenFilePicker()"
        ondragover="inboxOnDragOver(event)" ondragleave="inboxOnDragLeave(event)" ondrop="inboxOnDrop(event)">
@@ -1492,11 +1486,24 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
   </div>
 
+  <!-- 메일·텍스트 직접 분석 (2026-05-29 신설) -->
+  <div class="inbox-text-box">
+    <div class="inbox-text-head">
+      <span class="ttl">📧 메일·텍스트 직접 분석</span>
+      <span class="sub">견적 내용을 붙여넣으면 AI가 분석해 미검수 항목으로 추가합니다 · 위 발급 국가 선택을 함께 사용</span>
+    </div>
+    <textarea id="inboxTextInput" rows="5" placeholder="견적 메일 본문이나 메시지를 그대로 붙여넣으세요 (단가·수량·거래처·통화 등이 담긴 텍스트)"></textarea>
+    <div class="inbox-text-actions">
+      <button type="button" class="inbox-dropzone-btn" id="inboxTextBtn" onclick="inboxAnalyzeText()">🤖 AI로 분석</button>
+    </div>
+  </div>
+
   <!-- 업로드 진행 표시 -->
   <div class="inbox-upload-progress hidden" id="inboxUploadProgress">
     <div class="inbox-upload-progress-head">
       <div class="left" id="inboxUploadHeadLeft">업로드 진행 중…</div>
       <div class="right" id="inboxUploadHeadRight">0 / 0</div>
+      <button type="button" class="inbox-reset-btn" onclick="inboxResetUpload()">✕ 초기화</button>
     </div>
     <div id="inboxUploadRows"></div>
   </div>
@@ -7171,6 +7178,51 @@ async function inboxStartUpload(filesArr){
   if(parsedCount > 0){
     // 미검수 탭으로 전환 + 리스트 새로고침
     if(typeof switchParsedTab === 'function') switchParsedTab('pending');
+  }
+}
+
+// 업로드 결과 패널 초기화 (다음 건 업로드 전 정리) — 2026-05-29
+function inboxResetUpload(){
+  const panel = document.getElementById('inboxUploadProgress');
+  const rows = document.getElementById('inboxUploadRows');
+  if(rows) rows.innerHTML = '';
+  if(panel) panel.classList.add('hidden');
+  const dz = document.getElementById('inboxDropzone');
+  if(dz) dz.classList.remove('busy');
+}
+
+// 메일·텍스트 직접 AI 분석 (2026-05-29 신설)
+async function inboxAnalyzeText(){
+  const ta = document.getElementById('inboxTextInput');
+  const text = ((ta && ta.value) || '').trim();
+  if(!text){ alert('분석할 메일/텍스트 내용을 붙여넣어 주세요'); return; }
+  if(text.length > 50000){ alert('텍스트가 너무 깁니다 (5만자 이내).'); return; }
+  const btn = document.getElementById('inboxTextBtn');
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '🤖 AI 분석 중…'; }
+  try{
+    const userCountry = (document.getElementById('inboxUploadCountry')||{}).value || '';
+    const r = await fetch('/api/inbox/upload-text', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        text,
+        country: userCountry || null,
+        submitter: {
+          name: (window._goodsUser && window._goodsUser.name) || null,
+          email: (window._goodsUser && window._goodsUser.email) || null
+        }
+      })
+    });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+    showToast('✅ AI 분석 완료 — 미검수 항목에 추가됐어요'+(j.vendor?` (${j.vendor})`:''));
+    if(ta) ta.value = '';
+    loadParsedSummary();
+    if(typeof switchParsedTab === 'function') switchParsedTab('pending');
+  }catch(e){
+    alert('분석 실패: '+(e.message||e));
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = orig; }
   }
 }
 

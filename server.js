@@ -1521,6 +1521,46 @@ app.post('/api/inbox/upload', express.json({ limit: '50mb' }), async (req, res) 
   }
 });
 
+// 메일 본문·텍스트 직접 AI 분석 (2026-05-29 신설) — Drive 업로드 없이 파싱
+// 파일 업로드와 동일 파이프 (PARSE_PROMPT → buildRecord → parsedDb 미검수)
+app.post('/api/inbox/upload-text', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+    const body = req.body || {};
+    const text = String(body.text || '').trim();
+    if (!text) return res.status(400).json({ error: '분석할 텍스트 내용 필요' });
+    if (text.length > 50000) return res.status(400).json({ error: '텍스트가 너무 깁니다 (5만자 초과)' });
+
+    // 제출자 — 세션 사용자 우선 (위변조 방지)
+    const submitterName = (req.user && (req.user.name || req.user.displayName)) || (body.submitter && body.submitter.name) || null;
+    const submitterEmail = (req.user && req.user.email) || (body.submitter && body.submitter.email) || null;
+    const ALLOWED_UPLOAD_COUNTRIES = ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타'];
+    const userCountry = body.country && ALLOWED_UPLOAD_COUNTRIES.includes(body.country) ? body.country : null;
+
+    reloadParsedDb();
+    const out = await inboxWatcher.processOneText({
+      parsedDbPath: PARSED_DB_PATH,
+      anthropicKey: ANTHROPIC_API_KEY,
+      text, submitterName, submitterEmail, userCountry
+    });
+    parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
+
+    res.json({
+      ok: true,
+      status: 'parsed',
+      recordId: out.record.id,
+      vendor: out.record.vendor,
+      country: out.record.country,
+      productCount: (out.record.products || []).length,
+      packagingCount: (out.record.packaging || []).length,
+      oneTimeCount: (out.record.oneTime || []).length
+    });
+  } catch (e) {
+    console.error('[inbox/upload-text] 실패:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 인박스 watcher 즉시 1회 실행 (관리자 트리거)
 // query: ?dry=1 → DRY-RUN
 app.post('/api/admin/inbox/run-now', async (req, res) => {
