@@ -1434,6 +1434,27 @@ app.patch('/api/parsed-quotes/:id/reset', (req, res) => {
   res.json({ ok: true, item: it });
 });
 
+// 단건 영구 삭제 (2026-05-29 신설) — 반려 항목 정리용. 노션 push 됐던 row 는 archive 후 제거
+app.delete('/api/parsed-quotes/:id', (req, res) => {
+  try {
+    reloadParsedDb();
+    const items = parsedDb.items || [];
+    const idx = items.findIndex(x => x.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: 'not_found' });
+    const it = items[idx];
+    const prevPageIds = Array.isArray(it.notionPageIds) ? it.notionPageIds : [];
+    const wasPushed = !!it.notionPushed;
+    items.splice(idx, 1);
+    inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+    rebuildCacheWithParsed();
+    if (wasPushed) archivePushedNotionPages(prevPageIds, 'parsed-delete');
+    res.json({ ok: true, id: req.params.id });
+  } catch (e) {
+    console.error('[parsed-quotes DELETE]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ━━━ 페이지 직접 업로드 (2026-05-20 신설) ━━━
 // 사업화·디자인팀이 견적서 받았을 때 Drive 거치지 않고 바로 페이지에서 업로드.
 // 동작: ① Drive 인박스 폴더에 자동 저장 (감사 추적) ② 즉시 Claude 파싱
@@ -1574,12 +1595,15 @@ app.post('/api/inbox/manual', express.json({ limit: '1mb' }), async (req, res) =
     const userCountry = body.country && ALLOWED_UPLOAD_COUNTRIES.includes(body.country) ? body.country : null;
 
     reloadParsedDb();
+    const RECEIVING_ENTITIES = ['한국 본사','대만 지사'];
+    const receivingEntity = body.receivingEntity && RECEIVING_ENTITIES.includes(body.receivingEntity) ? body.receivingEntity : null;
     const out = await inboxWatcher.processOneManual({
       parsedDbPath: PARSED_DB_PATH,
       vendor: body.vendor || null,
       currency: body.currency || 'KRW',
       products,
       memo: body.memo || null,
+      receivingEntity,
       submitterName, submitterEmail, userCountry
     });
     parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);

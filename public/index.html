@@ -175,7 +175,7 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-dropzone-btn:disabled{opacity:0.4;cursor:not-allowed;}
 .inbox-dropzone input[type=file]{display:none;}
 /* 업로드 시 국가 선택 — A 미니멀 */
-.inbox-dropzone-country{display:flex;align-items:center;gap:10px;padding:10px 0 0;margin-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;}
+.inbox-dropzone-country{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .inbox-dropzone-country label{font-size:11.5px;font-weight:500;color:var(--text-muted);}
 .inbox-dropzone-country select{padding:6px 10px;font-size:11.5px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);min-width:200px;cursor:pointer;}
 .inbox-dropzone-country select:focus{outline:none;border-color:var(--text-muted);}
@@ -215,7 +215,7 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-text-box textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:90px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);padding:10px 12px;font-size:13px;line-height:1.5;font-family:inherit;}
 .inbox-text-box textarea:focus{outline:none;border-color:var(--primary);}
 .inbox-text-actions{display:flex;justify-content:flex-end;margin-top:10px;}
-.inbox-manual-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;}
+.inbox-manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
 .inbox-manual-grid .imf{display:flex;flex-direction:column;gap:4px;}
 .inbox-text-box .imf label{font-size:11px;color:var(--text-muted);}
 .inbox-text-box .imf input,.inbox-text-box .imf select{border:1px solid var(--border);border-radius:7px;background:var(--input-bg);color:var(--text);padding:7px 10px;font-size:13px;font-family:inherit;width:100%;box-sizing:border-box;}
@@ -227,6 +227,8 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-manual-row input:focus{outline:none;border-color:var(--primary);}
 .inbox-manual-row .man-del{width:34px;flex-shrink:0;background:none;border:1px solid var(--border);border-radius:7px;color:var(--text-muted);cursor:pointer;padding:6px 0;}
 .inbox-manual-row .man-del:hover{color:#dc2626;border-color:#dc2626;}
+.inbox-text-box .row-add-btn{background:transparent;border:1px dashed rgba(127,127,127,0.4);color:var(--text-muted);padding:7px 14px;font-size:12px;font-weight:600;border-radius:7px;cursor:pointer;margin-top:2px;transition:all .15s;}
+.inbox-text-box .row-add-btn:hover{border-color:var(--primary);color:var(--primary);}
 @media(max-width:680px){.inbox-manual-grid{grid-template-columns:1fr;}}
 
 @media (max-width:680px){
@@ -1474,29 +1476,27 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
           <div class="sub" style="font-size:12px;opacity:.6">💸 AI 자동 파싱 ≈ 건당 약 20~30원</div>
         </div>
       </div>
+      <div class="inbox-dropzone-country" onclick="event.stopPropagation();" title="선택 시 AI 추출 결과보다 우선 적용됩니다">
+        <label for="inboxUploadCountry">🌐 발급 국가:</label>
+        <select id="inboxUploadCountry">
+          <option value="">자동 (AI 추출 우선)</option>
+          <option value="한국">🇰🇷 한국</option>
+          <option value="중국">🇨🇳 중국</option>
+          <option value="대만">🇹🇼 대만</option>
+          <option value="태국">🇹🇭 태국</option>
+          <option value="베트남">🇻🇳 베트남</option>
+          <option value="일본">🇯🇵 일본</option>
+          <option value="홍콩">🇭🇰 홍콩</option>
+          <option value="미국">🇺🇸 미국</option>
+          <option value="인도네시아">🇮🇩 인도네시아</option>
+          <option value="기타">🌐 기타</option>
+        </select>
+      </div>
       <div class="inbox-dropzone-actions">
         <button type="button" class="inbox-dropzone-btn" onclick="event.stopPropagation();inboxOpenFilePicker()">📁 파일 선택</button>
       </div>
     </div>
     <input type="file" id="inboxFileInput" multiple accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/*" onchange="inboxOnFilesPicked(event)">
-    <!-- 국가 선택 — 2026-05-25 -->
-    <div class="inbox-dropzone-country" onclick="event.stopPropagation();">
-      <label for="inboxUploadCountry">🌐 발급 국가:</label>
-      <select id="inboxUploadCountry">
-        <option value="">자동 (AI 추출 우선)</option>
-        <option value="한국">🇰🇷 한국</option>
-        <option value="중국">🇨🇳 중국</option>
-        <option value="대만">🇹🇼 대만</option>
-        <option value="태국">🇹🇭 태국</option>
-        <option value="베트남">🇻🇳 베트남</option>
-        <option value="일본">🇯🇵 일본</option>
-        <option value="홍콩">🇭🇰 홍콩</option>
-        <option value="미국">🇺🇸 미국</option>
-        <option value="인도네시아">🇮🇩 인도네시아</option>
-        <option value="기타">🌐 기타</option>
-      </select>
-      <span class="hint">선택 시 AI 추출 결과보다 우선 적용됩니다</span>
-    </div>
   </div>
 
   <!-- 메일·텍스트 직접 분석 (2026-05-29 신설) -->
@@ -1519,7 +1519,14 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div class="inbox-manual-grid">
       <div class="imf"><label>거래처</label><input type="text" id="manVendor" placeholder="예: 광동 키치 / 한국 ○○사"></div>
-      <div class="imf"><label>국가</label>
+      <div class="imf"><label>수취 법인</label>
+        <select id="manReceiving">
+          <option value="">— 선택 —</option>
+          <option value="한국 본사">🇰🇷 한국 본사</option>
+          <option value="대만 지사">🇹🇼 대만 지사</option>
+        </select>
+      </div>
+      <div class="imf"><label>발급 국가 (제조사)</label>
         <select id="manCountry">
           <option value="">— 선택 —</option>
           <option value="한국">🇰🇷 한국</option>
@@ -6911,6 +6918,7 @@ function renderParsedCard(it, status){
               '<button class="approve" onclick="approveParsed(\''+it.id+'\')">✅ 검수완료</button>';
   } else {
     actions = '<button class="reset" onclick="resetParsed(\''+it.id+'\')">↩ 미검수로</button>';
+    if(status==='rejected') actions += '<button class="reject" onclick="deleteParsed(\''+it.id+'\')" title="영구 삭제">🗑️ 삭제</button>';
   }
 
   const reviewedInfo = (status!=='pending' && it.reviewedBy) ?
@@ -6939,7 +6947,7 @@ function renderParsedCard(it, status){
         archiveBadge+
         reviewedInfo+
       '</div>'+
-      '<div style="font-size:11px;color:var(--text-muted);">통화 '+(it.currency||'?')+' · '+products.length+'제품'+(packagingCnt?'·포장 '+packagingCnt:'')+(oneTimeCnt?'·일회성 '+oneTimeCnt:'')+'</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);">통화 '+(it.currency||'?')+' · '+products.length+'제품'+(packagingCnt?'·포장 '+packagingCnt:'')+(oneTimeCnt?'·일회성 '+oneTimeCnt:'')+(it.receivingEntity?' · 🏢 수취: '+escapeHtml(it.receivingEntity):'')+'</div>'+
     '</div>'+
     dupWarning+
     (isPending ? '<div class="ai-card-grid">'+
@@ -7088,6 +7096,20 @@ async function resetParsed(id){
     loadParsedList(active ? active.dataset.status : 'pending');
     loadParsedSummary();
   }catch(e){ alert('리셋 실패: '+e.message); }
+}
+
+// 반려 항목 영구 삭제 (2026-05-29 신설)
+async function deleteParsed(id){
+  if(!confirm('이 반려 항목을 영구 삭제할까요? 되돌릴 수 없습니다.')) return;
+  try{
+    const r = await fetch('/api/parsed-quotes/'+encodeURIComponent(id), { method:'DELETE' });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+    showToast('🗑️ 삭제됐어요');
+    const active = document.querySelector('.ai-modal-tabs button.active, .inbox-pills button.active');
+    loadParsedList(active ? active.dataset.status : 'rejected');
+    loadParsedSummary();
+  }catch(e){ alert('삭제 실패: '+(e.message||e)); }
 }
 
 async function runInboxNow(dryRun){
@@ -7372,6 +7394,7 @@ async function inboxManualSubmit(){
   if(!products.length){ alert('제품을 최소 1개 입력해주세요'); return; }
   const vendor = (document.getElementById('manVendor').value||'').trim();
   const country = (document.getElementById('manCountry').value||'');
+  const receivingEntity = (document.getElementById('manReceiving').value||'');
   const currency = (document.getElementById('manCurrency').value||'KRW');
   const memo = (document.getElementById('manMemo').value||'').trim();
   const btn = document.getElementById('manBtn');
@@ -7381,7 +7404,7 @@ async function inboxManualSubmit(){
     const r = await fetch('/api/inbox/manual', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        vendor: vendor||null, country: country||null, currency, products, memo: memo||null,
+        vendor: vendor||null, country: country||null, receivingEntity: receivingEntity||null, currency, products, memo: memo||null,
         submitter:{ name:(window._goodsUser&&window._goodsUser.name)||null, email:(window._goodsUser&&window._goodsUser.email)||null }
       })
     });
@@ -7390,6 +7413,7 @@ async function inboxManualSubmit(){
     showToast('✅ 미검수로 등록됐어요'+(j.vendor?` (${j.vendor})`:''));
     document.getElementById('manVendor').value='';
     document.getElementById('manCountry').value='';
+    document.getElementById('manReceiving').value='';
     document.getElementById('manMemo').value='';
     document.getElementById('manRows').innerHTML='';
     inboxManualAddRow();
