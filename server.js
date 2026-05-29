@@ -1561,6 +1561,43 @@ app.post('/api/inbox/upload-text', express.json({ limit: '2mb' }), async (req, r
   }
 });
 
+// 받은 견적 직접(수동) 입력 (2026-05-29 신설) — AI 파싱 없이 사용자 입력 → 미검수 등록
+app.post('/api/inbox/manual', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const products = Array.isArray(body.products) ? body.products : [];
+    if (!products.length) return res.status(400).json({ error: '제품을 최소 1개 입력해주세요' });
+
+    const submitterName = (req.user && (req.user.name || req.user.displayName)) || (body.submitter && body.submitter.name) || null;
+    const submitterEmail = (req.user && req.user.email) || (body.submitter && body.submitter.email) || null;
+    const ALLOWED_UPLOAD_COUNTRIES = ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타'];
+    const userCountry = body.country && ALLOWED_UPLOAD_COUNTRIES.includes(body.country) ? body.country : null;
+
+    reloadParsedDb();
+    const out = await inboxWatcher.processOneManual({
+      parsedDbPath: PARSED_DB_PATH,
+      vendor: body.vendor || null,
+      currency: body.currency || 'KRW',
+      products,
+      memo: body.memo || null,
+      submitterName, submitterEmail, userCountry
+    });
+    parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
+
+    res.json({
+      ok: true,
+      status: 'parsed',
+      recordId: out.record.id,
+      vendor: out.record.vendor,
+      country: out.record.country,
+      productCount: (out.record.products || []).length
+    });
+  } catch (e) {
+    console.error('[inbox/manual] 실패:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 인박스 watcher 즉시 1회 실행 (관리자 트리거)
 // query: ?dry=1 → DRY-RUN
 app.post('/api/admin/inbox/run-now', async (req, res) => {

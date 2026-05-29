@@ -215,6 +215,19 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-text-box textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:90px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);padding:10px 12px;font-size:13px;line-height:1.5;font-family:inherit;}
 .inbox-text-box textarea:focus{outline:none;border-color:var(--primary);}
 .inbox-text-actions{display:flex;justify-content:flex-end;margin-top:10px;}
+.inbox-manual-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;}
+.inbox-manual-grid .imf{display:flex;flex-direction:column;gap:4px;}
+.inbox-text-box .imf label{font-size:11px;color:var(--text-muted);}
+.inbox-text-box .imf input,.inbox-text-box .imf select{border:1px solid var(--border);border-radius:7px;background:var(--input-bg);color:var(--text);padding:7px 10px;font-size:13px;font-family:inherit;width:100%;box-sizing:border-box;}
+.inbox-text-box .imf input:focus,.inbox-text-box .imf select:focus{outline:none;border-color:var(--primary);}
+.inbox-manual-rows-head{display:flex;gap:8px;font-size:11px;color:var(--text-muted);padding:0 2px 4px;}
+.inbox-manual-row{display:flex;gap:8px;margin-bottom:6px;align-items:center;}
+.inbox-manual-row input{border:1px solid var(--border);border-radius:7px;background:var(--input-bg);color:var(--text);padding:7px 10px;font-size:13px;font-family:inherit;box-sizing:border-box;}
+.inbox-manual-row input.man-name{flex:1;}
+.inbox-manual-row input:focus{outline:none;border-color:var(--primary);}
+.inbox-manual-row .man-del{width:34px;flex-shrink:0;background:none;border:1px solid var(--border);border-radius:7px;color:var(--text-muted);cursor:pointer;padding:6px 0;}
+.inbox-manual-row .man-del:hover{color:#dc2626;border-color:#dc2626;}
+@media(max-width:680px){.inbox-manual-grid{grid-template-columns:1fr;}}
 
 @media (max-width:680px){
   .inbox-hero{padding:24px 20px;}
@@ -1498,6 +1511,50 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
   </div>
 
+  <!-- 받은 견적 직접 입력 (2026-05-29 신설) -->
+  <div class="inbox-text-box">
+    <div class="inbox-text-head">
+      <span class="ttl">✍️ 받은 견적 직접 입력</span>
+      <span class="sub">파일·메일 없이 견적 내용을 직접 입력해 미검수 항목으로 등록합니다</span>
+    </div>
+    <div class="inbox-manual-grid">
+      <div class="imf"><label>거래처</label><input type="text" id="manVendor" placeholder="예: 광동 키치 / 한국 ○○사"></div>
+      <div class="imf"><label>국가</label>
+        <select id="manCountry">
+          <option value="">— 선택 —</option>
+          <option value="한국">🇰🇷 한국</option>
+          <option value="중국">🇨🇳 중국</option>
+          <option value="대만">🇹🇼 대만</option>
+          <option value="태국">🇹🇭 태국</option>
+          <option value="베트남">🇻🇳 베트남</option>
+          <option value="일본">🇯🇵 일본</option>
+          <option value="홍콩">🇭🇰 홍콩</option>
+          <option value="미국">🇺🇸 미국</option>
+          <option value="인도네시아">🇮🇩 인도네시아</option>
+          <option value="기타">🌐 기타</option>
+        </select>
+      </div>
+      <div class="imf"><label>통화</label>
+        <select id="manCurrency">
+          <option value="KRW">KRW</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="TWD">TWD</option>
+          <option value="JPY">JPY</option>
+          <option value="CNY">CNY</option>
+          <option value="THB">THB</option>
+        </select>
+      </div>
+    </div>
+    <div class="inbox-manual-rows-head"><span style="flex:1">제품명</span><span style="width:90px">수량</span><span style="width:110px">개당단가</span><span style="width:34px"></span></div>
+    <div id="manRows"></div>
+    <button type="button" class="row-add-btn" onclick="inboxManualAddRow()">＋ 제품 행 추가</button>
+    <div class="imf" style="margin-top:10px;"><label>메모 (선택 — 포장비·금형비·납기 등)</label><input type="text" id="manMemo" placeholder="예: 금형비 USD 150 / 박스당 USD 0.05 / 납기 30일"></div>
+    <div class="inbox-text-actions">
+      <button type="button" class="inbox-dropzone-btn" id="manBtn" onclick="inboxManualSubmit()">＋ 미검수로 등록</button>
+    </div>
+  </div>
+
   <!-- 업로드 진행 표시 -->
   <div class="inbox-upload-progress hidden" id="inboxUploadProgress">
     <div class="inbox-upload-progress-head">
@@ -1545,6 +1602,13 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <span class="lbl">🌐 국가:</span>
     <button class="inbox-country-chip active" data-country="all" onclick="setInboxCountryFilter('all')">전체 <span class="cnt" id="inboxCntAll">0</span></button>
     <!-- 동적 칩 — loadParsedList 호출 시 setInboxCountryChips 가 채움 -->
+  </div>
+
+  <!-- 시기(등록 월) 칩 필터 — 2026-05-29 신설 -->
+  <div class="inbox-country-chips" id="inboxDateChips">
+    <span class="lbl">📅 시기:</span>
+    <button class="inbox-country-chip active" data-month="all" onclick="setInboxDateFilter('all')">전체 <span class="cnt" id="inboxDateAll">0</span></button>
+    <!-- 동적 칩 — _renderInboxDateChips 가 등록 월별로 채움 -->
   </div>
 
   <!-- 리스트 -->
@@ -1871,9 +1935,15 @@ function renderCheckItems(key,labelId,items){
 }
 function filterCheckDD(key,menuId,labelId,query){
   const all=checkDDItems[key]||[];
-  const filtered=query?all.filter(v=>matchQ(v,query)):all;
+  const q=(query||'').trim();
+  const filtered=q?all.filter(v=>matchQ(v,query)):all;
+  // 검색 = 필터 (2026-05-29 버그 fix): 검색어가 있으면 매칭 항목만 자동 선택,
+  // 비우면 전체로 복귀. 이전엔 표시만 거르고 selection 은 전체라 조회 시 전부 나오는 버그
+  if(q) checkDDState[key]=new Set(filtered);
+  else checkDDState[key]=new Set(all);
   const list=document.getElementById(key+'-list');
   list.innerHTML=renderCheckItems(key,labelId,filtered);
+  updateCheckLabel(key,labelId,all);
 }
 function toggleCheckDD(key){
   const menu=document.getElementById(key+'-menu');
@@ -6633,6 +6703,50 @@ function _renderInboxCountryChips(items){
   if(allBtn) allBtn.classList.toggle('active', _inboxCountryFilter === 'all');
 }
 
+// 등록 시기(월) 필터 — 2026-05-29 신설
+let _inboxDateFilter = 'all'; // 'all' 또는 'YYYY-MM'
+
+function _inboxItemMonth(it){
+  if(!it || !it.createdAt) return null;
+  const d = new Date(it.createdAt);
+  if(isNaN(d.getTime())) return null;
+  const k = new Date(d.getTime() + 9*3600*1000); // KST
+  return k.getUTCFullYear() + '-' + String(k.getUTCMonth()+1).padStart(2,'0');
+}
+
+function setInboxDateFilter(month){
+  _inboxDateFilter = month || 'all';
+  document.querySelectorAll('#inboxDateChips .inbox-country-chip').forEach(c => c.classList.toggle('active', c.dataset.month === _inboxDateFilter));
+  _renderInboxList();
+}
+
+function _renderInboxDateChips(items){
+  const wrap = document.getElementById('inboxDateChips');
+  if(!wrap) return;
+  const counts = {};
+  items.forEach(it => { const m = _inboxItemMonth(it); if(m) counts[m] = (counts[m]||0)+1; });
+  const allEl = document.getElementById('inboxDateAll');
+  if(allEl) allEl.textContent = items.length;
+  const lbl = wrap.querySelector('.lbl');
+  const allBtn = wrap.querySelector('[data-month="all"]');
+  // 최신 월 먼저
+  const months = Object.keys(counts).sort().reverse();
+  // 기존 동적 칩 제거
+  Array.from(wrap.children).forEach(c => { if(c !== lbl && c !== allBtn) wrap.removeChild(c); });
+  // 선택된 월이 더이상 없으면 전체로 리셋
+  if(_inboxDateFilter !== 'all' && !counts[_inboxDateFilter]) _inboxDateFilter = 'all';
+  months.forEach(m => {
+    const [y, mo] = m.split('-');
+    const btn = document.createElement('button');
+    btn.className = 'inbox-country-chip' + (_inboxDateFilter === m ? ' active' : '');
+    btn.dataset.month = m;
+    btn.onclick = () => setInboxDateFilter(m);
+    btn.innerHTML = y + '.' + mo + ' <span class="cnt">' + counts[m] + '</span>';
+    wrap.appendChild(btn);
+  });
+  if(allBtn) allBtn.classList.toggle('active', _inboxDateFilter === 'all');
+}
+
 function _renderInboxList(){
   const body = document.getElementById('aiModalBody');
   if(!body) return;
@@ -6643,6 +6757,8 @@ function _renderInboxList(){
   if(_inboxCountryFilter === 'all') filtered = items;
   else if(_inboxCountryFilter === '__unassigned__') filtered = items.filter(it => !_aiInboxItemCountry(it));
   else filtered = items.filter(it => _aiInboxItemCountry(it) === _inboxCountryFilter);
+  // 등록 시기(월) 필터 적용
+  if(_inboxDateFilter !== 'all') filtered = filtered.filter(it => _inboxItemMonth(it) === _inboxDateFilter);
   if(!filtered.length){
     let empty;
     if(!items.length){
@@ -6670,6 +6786,7 @@ async function loadParsedList(status){
     const j = await r.json();
     _inboxLastItems = (j.items || []);
     _renderInboxCountryChips(_inboxLastItems);
+    _renderInboxDateChips(_inboxLastItems);
     _renderInboxList();
   }catch(e){
     body.innerHTML = '<div class="inbox-empty"><div class="ico">⚠️</div><div class="ttl">로드 실패</div><div class="sub">'+escapeHtml(e.message)+'</div></div>';
@@ -7225,6 +7342,64 @@ async function inboxAnalyzeText(){
     if(btn){ btn.disabled = false; btn.textContent = orig; }
   }
 }
+
+// ━━ 받은 견적 직접(수동) 입력 (2026-05-29 신설) ━━
+function inboxManualRowHtml(){
+  return '<div class="inbox-manual-row">'+
+    '<input type="text" class="man-name" placeholder="제품명 (예: 아크릴 키링)">'+
+    '<input type="text" class="man-qty" inputmode="numeric" placeholder="수량" style="width:90px">'+
+    '<input type="text" class="man-price" inputmode="decimal" placeholder="개당단가" style="width:110px">'+
+    '<button type="button" class="man-del" onclick="inboxManualDelRow(this)" title="행 삭제">✕</button>'+
+  '</div>';
+}
+function inboxManualAddRow(){
+  const rows = document.getElementById('manRows');
+  if(rows) rows.insertAdjacentHTML('beforeend', inboxManualRowHtml());
+}
+function inboxManualDelRow(btn){
+  const row = btn.closest('.inbox-manual-row');
+  const rows = document.getElementById('manRows');
+  if(row && rows && rows.children.length > 1) row.remove();
+  else if(row) row.querySelectorAll('input').forEach(i=>i.value=''); // 마지막 행은 값만 비움
+}
+async function inboxManualSubmit(){
+  const rows = Array.from(document.querySelectorAll('#manRows .inbox-manual-row'));
+  const products = rows.map(r=>({
+    name: (r.querySelector('.man-name').value||'').trim(),
+    qty: (r.querySelector('.man-qty').value||'').replace(/,/g,''),
+    unitPrice: (r.querySelector('.man-price').value||'').replace(/,/g,'')
+  })).filter(p=>p.name||p.unitPrice||p.qty);
+  if(!products.length){ alert('제품을 최소 1개 입력해주세요'); return; }
+  const vendor = (document.getElementById('manVendor').value||'').trim();
+  const country = (document.getElementById('manCountry').value||'');
+  const currency = (document.getElementById('manCurrency').value||'KRW');
+  const memo = (document.getElementById('manMemo').value||'').trim();
+  const btn = document.getElementById('manBtn');
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled=true; btn.textContent='등록 중…'; }
+  try{
+    const r = await fetch('/api/inbox/manual', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        vendor: vendor||null, country: country||null, currency, products, memo: memo||null,
+        submitter:{ name:(window._goodsUser&&window._goodsUser.name)||null, email:(window._goodsUser&&window._goodsUser.email)||null }
+      })
+    });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    showToast('✅ 미검수로 등록됐어요'+(j.vendor?` (${j.vendor})`:''));
+    document.getElementById('manVendor').value='';
+    document.getElementById('manCountry').value='';
+    document.getElementById('manMemo').value='';
+    document.getElementById('manRows').innerHTML='';
+    inboxManualAddRow();
+    loadParsedSummary();
+    if(typeof switchParsedTab==='function') switchParsedTab('pending');
+  }catch(e){ alert('등록 실패: '+(e.message||e)); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=orig; } }
+}
+// 초기 제품 행 1개
+inboxManualAddRow();
 
 // 초기 로드 + 60초마다 폴링
 loadParsedSummary();
