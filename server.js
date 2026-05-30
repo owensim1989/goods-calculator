@@ -34,8 +34,7 @@ const EMPLOYEES_LIST = [
   { name: '이나현', team: '디자인팀', role: '팀원' },
   { name: '박소정', team: '디자인팀', role: '팀원' },
   { name: '조희재', team: '두낫띵', role: '중간관리자' },
-  { name: '우현지', team: '영상·마케팅', role: '팀원' },
-  { name: '오샛별', team: '영상·마케팅', role: '팀원' },
+  { name: '우현지', team: '영상', role: '중간관리자' },
   { name: '김정은', team: '사업화지원', role: '중간관리자' },
   { name: '이진아', team: '사업화지원', role: '팀원' }
 ];
