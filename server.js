@@ -6124,6 +6124,7 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
     const salePrice = (typeof pr.Retail_KR_KRW?.number === 'number') ? pr.Retail_KR_KRW.number : null;
     const categoryName = pr.Category?.select?.name || null;
     const imageUrl = pr.Image_URL?.url || null;
+    const packaging = getText('1박스당_갯수') || null;   // 2026-05-31: 포장단위(박스당 갯수) inventory 전달
 
     const url = INVENTORY_API_URL.replace(/\/$/, '') + '/api/hooks/catalog-sync-from-goods';
     const ctrl = new AbortController();
@@ -6138,6 +6139,7 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
           sale_price: salePrice,
           image_url: imageUrl,
           category_name: categoryName,
+          packaging,
           catalog_id: catalogPageId
         }),
         signal: ctrl.signal
@@ -6156,6 +6158,29 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
     return { ok: false, error: err.message };
   }
 }
+
+// 2026-05-31: 카탈로그 전체 → inventory 재sync (box_unit 등 신규 필드 backfill 용). requireAuthMiddleware 자동 보호.
+app.post('/api/admin/resync-all-catalog-to-inventory', async (req, res) => {
+  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 미설정' });
+  if (!notion) return res.status(503).json({ error: 'notion_unavailable' });
+  try {
+    const ids = [];
+    let cursor;
+    do {
+      const resp = await notion.databases.query({ database_id: PRODUCT_CATALOG_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) });
+      for (const p of resp.results) if (!p.archived) ids.push(p.id);
+      cursor = resp.has_more ? resp.next_cursor : null;
+    } while (cursor);
+    let synced = 0, skipped = 0, failed = 0;
+    for (const id of ids) {
+      const r = await syncCatalogPageToInventory(id, 'backfill-resync');
+      if (r && r.ok) synced++; else if (r && r.skipped) skipped++; else failed++;
+    }
+    res.json({ ok: true, total: ids.length, synced, skipped, failed });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ━━━ 제품 카탈로그 — 소비자가 산정 → 카탈로그 자동 등록 ━━━
 app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
