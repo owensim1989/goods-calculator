@@ -464,10 +464,12 @@ async function api(path, opts={}) {
 }
 
 // ━━━ ORDER LIST ━━━
+let _ordersCache = []; // 진행 중 주문 목록 캐시 (단계 인지형 취소용)
 async function loadOrderList(){
   try {
     const data = await api('/');
     const orders = data.orders || [];
+    _ordersCache = orders; // 단계 인지형 취소용
     const labels = data.status_labels || {};
     const el = document.getElementById('orderList');
     if (!orders.length) {
@@ -525,14 +527,37 @@ async function openOrder(orderId){
   } catch (e) { toast('주문 로드 실패: ' + e.message, 'err'); }
 }
 
+// 단계 인지형 주문 취소 (2026-05-31) — 진행 단계에 따라 외부 영향 경고
 async function deleteOrder(orderId, ev){
   if (ev) ev.stopPropagation();
-  if (!confirm('이 주문 삭제? (복원 불가)')) return;
+  const o = (_ordersCache || []).find(x => x.order_id === orderId) || {};
+  const step = o.step || 1;
+  const shipped = o.status === 'shipped' || step >= 6;
+  const hasInvoice = !!o.invoice_no;
+  let msg, toastMsg;
+  if (shipped) {
+    msg = '🔴 출고/입금 단계까지 진행된 주문입니다.\n\n'
+        + 'inventory 한국 창고 재고가 이미 차감됐고, 주문을 삭제해도 재고는 자동으로 복원되지 않습니다.\n'
+        + '→ inventory(재고관리)에서 해당 출고분을 먼저 확인·복원하세요.'
+        + (hasInvoice ? '\n→ business의 인보이스(' + o.invoice_no + ')도 취소가 필요합니다.' : '')
+        + '\n\n위 정리를 하셨다면, 이 주문 기록을 삭제할까요?';
+    toastMsg = '주문 삭제됨 · ⚠️ inventory 재고 복원 확인 필요';
+  } else if (hasInvoice) {
+    msg = '⚠️ 인보이스(' + o.invoice_no + ')가 이미 발행된 주문입니다.\n\n'
+        + 'business에 인보이스·정산 데이터가 남아 있어, 주문만 삭제하면 유령 데이터가 됩니다.\n'
+        + '→ business(회계)에서 해당 인보이스를 먼저 취소하세요.\n\n'
+        + '인보이스를 취소하셨다면, 이 주문 기록을 삭제할까요?';
+    toastMsg = '주문 삭제됨 · ⚠️ business 인보이스 취소 확인 필요';
+  } else {
+    msg = '이 주문을 삭제할까요? (복원 불가)\n\n견적서 발급 전 단계라 다른 시스템(business·inventory) 영향은 없습니다.';
+    toastMsg = '주문 삭제됨';
+  }
+  if (!confirm(msg)) return;
   try {
     await api('/' + encodeURIComponent(orderId), { method: 'DELETE' });
     if (STATE.orderId === orderId) newOrder();
     loadOrderList();
-    toast('삭제됨', 'ok');
+    toast(toastMsg, (shipped || hasInvoice) ? 'warn' : 'ok');
   } catch (e) { toast('삭제 실패: ' + e.message, 'err'); }
 }
 
