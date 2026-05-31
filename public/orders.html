@@ -34,8 +34,22 @@ body{font-family:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystem
 .step.done .num span{display:none}
 .step-line{flex:0 0 24px;height:1px;background:var(--line);align-self:center;margin-top:-18px;}
 .step.done + .step-line{background:var(--ok)}
-.progress-strip{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;font-size:11px;color:var(--text-2);flex-wrap:wrap}
+.progress-strip{display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;font-size:11px;color:var(--text-2)}
+.progress-strip .ps-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .progress-strip .progress-title{font-weight:600;color:var(--text);font-size:12px}
+/* 진행 중 주문 — 세로 리스트 (2026-05-31) */
+.order-list-v{display:flex;flex-direction:column;gap:2px}
+.order-row{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:.12s}
+.order-row:hover{background:var(--surface-2)}
+.order-row.active{background:var(--accent-bg);border-color:var(--accent)}
+.order-row .or-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.order-row .or-title{flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.order-row .or-title.unset{color:var(--text-3);font-weight:500}
+.order-row .or-step{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0}
+.order-row .or-amt{font-size:12px;color:var(--text-2);flex-shrink:0;min-width:52px;text-align:right}
+.order-row .or-date{font-size:10.5px;color:var(--text-3);flex-shrink:0;min-width:30px;text-align:right}
+.order-row .or-del{color:var(--text-3);cursor:pointer;flex-shrink:0;font-size:12px;padding:0 2px}
+.order-row .or-del:hover{color:var(--err)}
 .progress-strip .progress-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
 .progress-strip .progress-chips .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg);border:1px solid var(--line);border-radius:14px;font-size:11px;cursor:pointer;transition:all .12s;color:var(--text-2)}
 .progress-strip .progress-chips .chip:hover{border-color:var(--accent);color:var(--accent-strong)}
@@ -160,9 +174,11 @@ tr.unmatched td{background:rgba(239,68,68,.06)} tr.low-stock td{background:rgba(
 
   <main>
     <div class="progress-strip">
-      <span class="progress-title">📋 진행 중 주문</span>
-      <span class="progress-chips" id="orderList"></span>
-      <button onclick="newOrder()" title="새 주문 시작">+ 새로</button>
+      <div class="ps-head">
+        <span class="progress-title">📋 진행 중 주문</span>
+        <button onclick="newOrder()" title="새 주문 시작">+ 새로</button>
+      </div>
+      <div class="order-list-v" id="orderList"></div>
     </div>
     <!-- STEP 1 : 인입 -->
     <section class="section active" data-step="1">
@@ -455,20 +471,33 @@ async function loadOrderList(){
       el.innerHTML = '<span style="font-size:11px;color:var(--text-3);">진행 중 주문 없음</span>';
       return;
     }
-    // 가로 chip 형태 (옵션 A — 2026-05-22)
+    // 세로 리스트 — 거래처명 1순위 + 단계 배지 (2026-05-31, 시안 A)
+    const STEP_INFO = {
+      1:{n:'주문서 인입',c:'#a78bfa'}, 2:{n:'매칭·재고',c:'#60a5fa'},
+      3:{n:'가격 산정',c:'#fbbf24'}, 4:{n:'견적서',c:'#fb923c'},
+      5:{n:'인보이스',c:'#34d399'}, 6:{n:'메일',c:'#94a3b8'}
+    };
+    const hexA = (hex, a) => { const h=hex.replace('#',''); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return `rgba(${r},${g},${b},${a})`; };
     el.innerHTML = orders.slice(0,12).map(o => {
       const st = labels[o.status] || {label: o.status, color:'#666'};
       const active = STATE.orderId === o.order_id;
       const dt = new Date(o.updated_at);
       const dtStr = (dt.getMonth()+1) + '/' + dt.getDate();
-      const lbl = o.label || (o.partner_company ? (o.partner_company.split(' ')[0] + ' · ' + o.line_count + '건') : (o.order_id.slice(-6)));
-      const tooltip = `${st.label} · ${dtStr} · $${(o.total_usd||0).toLocaleString()}`;
-      return `<span class="chip ${active?'active':''}" onclick="openOrder('${o.order_id}')" title="${escapeHtml(tooltip)}">
-        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${st.color};"></span>
-        <span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(lbl)}</span>
-        <span style="color:var(--text-3);font-size:10px;">${dtStr}</span>
-        <span onclick="deleteOrder('${o.order_id}',event)" style="cursor:pointer;color:var(--text-3);margin-left:2px;" title="삭제">✕</span>
-      </span>`;
+      const step = o.step || 1;
+      const si = STEP_INFO[step] || {n:'', c:'#666'};
+      const hasVendor = !!o.partner_company;
+      // 거래처명 우선, 없으면 파일명(label) 회색 fallback
+      const title = hasVendor ? o.partner_company : (o.label || ('주문 ' + o.order_id.slice(-6)));
+      const tooltip = `${st.label} · ${dtStr} · $${(o.total_usd||0).toLocaleString()}` + (hasVendor && o.label ? ` · ${o.label}` : '');
+      const amt = o.total_usd ? '$' + Math.round(o.total_usd).toLocaleString() : '';
+      return `<div class="order-row ${active?'active':''}" onclick="openOrder('${o.order_id}')" title="${escapeHtml(tooltip)}">
+        <span class="or-dot" style="background:${st.color};"></span>
+        <span class="or-title ${hasVendor?'':'unset'}">${escapeHtml(title)}</span>
+        <span class="or-step" style="background:${hexA(si.c,0.16)};color:${si.c};">${step}. ${si.n}</span>
+        <span class="or-amt">${amt}</span>
+        <span class="or-date">${dtStr}</span>
+        <span class="or-del" onclick="deleteOrder('${o.order_id}',event)" title="삭제">✕</span>
+      </div>`;
     }).join('');
   } catch (e) {
     console.error('[orderList]', e);
