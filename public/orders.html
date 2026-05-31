@@ -37,19 +37,22 @@ body{font-family:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystem
 .progress-strip{display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;font-size:11px;color:var(--text-2)}
 .progress-strip .ps-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .progress-strip .progress-title{font-weight:600;color:var(--text);font-size:12px}
-/* 진행 중 주문 — 세로 리스트 (2026-05-31) */
-.order-list-v{display:flex;flex-direction:column;gap:2px}
-.order-row{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:.12s}
-.order-row:hover{background:var(--surface-2)}
-.order-row.active{background:var(--accent-bg);border-color:var(--accent)}
-.order-row .or-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.order-row .or-title{flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.order-row .or-title.unset{color:var(--text-3);font-weight:500}
-.order-row .or-step{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0}
-.order-row .or-amt{font-size:12px;color:var(--text-2);flex-shrink:0;min-width:52px;text-align:right}
-.order-row .or-date{font-size:10.5px;color:var(--text-3);flex-shrink:0;min-width:30px;text-align:right}
-.order-row .or-del{color:var(--text-3);cursor:pointer;flex-shrink:0;font-size:12px;padding:0 2px}
-.order-row .or-del:hover{color:var(--err)}
+/* 진행 중 주문 — 카드 그리드 (2026-05-31, 시안 B) */
+.order-list-v{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:9px}
+.ord-card{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 13px;cursor:pointer;transition:.12s}
+.ord-card:hover{border-color:var(--accent)}
+.ord-card.active{border-color:var(--accent);background:var(--accent-bg)}
+.ord-card .oc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:7px}
+.ord-card .oc-vendor{font-size:13px;font-weight:700;line-height:1.3;color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ord-card .oc-vendor.unset{color:var(--text-3);font-weight:500}
+.ord-card .oc-right{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.ord-card .oc-dot{width:7px;height:7px;border-radius:50%}
+.ord-card .oc-del{color:var(--text-3);cursor:pointer;font-size:12px;line-height:1}
+.ord-card .oc-del:hover{color:var(--err)}
+.ord-card .oc-meta{font-size:11px;color:var(--text-3);margin-bottom:9px}
+.ord-card .ord-prog{display:flex;gap:3px}
+.ord-card .ord-prog .seg{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.ord-card .ord-prog-lbl{font-size:10.5px;font-weight:600;margin-top:6px}
 .progress-strip .progress-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
 .progress-strip .progress-chips .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg);border:1px solid var(--line);border-radius:14px;font-size:11px;cursor:pointer;transition:all .12s;color:var(--text-2)}
 .progress-strip .progress-chips .chip:hover{border-color:var(--accent);color:var(--accent-strong)}
@@ -477,7 +480,6 @@ async function loadOrderList(){
       3:{n:'가격 산정',c:'#fbbf24'}, 4:{n:'견적서',c:'#fb923c'},
       5:{n:'인보이스',c:'#34d399'}, 6:{n:'메일',c:'#94a3b8'}
     };
-    const hexA = (hex, a) => { const h=hex.replace('#',''); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return `rgba(${r},${g},${b},${a})`; };
     el.innerHTML = orders.slice(0,12).map(o => {
       const st = labels[o.status] || {label: o.status, color:'#666'};
       const active = STATE.orderId === o.order_id;
@@ -490,13 +492,20 @@ async function loadOrderList(){
       const title = hasVendor ? o.partner_company : (o.label || ('주문 ' + o.order_id.slice(-6)));
       const tooltip = `${st.label} · ${dtStr} · $${(o.total_usd||0).toLocaleString()}` + (hasVendor && o.label ? ` · ${o.label}` : '');
       const amt = o.total_usd ? '$' + Math.round(o.total_usd).toLocaleString() : '';
-      return `<div class="order-row ${active?'active':''}" onclick="openOrder('${o.order_id}')" title="${escapeHtml(tooltip)}">
-        <span class="or-dot" style="background:${st.color};"></span>
-        <span class="or-title ${hasVendor?'':'unset'}">${escapeHtml(title)}</span>
-        <span class="or-step" style="background:${hexA(si.c,0.16)};color:${si.c};">${step}. ${si.n}</span>
-        <span class="or-amt">${amt}</span>
-        <span class="or-date">${dtStr}</span>
-        <span class="or-del" onclick="deleteOrder('${o.order_id}',event)" title="삭제">✕</span>
+      const cnt = o.line_count ? o.line_count + '건' : '';
+      const meta = [cnt, amt, dtStr].filter(Boolean).join(' · ');
+      const segs = [1,2,3,4,5,6].map(n => `<span class="seg" style="${n<=step?'background:'+si.c:''}"></span>`).join('');
+      return `<div class="ord-card ${active?'active':''}" onclick="openOrder('${o.order_id}')" title="${escapeHtml(tooltip)}">
+        <div class="oc-top">
+          <span class="oc-vendor ${hasVendor?'':'unset'}">${escapeHtml(title)}</span>
+          <span class="oc-right">
+            <span class="oc-dot" style="background:${st.color};"></span>
+            <span class="oc-del" onclick="deleteOrder('${o.order_id}',event)" title="삭제">✕</span>
+          </span>
+        </div>
+        <div class="oc-meta">${meta}</div>
+        <div class="ord-prog">${segs}</div>
+        <div class="ord-prog-lbl" style="color:${si.c};">${step}. ${si.n}</div>
       </div>`;
     }).join('');
   } catch (e) {
