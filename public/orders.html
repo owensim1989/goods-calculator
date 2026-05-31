@@ -536,7 +536,9 @@ async function deleteOrder(orderId, ev){
   const shipped = status === 'shipped' || step >= 6;
   const paid = status === 'paid';
   const hasInvoice = !!o.invoice_no;
-  const autoCancelInvoice = hasInvoice && !shipped && !paid; // 출고 전 인보이스 → 자동 취소 대상
+  const hasQuote = !!o.quote_no;
+  // 견적 발급된 주문(quote_no) 은 출고 전이면 /cancel 경유 — invoice_no 미저장 orphan 까지 정리
+  const autoCancelInvoice = hasQuote && !shipped && !paid;
 
   let msg, toastMsg;
   if (shipped) {
@@ -552,9 +554,15 @@ async function deleteOrder(orderId, ev){
         + '→ business에서 수동 처리하세요.\n\n그래도 주문 기록을 삭제할까요?';
     toastMsg = '주문 삭제됨 · ⚠️ business 인보이스 수동 처리 필요';
   } else if (autoCancelInvoice) {
-    msg = '⚠️ 인보이스(' + o.invoice_no + ')가 발행된 주문입니다.\n\n'
-        + '취소하면 business 인보이스도 함께 자동 취소됩니다 (미입금 상태).\n\n주문을 취소할까요?';
-    toastMsg = '주문 취소됨 · ✅ business 인보이스 자동 취소';
+    if (hasInvoice) {
+      msg = '⚠️ 인보이스(' + o.invoice_no + ')가 발행된 주문입니다.\n\n'
+          + '취소하면 business 인보이스도 함께 자동 취소됩니다 (미입금 상태).\n\n주문을 취소할까요?';
+      toastMsg = '주문 취소됨 · ✅ business 인보이스 자동 취소';
+    } else {
+      msg = '견적이 발급된 주문입니다.\n\n'
+          + '취소 시 발행된 인보이스가 있으면 business에서 함께 정리됩니다.\n\n주문을 취소할까요?';
+      toastMsg = '주문 취소됨';
+    }
   } else {
     msg = '이 주문을 취소(삭제)할까요?\n\n견적서 발급 전 단계라 다른 시스템 영향은 없습니다.';
     toastMsg = '주문 삭제됨';
