@@ -278,6 +278,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // 캐시버스터 (2026-05-31): HTML 은 매 요청 ETag 재검증 → 배포 시 자동 최신, 미변경 시 304.
+      // iframe(orders.html) 캐시로 옛 화면 보이던 문제 해소
+      res.setHeader('Cache-Control', 'no-cache');
     }
   }
 }));
