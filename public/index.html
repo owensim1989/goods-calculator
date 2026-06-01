@@ -6,8 +6,8 @@
 <title>GOODS OS — 제품 운영 시스템</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-:root{--primary:#2563eb;--primary-light:#dbeafe;--bg:#f8fafc;--card:#fff;--border:#e2e8f0;--text:#1e293b;--text-muted:#64748b;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--radius:12px;--header-bg:var(--primary);--input-bg:#fff;}
-[data-theme="dark"]{--primary:#60a5fa;--primary-light:#1e3a5f;--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--text-muted:#94a3b8;--success:#34d399;--warning:#fbbf24;--danger:#f87171;--header-bg:#1e293b;--input-bg:#0f172a;}
+:root{--primary:#2563eb;--primary-light:#dbeafe;--bg:#f8fafc;--card:#fff;--card-2:#f8f9fa;--border:#e2e8f0;--text:#1e293b;--text-muted:#64748b;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--radius:12px;--header-bg:var(--primary);--input-bg:#fff;}
+[data-theme="dark"]{--primary:#60a5fa;--primary-light:#1e3a5f;--bg:#0f172a;--card:#1e293b;--card-2:#0f172a;--border:#334155;--text:#e2e8f0;--text-muted:#94a3b8;--success:#34d399;--warning:#fbbf24;--danger:#f87171;--header-bg:#1e293b;--input-bg:#0f172a;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);transition:background .3s,color .3s;}
 
@@ -81,7 +81,7 @@ a.sidebar-item:hover{color:var(--text);}
 .ai-card-head .meta a:hover{text-decoration:underline;}
 .ai-card-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
 .ai-card-grid label{display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;}
-.ai-card-grid input,.ai-card-grid select{width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;background:var(--card);color:var(--text);box-sizing:border-box;}
+.ai-card-grid input,.ai-card-grid select{width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--text);box-sizing:border-box;}
 .ai-card-products{margin:10px 0;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
 .ai-card-products table{width:100%;border-collapse:collapse;font-size:12px;}
 .ai-card-products th{background:var(--card-2,#f8f9fa);padding:6px 8px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);}
@@ -89,7 +89,7 @@ a.sidebar-item:hover{color:var(--text);}
 .ai-card-products tr:last-child td{border-bottom:none;}
 /* 미검수 인라인 편집 input/select (2026-05-25) */
 .ai-card-products.editable td{padding:3px 4px;}
-.ai-card-products.editable input,.ai-card-products.editable select{width:100%;padding:5px 7px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);box-sizing:border-box;font-family:inherit;}
+.ai-card-products.editable input,.ai-card-products.editable select{width:100%;padding:5px 7px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);box-sizing:border-box;font-family:inherit;}
 .ai-card-products.editable input[type=number]{text-align:right;font-family:'JetBrains Mono','SF Mono',monospace;}
 .ai-card-products.editable input:focus,.ai-card-products.editable select:focus{outline:2px solid rgba(124,58,237,0.4);outline-offset:-1px;border-color:#7c3aed;}
 .ai-card-products.editable input.calc-readonly{background:rgba(127,127,127,0.08);color:var(--text-muted);font-style:italic;}
@@ -1473,7 +1473,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <div class="inbox-dropzone-ico">📤</div>
         <div class="inbox-dropzone-text">
           <div class="ttl">받은 견적서 바로 업로드</div>
-          <div class="sub" style="font-size:12px;opacity:.6">💸 AI 자동 파싱 ≈ 건당 약 20~30원</div>
         </div>
       </div>
       <div class="inbox-dropzone-country" onclick="event.stopPropagation();" title="선택 시 AI 추출 결과보다 우선 적용됩니다">
@@ -1503,7 +1502,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="inbox-text-box">
     <div class="inbox-text-head">
       <span class="ttl">📧 메일·텍스트 직접 분석</span>
-      <span class="sub">견적 내용을 붙여넣으면 AI가 분석해 미검수 항목으로 추가합니다 · 위 발급 국가 선택을 함께 사용</span>
+      <span class="sub">텍스트 붙여넣기</span>
     </div>
     <textarea id="inboxTextInput" rows="5" placeholder="견적 메일 본문이나 메시지를 그대로 붙여넣으세요 (단가·수량·거래처·통화 등이 담긴 텍스트)"></textarea>
     <div class="inbox-text-actions">
@@ -1515,7 +1514,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="inbox-text-box">
     <div class="inbox-text-head">
       <span class="ttl">✍️ 받은 견적 직접 입력</span>
-      <span class="sub">파일·메일 없이 견적 내용을 직접 입력해 미검수 항목으로 등록합니다</span>
     </div>
     <div class="inbox-manual-grid">
       <div class="imf"><label>거래처</label><input type="text" id="manVendor" placeholder="예: 광동 키치 / 한국 ○○사"></div>
@@ -6912,6 +6910,13 @@ function renderParsedCard(it, status){
   const categoryOptions = AI_CATEGORIES.map(c => '<option value="'+c+'"'+((overrides.품목||'')===c?' selected':'')+'>'+c+'</option>').join('');
   const countryOptions = AI_COUNTRIES.map(c => '<option value="'+c+'"'+((overrides.국가||it.country||'')===c?' selected':'')+'>'+c+'</option>').join('');
 
+  // 직접 입력 카드 (✍️ prefix) 의 파일명에 거래처가 중복으로 박혀있으면 단순화
+  let displayName = file.name || '(파일명 없음)';
+  const vendorInName = (overrides.거래처 || it.vendor || '').trim();
+  if (displayName.startsWith('✍️') && vendorInName && displayName.includes(vendorInName)) {
+    displayName = '✍️ 직접 입력 견적';
+  }
+
   let actions = '';
   if(isPending){
     actions = '<button class="reject" onclick="rejectParsed(\''+it.id+'\')">❌ 반려</button>'+
@@ -6941,7 +6946,7 @@ function renderParsedCard(it, status){
   return '<div class="ai-card '+(isPending?'':'reviewed')+'" data-id="'+it.id+'">'+
     '<div class="ai-card-head">'+
       '<div>'+
-        '<div class="name">📄 '+escapeHtml(file.name||'(파일명 없음)')+'</div>'+
+        '<div class="name">📄 '+escapeHtml(displayName)+'</div>'+
         '<div class="meta">제출: '+escapeHtml(submittedBy)+' · '+escapeHtml(created)+
         (file.webViewLink?' · <a href="'+file.webViewLink+'" target="_blank">Drive에서 열기 ↗</a>':'')+'</div>'+
         archiveBadge+
