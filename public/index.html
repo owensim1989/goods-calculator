@@ -146,6 +146,19 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-pills .count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:18px;padding:0 6px;border-radius:8px;font-size:10.5px;background:rgba(127,127,127,0.1);font-weight:600;font-family:'JetBrains Mono','SF Mono',monospace;color:var(--text-muted);}
 .inbox-pills button.active .count{background:rgba(127,127,127,0.18);color:var(--text);}
 
+/* 시안 B: underline 탭 + dropdown 필터 (2026-06-01) */
+.inbox-toolbar-b{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--border);gap:16px;margin-bottom:14px;flex-wrap:wrap;}
+.inbox-tabs-b{display:flex;gap:4px;}
+.inbox-tab-b{background:transparent;border:none;padding:8px 16px;cursor:pointer;color:var(--text-muted);font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color 0.15s, border-color 0.15s;display:inline-flex;align-items:center;gap:6px;font-family:inherit;}
+.inbox-tab-b:hover{color:var(--text);}
+.inbox-tab-b.active{color:var(--text);border-bottom-color:var(--primary);font-weight:500;}
+.inbox-tab-count{font-size:10.5px;color:var(--text-muted);background:rgba(127,127,127,0.15);padding:1px 7px;border-radius:8px;font-family:'JetBrains Mono','SF Mono',monospace;font-weight:600;}
+.inbox-tab-b.active .inbox-tab-count{color:var(--primary);background:rgba(96,165,250,0.15);}
+.inbox-filters-b{display:flex;gap:8px;padding-bottom:8px;}
+.inbox-filter-select-b{background:var(--input-bg);border:1px solid var(--border);color:var(--text);padding:5px 26px 5px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2394a3b8' d='M5 6L0 0h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;}
+.inbox-filter-select-b:hover{border-color:var(--primary);color:var(--text);}
+.inbox-filter-select-b:focus{outline:none;border-color:var(--primary);}
+
 /* 리스트 wrap */
 .inbox-list-wrap{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .inbox-list-head{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);background:transparent;}
@@ -1570,25 +1583,21 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div id="inboxUploadRows"></div>
   </div>
 
-  <!-- 필터 pill (탭) -->
-  <div class="inbox-pills ai-modal-tabs">
-    <button class="active" data-status="pending" onclick="switchParsedTab('pending')">⏳ 미검수 <span class="count" id="inboxPillPending">0</span></button>
-    <button data-status="approved" onclick="switchParsedTab('approved')">✅ 검수완료 <span class="count" id="inboxPillApproved">0</span></button>
-    <button data-status="rejected" onclick="switchParsedTab('rejected')">❌ 반려 <span class="count" id="inboxPillRejected">0</span></button>
-  </div>
-
-  <!-- 국가 칩 필터 — 2026-05-25 신설 -->
-  <div class="inbox-country-chips" id="inboxCountryChips">
-    <span class="lbl">🌐 국가:</span>
-    <button class="inbox-country-chip active" data-country="all" onclick="setInboxCountryFilter('all')">전체 <span class="cnt" id="inboxCntAll">0</span></button>
-    <!-- 동적 칩 — loadParsedList 호출 시 setInboxCountryChips 가 채움 -->
-  </div>
-
-  <!-- 시기(등록 월) 칩 필터 — 2026-05-29 신설 -->
-  <div class="inbox-country-chips" id="inboxDateChips">
-    <span class="lbl">📅 시기:</span>
-    <button class="inbox-country-chip active" data-month="all" onclick="setInboxDateFilter('all')">전체 <span class="cnt" id="inboxDateAll">0</span></button>
-    <!-- 동적 칩 — _renderInboxDateChips 가 등록 월별로 채움 -->
+  <!-- 시안 B: underline 탭 + 우측 dropdown 필터 (2026-06-01) -->
+  <div class="inbox-toolbar-b ai-modal-tabs">
+    <div class="inbox-tabs-b">
+      <button class="inbox-tab-b active" data-status="pending" onclick="switchParsedTab('pending')">미검수 <span class="inbox-tab-count" id="inboxPillPending">0</span></button>
+      <button class="inbox-tab-b" data-status="approved" onclick="switchParsedTab('approved')">검수완료 <span class="inbox-tab-count" id="inboxPillApproved">0</span></button>
+      <button class="inbox-tab-b" data-status="rejected" onclick="switchParsedTab('rejected')">반려 <span class="inbox-tab-count" id="inboxPillRejected">0</span></button>
+    </div>
+    <div class="inbox-filters-b">
+      <select id="inboxCountrySelect" class="inbox-filter-select-b" onchange="setInboxCountryFilter(this.value)">
+        <option value="all">🌐 전체 국가</option>
+      </select>
+      <select id="inboxDateSelect" class="inbox-filter-select-b" onchange="setInboxDateFilter(this.value)">
+        <option value="all">📅 전체 시기</option>
+      </select>
+    </div>
   </div>
 
   <!-- 리스트 -->
@@ -6630,15 +6639,15 @@ function _aiInboxItemCountry(it){
 
 function setInboxCountryFilter(country){
   _inboxCountryFilter = country || 'all';
-  // 칩 active 상태 갱신
-  document.querySelectorAll('.inbox-country-chip').forEach(c => c.classList.toggle('active', c.dataset.country === _inboxCountryFilter));
+  const sel = document.getElementById('inboxCountrySelect');
+  if(sel) sel.value = _inboxCountryFilter;
   _renderInboxList();
 }
 
 function _renderInboxCountryChips(items){
-  const wrap = document.getElementById('inboxCountryChips');
-  if(!wrap) return;
-  // 칩 별 갯수 집계
+  const sel = document.getElementById('inboxCountrySelect');
+  if(!sel) return;
+  // 국가별 갯수 집계
   const counts = {};
   let unassigned = 0;
   items.forEach(it => {
@@ -6646,41 +6655,23 @@ function _renderInboxCountryChips(items){
     if(!c){ unassigned++; return; }
     counts[c] = (counts[c]||0) + 1;
   });
-  // 전체 칩 갯수
-  const allEl = document.getElementById('inboxCntAll');
-  if(allEl) allEl.textContent = items.length;
-  // 동적 칩 (전체 칩 다음에 append)
-  // 기존 동적 칩 제거 (active class 갱신 시 깜빡임 방지 — innerHTML 직접 교체)
-  const lbl = wrap.querySelector('.lbl');
-  const allBtn = wrap.querySelector('[data-country="all"]');
-  // 정렬: AI_COUNTRIES 우선 (지정 순서) + 그 외 발견된 옛 국가 + '미지정' 마지막
+  // 정렬: AI_COUNTRIES 우선 + 옛 국가 + 미지정 마지막
   const known = AI_COUNTRIES.filter(c => counts[c]);
   const legacy = Object.keys(counts).filter(c => !AI_COUNTRIES.includes(c)).sort();
   const ordered = known.concat(legacy);
-  // 기존 동적 칩 모두 제거
-  Array.from(wrap.children).forEach(c => {
-    if(c !== lbl && c !== allBtn) wrap.removeChild(c);
-  });
-  // 발견된 국가 칩 append
+  let html = '<option value="all">🌐 전체 국가 (' + items.length + ')</option>';
   ordered.forEach(c => {
-    const btn = document.createElement('button');
-    btn.className = 'inbox-country-chip' + (_inboxCountryFilter === c ? ' active' : '');
-    btn.dataset.country = c;
-    btn.onclick = () => setInboxCountryFilter(c);
-    btn.innerHTML = aiCountryFlag(c) + ' ' + escapeHtml(c) + ' <span class="cnt">' + counts[c] + '</span>';
-    wrap.appendChild(btn);
+    html += '<option value="' + escapeAttr(c) + '">' + aiCountryFlag(c) + ' ' + escapeHtml(c) + ' (' + counts[c] + ')</option>';
   });
-  // 미지정 칩 (country 가 없는 카드가 있을 때만)
-  if(unassigned > 0){
-    const btn = document.createElement('button');
-    btn.className = 'inbox-country-chip' + (_inboxCountryFilter === '__unassigned__' ? ' active' : '');
-    btn.dataset.country = '__unassigned__';
-    btn.onclick = () => setInboxCountryFilter('__unassigned__');
-    btn.innerHTML = '❔ 미지정 <span class="cnt">' + unassigned + '</span>';
-    wrap.appendChild(btn);
+  if(unassigned > 0) html += '<option value="__unassigned__">❔ 미지정 (' + unassigned + ')</option>';
+  sel.innerHTML = html;
+  // 선택값 복원 (없으면 전체로)
+  if(Array.from(sel.options).some(o => o.value === _inboxCountryFilter)){
+    sel.value = _inboxCountryFilter;
+  } else {
+    sel.value = 'all';
+    _inboxCountryFilter = 'all';
   }
-  // 전체 칩 active 갱신
-  if(allBtn) allBtn.classList.toggle('active', _inboxCountryFilter === 'all');
 }
 
 // 등록 시기(월) 필터 — 2026-05-29 신설
@@ -6696,35 +6687,32 @@ function _inboxItemMonth(it){
 
 function setInboxDateFilter(month){
   _inboxDateFilter = month || 'all';
-  document.querySelectorAll('#inboxDateChips .inbox-country-chip').forEach(c => c.classList.toggle('active', c.dataset.month === _inboxDateFilter));
+  const sel = document.getElementById('inboxDateSelect');
+  if(sel) sel.value = _inboxDateFilter;
   _renderInboxList();
 }
 
 function _renderInboxDateChips(items){
-  const wrap = document.getElementById('inboxDateChips');
-  if(!wrap) return;
+  const sel = document.getElementById('inboxDateSelect');
+  if(!sel) return;
   const counts = {};
   items.forEach(it => { const m = _inboxItemMonth(it); if(m) counts[m] = (counts[m]||0)+1; });
-  const allEl = document.getElementById('inboxDateAll');
-  if(allEl) allEl.textContent = items.length;
-  const lbl = wrap.querySelector('.lbl');
-  const allBtn = wrap.querySelector('[data-month="all"]');
   // 최신 월 먼저
   const months = Object.keys(counts).sort().reverse();
-  // 기존 동적 칩 제거
-  Array.from(wrap.children).forEach(c => { if(c !== lbl && c !== allBtn) wrap.removeChild(c); });
   // 선택된 월이 더이상 없으면 전체로 리셋
   if(_inboxDateFilter !== 'all' && !counts[_inboxDateFilter]) _inboxDateFilter = 'all';
+  let html = '<option value="all">📅 전체 시기 (' + items.length + ')</option>';
   months.forEach(m => {
     const [y, mo] = m.split('-');
-    const btn = document.createElement('button');
-    btn.className = 'inbox-country-chip' + (_inboxDateFilter === m ? ' active' : '');
-    btn.dataset.month = m;
-    btn.onclick = () => setInboxDateFilter(m);
-    btn.innerHTML = y + '.' + mo + ' <span class="cnt">' + counts[m] + '</span>';
-    wrap.appendChild(btn);
+    html += '<option value="' + m + '">' + y + '.' + mo + ' (' + counts[m] + ')</option>';
   });
-  if(allBtn) allBtn.classList.toggle('active', _inboxDateFilter === 'all');
+  sel.innerHTML = html;
+  if(Array.from(sel.options).some(o => o.value === _inboxDateFilter)){
+    sel.value = _inboxDateFilter;
+  } else {
+    sel.value = 'all';
+    _inboxDateFilter = 'all';
+  }
 }
 
 function _renderInboxList(){
