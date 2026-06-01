@@ -1570,31 +1570,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div id="inboxUploadRows"></div>
   </div>
 
-  <!-- 통계 카드 4종 -->
-  <div class="inbox-stats">
-    <div class="inbox-stat pending" onclick="switchParsedTab('pending')">
-      <div class="pulse" id="inboxStatPulse"></div>
-      <div class="label">⏳ 미검수</div>
-      <div class="num" id="inboxStatPending">—</div>
-      <div class="hint">검수 대기 중인 견적</div>
-    </div>
-    <div class="inbox-stat approved" onclick="switchParsedTab('approved')">
-      <div class="label">✅ 검수완료</div>
-      <div class="num" id="inboxStatApproved">—</div>
-      <div class="hint">통합DB에 반영됨</div>
-    </div>
-    <div class="inbox-stat rejected" onclick="switchParsedTab('rejected')">
-      <div class="label">❌ 반려</div>
-      <div class="num" id="inboxStatRejected">—</div>
-      <div class="hint">파싱 오류·중복</div>
-    </div>
-    <div class="inbox-stat total">
-      <div class="label">📊 누적</div>
-      <div class="num" id="inboxStatTotal">—</div>
-      <div class="hint">최근 자동 실행: <span id="inboxLastRun">—</span></div>
-    </div>
-  </div>
-
   <!-- 필터 pill (탭) -->
   <div class="inbox-pills ai-modal-tabs">
     <button class="active" data-status="pending" onclick="switchParsedTab('pending')">⏳ 미검수 <span class="count" id="inboxPillPending">0</span></button>
