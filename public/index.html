@@ -1215,7 +1215,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   <div class="cp-section" id="cp-approval-box" style="display:none;background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(245,158,11,.06));border:1px solid rgba(124,58,237,.2);">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
-        <div id="cp-approval-status" style="font-size:14px;font-weight:600;margin-bottom:4px;">현재 상태: <span id="cp-approval-status-val" style="color:var(--text-muted);">검토중</span></div>
+        <div id="cp-approval-status" style="font-size:14px;font-weight:600;margin-bottom:4px;">현재 상태: <span id="cp-approval-status-val" style="color:var(--text-muted);">검토중</span> <span id="cp-reg-status-val" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(127,127,127,0.14);color:var(--text-muted);margin-left:6px;">💾 저장만 (미등록)</span></div>
         <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">사업성 검토가 끝났다면 아래 버튼으로 바로 <b>승인</b>하세요. 승인 시 카탈로그 등록 + 결제요청 버튼이 활성화됩니다.</div>
       </div>
       <button class="cp-btn-save" id="cp-btn-quick-approve" onclick="cpQuickApprove()" style="background:#10b981;font-size:14px;padding:10px 20px;">✅ 승인하기</button>
@@ -3416,9 +3416,16 @@ async function cpLoadList(){
     const emptyEl = document.getElementById('cp-list-empty');
     if(!items.length){emptyEl.style.display='block';listEl.innerHTML='';return;}
     emptyEl.style.display='none';
+    // 카탈로그 등록 여부 판별용 — 등록된 카탈로그 항목이 들고 있는 cpId(소비자가_산정_ID) 집합
+    if (typeof cpFetchCatalogCached === 'function') { try { await cpFetchCatalogCached(); } catch(_){} }
+    const _regIds = new Set((CP_CATALOG_CACHE || []).map(c => c.cpId).filter(Boolean));
     const grouped = cpGroupBySeriesRoot(items);
     listEl.innerHTML = grouped.map(({item:it, rootId, indexInGroup, groupSize})=>{
       const badge = it.상태==='승인'?'cp-badge-approve':it.상태==='보류'?'cp-badge-hold':it.상태==='거절'?'cp-badge-reject':'cp-badge-review';
+      const isRegistered = _regIds.has(it.id);
+      const regBadge = isRegistered
+        ? '<span class="cp-badge" style="background:rgba(16,185,129,0.16);color:#34d399;font-size:10px;padding:1px 7px;">📋 카탈로그 등록</span>'
+        : '<span class="cp-badge" style="background:rgba(127,127,127,0.14);color:var(--text-muted);font-size:10px;padding:1px 7px;">💾 저장만</span>';
       const marginPct = (it.마진율!=null)?(it.마진율*100).toFixed(1)+'%':'-';
       const updated = it.updatedAt?new Date(it.updatedAt).toLocaleDateString('ko-KR'):'';
       // 시리즈 표기: 그룹 N≥2 일 때만
@@ -3433,7 +3440,7 @@ async function cpLoadList(){
         <div><div class="cp-li-name">${nameDisplay}</div><div class="cp-li-meta">${escapeHtml(it.품목||'')} · ${updated}</div></div>
         <div>🎯 ${cpFmtKRW(it.타겟_소비자가_KRW)}</div>
         <div>마진 ${marginPct}</div>
-        <div><span class="cp-badge ${badge}">${escapeHtml(it.상태||'검토중')}</span></div>
+        <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;"><span class="cp-badge ${badge}">${escapeHtml(it.상태||'검토중')}</span>${regBadge}</div>
         <div style="font-size:11px;color:var(--text-muted);">▶</div>
       </div>`;
     }).join('');
@@ -5109,32 +5116,40 @@ async function cpSave(){
   }
   const target = cpParseNum(document.getElementById('cp-target-price').value);
 
-  // 🆕 유사 자체 제품 가격과 ±30% 초과 갭 검증 (2026-05-15)
+  // 🆕 유사 자체 제품 가격 비교 — 제품군 + 카테고리 2단 (2026-06-02 개편)
+  //   같은 제품품목(이름 어근) 과 같은 카테고리를 따로 제시. 없으면 "없음" 표기. 항상 안내.
   try {
-    const _saveCat = document.getElementById('cp-category')?.value || '';
-    if (_saveCat && target > 0 && typeof cpFindSimilarBySpec === 'function'){
-      const _saveSize = document.getElementById('cp-size')?.value || '';
-      const _saveMat = document.getElementById('cp-material')?.value || '';
-      const _saveTolEl = document.getElementById('cp-similar-tolerance');
-      const _saveTol = _saveTolEl ? (parseInt(_saveTolEl.value, 10) || 30) / 100 : 0.30;
-      const _saveExcludeId = (typeof CP_CURRENT === 'object' && CP_CURRENT) ? CP_CURRENT.id : null;
-      const _saveMatches = cpFindSimilarBySpec(_saveCat, _saveSize, _saveMat, { sizeTolerance: _saveTol, excludeId: _saveExcludeId });
-      if (_saveMatches.length >= 1){
-        const _saveD = cpComputeDistribution(_saveMatches, 'KR');
-        if (_saveD && _saveD.avg > 0){
-          const _diffPct = ((target / _saveD.avg) - 1) * 100;
-          if (Math.abs(_diffPct) > 30){
-            const _saveSign = _diffPct >= 0 ? '+' : '';
-            const _msg = `⚠️ 유사 자체 제품 ${_saveD.n}건 평균 KR가와 ${_saveSign}${_diffPct.toFixed(1)}% 차이가 큽니다.\n\n` +
-              `• 내 타겟가: ${cpFmtKRW(target)}\n` +
-              `• 유사 제품 평균: ${cpFmtKRW(Math.round(_saveD.avg))} (최저 ${cpFmtKRW(_saveD.min)} ~ 최고 ${cpFmtKRW(_saveD.max)})\n\n` +
-              `비슷한 스펙인데 가격 차이가 크면 일관성 깨질 수 있습니다.\n그래도 저장하시겠습니까?`;
-            if (!confirm(_msg)) return;
-          }
-        }
+    if (target > 0 && typeof cpComputeDistribution === 'function'){
+      if (typeof cpFetchCatalogCached === 'function') { try { await cpFetchCatalogCached(); } catch(_){} }
+      const _excludeId = (typeof CP_CURRENT === 'object' && CP_CURRENT) ? CP_CURRENT.id : null;
+      const _saveCat = document.getElementById('cp-category')?.value || '';
+      // ① 같은 제품군 (이름 어근) — 가장 정확한 "같은 품목"
+      const _famMatches = (typeof cpFindSimilarByFamily === 'function')
+        ? cpFindSimilarByFamily(name, { excludeId: _excludeId }) : [];
+      const _famD = _famMatches.length ? cpComputeDistribution(_famMatches, 'KR') : null;
+      // ② 같은 카테고리 (참고용)
+      const _catMatches = (_saveCat && typeof cpFindSimilarBySpec === 'function')
+        ? cpFindSimilarBySpec(_saveCat, '', '', { sizeTolerance: 0.30, excludeId: _excludeId }) : [];
+      const _catD = _catMatches.length ? cpComputeDistribution(_catMatches, 'KR') : null;
+
+      const _line = (label, d) => {
+        if (!d || !(d.avg > 0)) return `• ${label}: 없음`;
+        const diff = ((target / d.avg) - 1) * 100;
+        const sign = diff >= 0 ? '+' : '';
+        return `• ${label}: ${d.n}건 · 평균 ${cpFmtKRW(Math.round(d.avg))} (${cpFmtKRW(d.min)}~${cpFmtKRW(d.max)}) · 내 가격 ${sign}${diff.toFixed(1)}%`;
+      };
+      if (_famD || _catD){
+        const _msg = `📊 유사 자체 제품 가격 비교\n\n` +
+          `🎯 내 타겟가: ${cpFmtKRW(target)}\n\n` +
+          `${_line('같은 제품군', _famD)}\n` +
+          `${_line('같은 카테고리', _catD)}\n\n` +
+          `가격 일관성을 확인하고 저장하시겠습니까?`;
+        if (!confirm(_msg)) return;
+      } else if (typeof showToast === 'function') {
+        showToast('유사 제품 없음 — 신규 품목으로 저장', 'info');
       }
     }
-  } catch(e) { console.warn('[유사 제품 가격 검증]', e.message); }
+  } catch(e) { console.warn('[유사 제품 가격 비교]', e.message); }
 
   // 콤마 회귀 fix (2026-05-15) — cp-qty 는 type=text + cpFmtInput 콤마 포맷 input.
   // parseFloat("3,600") === 3 으로 잘림 → 노션에 3 저장 → 재로딩 시 3 표시 버그 (Owen 보고)
@@ -5330,6 +5345,10 @@ async function cpmpConfirm(){
     const d = await r.json();
     if(!r.ok||d.error){ showToast('등록 실패: '+(d.error||r.status)); return; }
     showToast(d.reused ? '✅ 기존 카탈로그 페이지 업데이트 완료' : '✅ 제품 카탈로그 등록 완료');
+    // 캐시 강제 새로고침 후 등록 배지·리스트 즉시 갱신
+    try { if(typeof cpFetchCatalogCached==='function') await cpFetchCatalogCached(true); } catch(_){}
+    if(typeof cpUpdateRegBadge==='function') cpUpdateRegBadge();
+    if(typeof cpLoadList==='function') cpLoadList();
     if(d.url){
       setTimeout(()=>{
         if(confirm((d.reused?'업데이트된':'등록된')+' 카탈로그 페이지를 Notion에서 열까요?')) window.open(d.url,'_blank','noopener');
@@ -5550,6 +5569,40 @@ async function cpFetchCatalogCached(force){
     CP_CATALOG_CACHE_AT = now;
   }catch(e){ /* keep stale cache */ }
   return CP_CATALOG_CACHE;
+}
+
+// 제품군 키 — 등급/사이즈/노이즈 마커를 제거해 "같은 품목"끼리 묶는 정규화 키 (2026-06-02)
+// 예: "조명 - Sofa(L)__*B level" / "조명 - Sofa(M)" → 둘 다 "조명 sofa"
+function cpProductFamilyKey(name){
+  if(!name) return '';
+  let s = String(name).toLowerCase();
+  s = s.replace(/\([^)]*\)/g, ' ');                       // 괄호 그룹 (L) (B) (대) 제거
+  s = s.replace(/__+\*?/g, ' ').replace(/[*#]/g, ' ');     // __* / 노이즈 기호
+  s = s.replace(/(b\s*level|[abc]\s*grade|grade\s*[abc]|불량|리퍼|샘플|중고|미사용)/g, ' '); // 등급
+  s = s.replace(/\b(xs|s|m|l|xl|xxl|free)\b/g, ' ');       // 단독 사이즈 글자
+  s = s.replace(/(특대|대형|중형|소형|대|중|소)/g, ' ');      // 한글 사이즈
+  s = s.replace(/\d+(\.\d+)?\s*(mm|cm|m|호|인치|inch|pcs|p|개|종|세트|set)?/g, ' '); // 숫자/치수
+  s = s.replace(/[-_/.,~|]+/g, ' ');                       // 구분자
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+// 제품군(이름 어근) 기준 유사 제품 — 카탈로그 등록·판매중 + 가격 있는 제품만
+function cpFindSimilarByFamily(name, options){
+  const opts = options || {};
+  const excludeId = opts.excludeId || null;
+  const myKey = cpProductFamilyKey(name);
+  if(!myKey) return [];
+  const out = [];
+  for (const it of (CP_CATALOG_CACHE || [])){
+    if (excludeId && it.id === excludeId) continue;
+    const st = it.판매상태 || '';
+    if (st === '단종' || st === 'Out of stock') continue;
+    const hasAnyPrice = it.retailKR > 0 || (it.retails && Object.values(it.retails).some(v => v > 0));
+    if (!hasAnyPrice) continue;
+    if (cpProductFamilyKey(it.productName) === myKey) out.push({ item: it, score: 5 });
+  }
+  return out;
 }
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🔍 자체 제품 가격 비교 (2026-05-15 추가)
@@ -6443,6 +6496,30 @@ function cpToggleCatalogBtn(){
       // 승인 상태면 버튼 숨김 (이미 승인됨)
       apv.style.display = (st === '승인') ? 'none' : 'inline-flex';
     }
+    // 카탈로그 등록 여부 배지 — CP_CURRENT.id 가 카탈로그 항목의 cpId(소비자가_산정_ID) 에 있으면 등록됨
+    cpUpdateRegBadge();
+  }
+}
+
+// 결재 박스의 카탈로그 등록 여부 배지 갱신 (캐시 기준 + 비어있으면 백그라운드 새로고침 후 재갱신)
+async function cpUpdateRegBadge(){
+  const reg = document.getElementById('cp-reg-status-val');
+  if(!reg) return;
+  const myId = (CP_CURRENT && CP_CURRENT.id) ? CP_CURRENT.id : null;
+  if(!myId){ reg.style.display='none'; return; }
+  reg.style.display='inline-block';
+  if((!CP_CATALOG_CACHE || !CP_CATALOG_CACHE.length) && typeof cpFetchCatalogCached === 'function'){
+    try { await cpFetchCatalogCached(); } catch(_){}
+  }
+  const isReg = (CP_CATALOG_CACHE || []).some(c => c.cpId && c.cpId === myId);
+  if(isReg){
+    reg.textContent = '📋 카탈로그 등록됨';
+    reg.style.background = 'rgba(16,185,129,0.16)';
+    reg.style.color = '#34d399';
+  } else {
+    reg.textContent = '💾 저장만 (미등록)';
+    reg.style.background = 'rgba(127,127,127,0.14)';
+    reg.style.color = 'var(--text-muted)';
   }
 }
 
