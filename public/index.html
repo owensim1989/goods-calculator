@@ -5261,7 +5261,7 @@ async function cpPublishToCatalog(){
   let krRetail = 0;
   const krRow = (CP_COUNTRIES||[]).find(c=>c.code==='KR');
   if(krRow && krRow.finalLocal) krRetail = krRow.finalLocal;
-  else krRetail = parseFloat(document.getElementById('cp-target-price').value)||0;
+  else krRetail = cpParseNum(document.getElementById('cp-target-price').value)||0;
 
   // 기본 FOB 할인율 (입력 폼 값 or 0.45)
   const defaultRate = (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })();
