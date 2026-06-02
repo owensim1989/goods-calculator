@@ -2377,6 +2377,15 @@ app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
       const v = b.packagingPerBox.trim();
       props['1박스당_갯수'] = { rich_text: v ? [{ text: { content: v.slice(0, 200) } }] : [] };
     }
+    // 2026-06-02 — 사이즈·소재 인라인 편집 (사업화팀 요청). 빈 문자열로 비우기 허용
+    if (typeof b.sizeMm === 'string') {
+      const v = b.sizeMm.trim();
+      props['Size_mm'] = { rich_text: v ? [{ text: { content: v.slice(0, 500) } }] : [] };
+    }
+    if (typeof b.material === 'string') {
+      const v = b.material.trim();
+      props['Material'] = { rich_text: v ? [{ text: { content: v.slice(0, 500) } }] : [] };
+    }
     if (!Object.keys(props).length) return res.status(400).json({ error: '변경할 필드 없음' });
     const updated = await notion.pages.update({ page_id: req.params.id, properties: props });
     // barcode 변경 시 mdn-inventory 자동 sync (best-effort, 비차단). 2026-05-16

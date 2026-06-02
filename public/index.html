@@ -8266,6 +8266,8 @@ function catRenderDetailInto(it){
   };
   const wt = (it.weightG != null && it.weightG > 0) ? it.weightG : '';
   const pk = it.packagingPerBox || '';
+  const sz = it.sizeMm || '';
+  const mt = it.material || '';
   body.innerHTML = `
     <div style="display:flex;gap:16px;margin-bottom:16px;align-items:flex-start;">
       ${thumbHtml}
@@ -8295,11 +8297,25 @@ function catRenderDetailInto(it){
       </div>
 
       <div style="background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:12px;">
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">📐 스펙·소재</div>
-        <table style="width:100%;font-size:12px;border-collapse:collapse;">
-          <tr><td style="padding:4px 8px;color:var(--text-muted);vertical-align:top;width:90px;">사이즈</td><td style="padding:4px 8px;white-space:pre-wrap;">${escapeHtml(it.sizeMm || '-')}</td></tr>
-          <tr><td style="padding:4px 8px;color:var(--text-muted);vertical-align:top;">소재</td><td style="padding:4px 8px;white-space:pre-wrap;">${escapeHtml(it.material || '-')}</td></tr>
-        </table>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">📐 스펙·소재 <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">(직접 입력 — 추후 수정 가능)</span></div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">사이즈 (mm)</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="cat-detail-size" value="${escapeHtml(sz)}" placeholder="예: 70*70*90 또는 (H) 90"
+              style="flex:1;min-width:0;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:13px;">
+            <button class="cp-btn cp-btn-primary" style="font-size:11px;padding:7px 12px;flex-shrink:0;" onclick="catDetailSaveSize()">저장</button>
+          </div>
+          <div id="cat-detail-size-status" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px;"></div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">소재</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="cat-detail-material" value="${escapeHtml(mt)}" placeholder="예: PVC / ABS / Paper"
+              style="flex:1;min-width:0;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:13px;">
+            <button class="cp-btn cp-btn-primary" style="font-size:11px;padding:7px 12px;flex-shrink:0;" onclick="catDetailSaveMaterial()">저장</button>
+          </div>
+          <div id="cat-detail-material-status" style="font-size:10px;color:var(--text-muted);margin-top:4px;min-height:14px;"></div>
+        </div>
       </div>
     </div>
 
@@ -8378,6 +8394,53 @@ async function catDetailSavePackaging(){
     it.packagingPerBox = raw.trim();
     st.innerHTML = '<span style="color:var(--success);">✅ 저장됨</span>';
     setTimeout(()=>{ if (st) st.innerHTML = '숫자 (예: 4) 또는 문자 혼합 (예: 10box, 16-20) 모두 가능'; }, 2000);
+  } catch (e) {
+    st.innerHTML = '<span style="color:var(--danger);">❌ '+escapeHtml(e.message)+'</span>';
+  }
+}
+// 2026-06-02 — 사이즈·소재 인라인 저장 (사업화팀 요청)
+async function catDetailSaveSize(){
+  const it = _catDetailCurrent;
+  if (!it) return;
+  const el = document.getElementById('cat-detail-size');
+  const st = document.getElementById('cat-detail-size-status');
+  const raw = (el.value || '').toString();
+  st.innerHTML = '⏳ 저장 중...';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(it.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sizeMm: raw })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    it.sizeMm = raw.trim();
+    st.innerHTML = '<span style="color:var(--success);">✅ 저장됨</span>';
+    setTimeout(()=>{ if (st) st.innerHTML = ''; }, 2000);
+  } catch (e) {
+    st.innerHTML = '<span style="color:var(--danger);">❌ '+escapeHtml(e.message)+'</span>';
+  }
+}
+async function catDetailSaveMaterial(){
+  const it = _catDetailCurrent;
+  if (!it) return;
+  const el = document.getElementById('cat-detail-material');
+  const st = document.getElementById('cat-detail-material-status');
+  const raw = (el.value || '').toString();
+  st.innerHTML = '⏳ 저장 중...';
+  try {
+    const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(it.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ material: raw })
+    });
+    if (r.status === 401) { _cpHandleAuthExpired(); return; }
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    it.material = raw.trim();
+    st.innerHTML = '<span style="color:var(--success);">✅ 저장됨</span>';
+    setTimeout(()=>{ if (st) st.innerHTML = ''; }, 2000);
   } catch (e) {
     st.innerHTML = '<span style="color:var(--danger);">❌ '+escapeHtml(e.message)+'</span>';
   }
