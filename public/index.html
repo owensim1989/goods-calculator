@@ -5107,11 +5107,11 @@ function cpRenderMarketPrice(data){
 // ━━━ 저장/삭제 ━━━
 async function cpSave(){
   const name = document.getElementById('cp-name').value.trim();
-  if(!name){showToast('프로젝트명을 입력하세요');return;}
+  if(!name){showToast('프로젝트명을 입력하세요');return false;}
   const hs = document.getElementById('cp-hs').value.trim();
   if(hs && !window._cpHSConfirmed){
     if(!confirm('HS Code가 확정되지 않았습니다.\n\n🤖 다른 후보 버튼으로 후보들을 확인하고 "선택" 버튼을 눌러 확정하는 것을 권장합니다.\n\n그래도 현재 HS Code로 저장하시겠습니까?')){
-      return;
+      return false;
     }
   }
   const target = cpParseNum(document.getElementById('cp-target-price').value);
@@ -5144,7 +5144,7 @@ async function cpSave(){
           `${_line('같은 제품군', _famD)}\n` +
           `${_line('같은 카테고리', _catD)}\n\n` +
           `가격 일관성을 확인하고 저장하시겠습니까?`;
-        if (!confirm(_msg)) return;
+        if (!confirm(_msg)) return false;
       } else if (typeof showToast === 'function') {
         showToast('유사 제품 없음 — 신규 품목으로 저장', 'info');
       }
@@ -5216,7 +5216,7 @@ async function cpSave(){
     const method = CP_CURRENT ? 'PATCH' : 'POST';
     const r = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data = await r.json();
-    if(!r.ok || data.error){showToast('저장 실패: '+(data.error||r.status));return;}
+    if(!r.ok || data.error){showToast('저장 실패: '+(data.error||r.status));return false;}
     showToast(CP_CURRENT?'수정 완료':'저장 완료');
     CP_CURRENT = data.item || { id: data.id };
     document.getElementById('cp-btn-del').style.display='inline-block';
@@ -5233,7 +5233,8 @@ async function cpSave(){
       cpRefreshNextProductBtn();
     }
     await cpLoadList();
-  }catch(e){showToast('저장 실패: '+e.message);}
+    return true;
+  }catch(e){showToast('저장 실패: '+e.message); return false;}
 }
 
 async function cpDeleteCurrent(){
@@ -5336,7 +5337,10 @@ async function cpmpConfirm(){
   btn.disabled = true; btn.textContent = '📋 등록 중... (5~10초)';
   try{
     // 현재 폼 저장 (size/material/packagingType/fobDiscountRate 메타 포함)
-    await cpSave();
+    // ⚠️ cpSave 가 confirm 취소 등으로 중단되면 원본 미저장 → 카탈로그가 옛 데이터+신 rate 로
+    //    어긋남 (FOB 할인율이 재로딩 시 복귀하는 버그). 저장 실패 시 등록 중단.
+    const _saved = await cpSave();
+    if(_saved === false){ showToast('저장이 취소되어 카탈로그 등록을 중단했습니다'); return; }
     const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/publish-to-catalog',{
       method:'POST',
       headers:{'Content-Type':'application/json'},

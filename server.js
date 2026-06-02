@@ -6291,13 +6291,25 @@ app.post('/api/consumer-pricing/:id/publish-to-catalog', async (req, res) => {
       });
     }
 
-    // 6) 원본의 상태를 '승인'으로 업데이트
+    // 6) 원본의 상태를 '승인'으로 업데이트 + FOB 할인율을 원본 메모 메타에 영속화
+    //    카탈로그에 쓴 rate 와 원본 레코드의 rate 를 일관되게 맞춤 — 재로딩 시 0.45 복귀 방지
+    //    (다른 메타 필드 size/material/seriesRootId 등은 보존하고 fobDiscountRate 만 머지)
     try {
+      const _srcMemo = item.메모 || '';
+      let _meta = {};
+      const _mm = _srcMemo.match(/<!--BREAKDOWN_META:([\s\S]*?)-->/);
+      if (_mm) { try { _meta = JSON.parse(_mm[1]) || {}; } catch (_) {} }
+      _meta.fobDiscountRate = fobDiscountRate;
+      const _memoBody = _srcMemo.replace(/\n*<!--BREAKDOWN_META:[\s\S]*?-->/, '').replace(/\s+$/, '');
+      const _newMemo = _memoBody + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(_meta) + '-->';
       await notion.pages.update({
         page_id: req.params.id,
-        properties: { '상태': { select: { name: '승인' } } }
+        properties: {
+          '상태': { select: { name: '승인' } },
+          '메모': { rich_text: [{ type: 'text', text: { content: _newMemo } }] }
+        }
       });
-    } catch (e) { console.warn('[카탈로그] 상태 승인 업데이트 실패:', e.message); }
+    } catch (e) { console.warn('[카탈로그] 상태 승인/메모 메타 업데이트 실패:', e.message); }
 
     // mdn-inventory 양방향 sync (best-effort, 비차단). 2026-05-15 B+C 풀스택 사이클.
     // barcode 가 카탈로그에 없으면 sync skip (Owen 노션 직접 입력 또는 일괄 sync 트리거로 보강)
