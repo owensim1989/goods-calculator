@@ -1929,7 +1929,7 @@ function initFilters(){
   initCheckDD('b-prod','b-prod-menu','b-prod-label',allProds);
   initCheckDD('b-country','b-country-menu','b-country-label',allCountries);
   setupDD('v-product','dd-v-product',allProds,pCnt);
-  setupDD('p-quicksearch','dd-p-quicksearch',allProds,pCnt,{onSelect:selectProductQuick,isSelected:(n)=>qsSelected.has(n)});
+  setupDD('p-quicksearch','dd-p-quicksearch',allProds,pCnt,{onSelect:selectProductQuick,isSelected:(n)=>qsSelected.has(n),keepOpen:true});
   renderCombo();
 }
 // 빠른검색 다중선택 (2026-06-05): 제품명을 칩으로 누적 → 선택된 품명들로 즉시 조회
@@ -1937,7 +1937,7 @@ let qsSelected=new Set();
 function selectProductQuick(name){
   if(qsSelected.has(name)) qsSelected.delete(name); else qsSelected.add(name);
   applyQsSelection();
-  const inp=document.getElementById('p-quicksearch'); if(inp){inp.value='';inp.focus();}
+  // 입력어·드롭다운 유지(keepOpen) → 같은 검색결과에서 여러 건 연속 체크/해제
 }
 function applyQsSelection(){
   renderQsChips();
@@ -2085,7 +2085,7 @@ function setupDD(iid,did,items,cntFn,opts={}){
   inp.addEventListener('focus',()=>show(inp.value));
   inp.addEventListener('input',()=>{hl=-1;show(inp.value);});
   inp.addEventListener('keydown',e=>{const vs=dd.querySelectorAll('.dd-item');if(e.key==='ArrowDown'){e.preventDefault();hl=Math.min(hl+1,vs.length-1);vs.forEach((n,i)=>n.classList.toggle('highlighted',i===hl));}else if(e.key==='ArrowUp'){e.preventDefault();hl=Math.max(hl-1,-1);vs.forEach((n,i)=>n.classList.toggle('highlighted',i===hl));}else if(e.key==='Enter'){e.preventDefault();if(hl>=0&&vs[hl])vs[hl].click();}else if(e.key==='Escape')dd.classList.remove('show');});
-  function show(q){let h='';const f=items.filter(n=>matchQ(n,q));if(!f.length)h='<div class="dd-empty">결과 없음</div>';else h+=f.map(n=>{const sel=opts.isSelected&&opts.isSelected(n);return`<div class="dd-item${sel?' dd-selected':''}" data-value="${n}"><span>${n}${sel?' <span class="dd-check">✓ 선택됨</span>':''}</span><span class="dd-count">${cntFn(n)}건</span></div>`;}).join('');dd.innerHTML=h;dd.classList.add('show');dd.querySelectorAll('.dd-item').forEach(el=>el.addEventListener('click',()=>{inp.value=el.dataset.value;dd.classList.remove('show');if(opts.onSelect)opts.onSelect(el.dataset.value);}));}
+  function show(q){let h='';const f=items.filter(n=>matchQ(n,q));if(!f.length)h='<div class="dd-empty">결과 없음</div>';else h+=f.map(n=>{const sel=opts.isSelected&&opts.isSelected(n);return`<div class="dd-item${sel?' dd-selected':''}" data-value="${n}"><span>${n}${sel?' <span class="dd-check">✓ 선택됨</span>':''}</span><span class="dd-count">${cntFn(n)}건</span></div>`;}).join('');dd.innerHTML=h;dd.classList.add('show');dd.querySelectorAll('.dd-item').forEach(el=>el.addEventListener('mousedown',e=>{e.preventDefault();/* 입력 포커스 유지 */if(opts.keepOpen){if(opts.onSelect)opts.onSelect(el.dataset.value);show(inp.value);/* ✓ 갱신·드롭다운 유지 */}else{inp.value=el.dataset.value;dd.classList.remove('show');if(opts.onSelect)opts.onSelect(el.dataset.value);}}));}
   document.addEventListener('click',e=>{if(!inp.contains(e.target)&&!dd.contains(e.target))dd.classList.remove('show');});
 }
 
