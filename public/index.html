@@ -278,6 +278,12 @@ a.sidebar-item:hover{color:var(--text);}
 .search-dropdown .dd-item:hover,.search-dropdown .dd-item.highlighted{background:var(--primary-light);}
 .search-dropdown .dd-count{font-size:11px;color:var(--text-muted);}
 .search-dropdown .dd-empty{padding:12px;color:var(--text-muted);font-size:13px;text-align:center;}
+/* 드롭다운 스크롤바 — 다크테마 맞춤 (흰색 기본 스크롤바 대체, 2026-06-05) */
+.search-dropdown,.cat-dd-list{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.search-dropdown::-webkit-scrollbar,.cat-dd-list::-webkit-scrollbar{width:8px;}
+.search-dropdown::-webkit-scrollbar-track,.cat-dd-list::-webkit-scrollbar-track{background:transparent;}
+.search-dropdown::-webkit-scrollbar-thumb,.cat-dd-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+.search-dropdown::-webkit-scrollbar-thumb:hover,.cat-dd-list::-webkit-scrollbar-thumb:hover{background:var(--text-muted);background-clip:padding-box;}
 
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
 .stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center;}
