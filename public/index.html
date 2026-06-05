@@ -8206,6 +8206,15 @@ async function catBarcodeBlur(inputEl){
     });
     if (r.status === 401) { _cpHandleAuthExpired(); return; }
     const d = await r.json().catch(()=>({}));
+    // 2026-05-30: 바코드 중복 (409) — 친절한 메시지 + 원본 복원
+    if (r.status === 409 && d.error === 'barcode_duplicate') {
+      inputEl.value = original;
+      inputEl.classList.remove('saving','saved');
+      inputEl.classList.add('error');
+      showToast(d.message || '이미 등록된 바코드입니다 — 다른 값으로 변경해주세요', 'warn');
+      setTimeout(() => inputEl.classList.remove('error'), 4000);
+      return;
+    }
     if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
     inputEl.dataset.original = newVal;
     inputEl.classList.remove('saving','error');

@@ -2333,11 +2333,96 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
   }
 });
 
+// ━━━ mdn-shop (쇼핑몰) 카탈로그 sync 전용 — 키 기반 공개 엔드포인트 ━━━
+// shop.mrdonothing.com 가 server-to-server 로 호출. /api/consumer-pricing/catalog 와 동일 데이터,
+// 단 인증 대신 SHOP_CATALOG_KEY 키 가드. 판매상태 discontinued 제외 + 전체 페이지 반환.
+app.get('/api/shop-catalog', async (req, res) => {
+  const key = req.get('X-Shop-Api-Key') || req.query.key || '';
+  if (!process.env.SHOP_CATALOG_KEY || key !== process.env.SHOP_CATALOG_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  if (!notion) return res.json({ items: [] });
+  try {
+    const allPages = [];
+    let cursor;
+    do {
+      const resp = await notion.databases.query({
+        database_id: PRODUCT_CATALOG_DB_ID,
+        sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+        page_size: 100,
+        ...(cursor ? { start_cursor: cursor } : {})
+      });
+      allPages.push(...resp.results);
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+    const items = allPages.map(p => {
+      const pr = p.properties || {};
+      const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
+      const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+      const getSel = k => pr[k] && pr[k].select ? pr[k].select.name : null;
+      const getUrl = k => pr[k]?.url || '';
+      const cpIdRaw = getText('소비자가_산정_ID');
+      const imgId = cpIdRaw ? cpImageId(cpIdRaw) : '';
+      return {
+        id: p.id,
+        productName: getText('Product Name'),
+        barcode: (getText('Barcode') || '').trim(),
+        category: getSel('Category'),
+        imageId: imgId || null,
+        imageUrl: getUrl('Image_URL') || null,
+        sizeMm: getText('Size_mm'),
+        material: getText('Material'),
+        weightG: getNum('포장합무게_g'),
+        retails: {
+          KR: getNum('Retail_KR_KRW'), TW: getNum('Retail_TW_TWD'), US: getNum('Retail_US_USD'),
+          TH: getNum('Retail_TH_THB'), HK: getNum('Retail_HK_HKD'), CN: getNum('Retail_CN_CNY'), ID: getNum('Retail_ID_IDR')
+        },
+        판매상태: getSel('판매상태') || 'active'
+      };
+    }).filter(it => it.판매상태 !== 'discontinued' && it.productName);
+    res.json({ items, total: items.length });
+  } catch (e) {
+    console.error('[shop-catalog 조회 실패]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 카테고리 일괄 분류 등에 사용한 9개 카테고리 화이트리스트
 const CATALOG_CATEGORIES = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타'];
 
 // 카탈로그 항목 PATCH — Product Name / Category / 판매상태 / Barcode
 // barcode 변경 시 mdn-inventory 자동 sync (setImmediate, best-effort)
+// 2026-05-30: 바코드 중복 사전 체크 — 노션 카탈로그 DB 의 Barcode 일치하는 페이지 찾기 (자기 자신 제외)
+async function _findDuplicateCatalogBarcode(barcode, excludeId) {
+  if (!notion) return null;
+  const bc = String(barcode || '').trim();
+  if (!bc) return null;
+  try {
+    const r = await notion.databases.query({
+      database_id: PRODUCT_CATALOG_DB_ID,
+      filter: { property: 'Barcode', rich_text: { equals: bc } },
+      page_size: 5
+    });
+    for (const page of r.results) {
+      if (excludeId && page.id === excludeId) continue;
+      const name = (page.properties?.['Product Name']?.title || []).map(t => t.plain_text || '').join('') || '(이름 없음)';
+      return { id: page.id, name };
+    }
+    return null;
+  } catch (e) {
+    console.error('[_findDuplicateCatalogBarcode] error:', e.message);
+    return null;
+  }
+}
+
+// UI 실시간 검사용 — input blur 시 호출
+app.get('/api/consumer-pricing/catalog/check-barcode', async (req, res) => {
+  try {
+    const dup = await _findDuplicateCatalogBarcode(req.query.barcode, req.query.excludeId);
+    res.json({ available: !dup, existing: dup });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   try {
@@ -2356,9 +2441,13 @@ app.patch('/api/consumer-pricing/catalog/:id', async (req, res) => {
     if (typeof b.hsCode === 'string') {
       props['HS_Code'] = { rich_text: [{ text: { content: b.hsCode } }] };
     }
-    // Barcode — 빈 문자열로 비우기 허용. 단순 trim 후 그대로 저장 (validation 은 UI 측)
+    // Barcode — 빈 문자열로 비우기 허용. 2026-05-30: 중복 사전 체크 (자기 자신 제외)
     if (typeof b.barcode === 'string') {
       const bc = b.barcode.trim();
+      if (bc) {
+        const dup = await _findDuplicateCatalogBarcode(bc, req.params.id);
+        if (dup) return res.status(409).json({ error: 'barcode_duplicate', message: `이미 등록된 바코드입니다 — 제품 "${dup.name}"`, existing: dup });
+      }
       props['Barcode'] = { rich_text: bc ? [{ text: { content: bc } }] : [] };
       barcodeChanged = true;
     }
