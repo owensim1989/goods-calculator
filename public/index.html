@@ -6987,10 +6987,17 @@ function renderParsedCard(it, status){
   ) : '';
   const archiveBadge = archivePath ? '<div style="font-size:10.5px;color:var(--text-muted);margin-top:3px;">📂 archive: '+escapeHtml(archivePath)+'</div>' : '';
 
+  // 🏭 거래처(업체) — 모든 상태(미검수·검수완료·반려) 카드 공통 헤드라인 (2026-06-05)
+  const vendorName = vendorInName; // overrides.거래처 || it.vendor
+  const vendorHeadline = vendorName
+    ? '🏭 '+escapeHtml(vendorName)
+    : '🏭 <span style="color:var(--text-muted);font-weight:400;">거래처 미지정</span>';
+
   return '<div class="ai-card '+(isPending?'':'reviewed')+'" data-id="'+it.id+'">'+
     '<div class="ai-card-head">'+
       '<div>'+
-        '<div class="name">📄 '+escapeHtml(displayName)+'</div>'+
+        '<div class="name">'+vendorHeadline+'</div>'+
+        '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📄 '+escapeHtml(displayName)+'</div>'+
         '<div class="meta">제출: '+escapeHtml(submittedBy)+' · '+escapeHtml(created)+
         (file.webViewLink?' · <a href="'+file.webViewLink+'" target="_blank">Drive에서 열기 ↗</a>':'')+'</div>'+
         archiveBadge+
