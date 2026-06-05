@@ -355,6 +355,12 @@ tbody tr:hover{background:var(--primary-light);}
 .rec-vendor-badge{display:inline-block;font-size:10px;font-weight:600;color:#92400e;background:color-mix(in srgb,#f5b301 30%,transparent);border-radius:4px;padding:1px 6px;margin-left:4px;cursor:help;vertical-align:middle;}
 #product-tbody tr.rec-row{background:color-mix(in srgb,#f5b301 8%,var(--bg));}
 #product-tbody tr.rec-row:hover{background:color-mix(in srgb,#f5b301 14%,var(--bg));}
+/* 오래된 견적 흐리게 (2026-06-05) — 견적일 1년 이상 경과 = 단가 신뢰도 낮음 */
+#product-tbody tr.stale-row{opacity:.42;}
+#product-tbody tr.stale-row:hover{opacity:.72;}
+.qd-cell{white-space:nowrap;font-size:12px;}
+.qd-cell .stale-badge{font-size:9px;background:var(--warning-light,#92400e40);color:var(--warning);padding:1px 4px;border-radius:3px;white-space:nowrap;margin-left:3px;}
+.qd-cell .no-date{color:var(--text-muted);font-style:italic;}
 /* 체크박스 다크모드 */
 input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);border:1px solid var(--border);border-radius:3px;appearance:auto;}
 [data-theme="dark"] input[type="checkbox"]{color-scheme:dark;}
@@ -849,7 +855,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <h3 style="margin:0">상세 데이터</h3>
       <button class="btn-goto-vendor" onclick="goToVendorTab()">🏭 이 품명으로 거래처 비교 →</button>
     </div>
-    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>제품명</th><th>거래처</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>제품명</th><th>거래처</th><th>견적일</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
     <div class="compare-action-bar" id="compare-action-bar"><span class="cab-text" id="cab-text">0건 선택</span><button class="cab-btn" onclick="showComparePanel()">비교하기</button><button class="cab-btn" onclick="clearCompare()">선택 해제</button></div>
     <div class="compare-panel" id="compare-panel"><h3><span>📊 선택 항목 비교</span><button class="close-btn" onclick="hideComparePanel()">✕</button></h3><div class="compare-grid" id="compare-grid"></div></div>
   </div>
@@ -2234,6 +2240,8 @@ function searchProducts(){
     const 총제작비_자동=(adj!=null&&i.수량)?adj*i.수량:null;
     return{...i,개당단가_KRW:krw,개당부대비용:개당부대,개당단가_부대비용포함:adj,제작비_KRW,총제작비_자동};
   });
+  // 견적일(견적일자 우선, 없으면 발주일) 최신순 기본정렬 — 최근 견적이 위로, 날짜 미기재는 맨 아래 (2026-06-05)
+  en.sort((a,b)=>((b.견적일자||b.발주일||'0').localeCompare(a.견적일자||a.발주일||'0')));
   if(!en.length){document.getElementById('product-stats').style.display='none';document.getElementById('scatter-wrap').style.display='none';document.getElementById('product-table-wrap').style.display='none';document.getElementById('product-empty').style.display='none';return;}
   document.getElementById('product-empty').style.display='none';
   const pr=en.map(i=>i.개당단가_부대비용포함).filter(Boolean);
@@ -2272,7 +2280,10 @@ function searchProducts(){
     }
     const recStar=`<button class="rec-star${i.추천?' on':''}" onclick="event.stopPropagation();toggleRecommend('${i.id}',event)" title="${i.추천?'추천 업체 — 클릭하면 해제':'이 업체를 추천으로 표시'}">${i.추천?'★':'☆'}</button>`;
     const recMemo=(i.추천&&i.추천메모)?`<div class="rec-memo">💬 ${escapeHtml(i.추천메모)}</div>`:'';
-    return`<tr class="${i.추천?'rec-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    // 견적일 + 1년 이상 경과 판정 (gDays<-365) → 행 흐리게 + ⚠ 뱃지
+    const qd=i.견적일자||i.발주일||null;const qdDays=qd?gDays(qd):null;const isStale=qdDays!=null&&qdDays<-365;
+    const qdCell=qd?`${qd}${isStale?'<span class="stale-badge" title="견적일로부터 1년 이상 경과 — 환율·원자재가 변동으로 단가 재확인 권장">⚠ 1년+</span>':''}`:`<span class="no-date">미기재</span>`;
+    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td class="qd-cell">${qdCell}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
