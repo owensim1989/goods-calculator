@@ -371,6 +371,7 @@ async function pushApprovedItemToUnifiedDb(it) {
     if (r.상세스펙) properties['상세스펙'] = { rich_text: [{ text: { content: String(r.상세스펙).substring(0, 1900) } }] };
     if (r.통화) properties['통화'] = { select: { name: String(r.통화).substring(0, 20) } };
     properties['거래상태'] = { select: { name: r.거래상태 || '견적접수' } };
+    if (r.견적일자 && /^\d{4}-\d{2}-\d{2}/.test(String(r.견적일자))) properties['견적일자'] = { date: { start: String(r.견적일자).slice(0, 10) } };
     properties['데이터유형'] = { select: { name: r.데이터유형 || 'AI파싱' } };
     properties['데이터출처'] = { rich_text: [{ text: { content: dataSrc } }] };
     const page = await notion.pages.create({ parent: { database_id: UNIFIED_DB_ID }, properties });

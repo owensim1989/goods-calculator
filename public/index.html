@@ -855,7 +855,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <h3 style="margin:0">상세 데이터</h3>
       <button class="btn-goto-vendor" onclick="goToVendorTab()">🏭 이 품명으로 거래처 비교 →</button>
     </div>
-    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>제품명</th><th>거래처</th><th>견적일</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>견적일</th><th>제품명</th><th>거래처</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
     <div class="compare-action-bar" id="compare-action-bar"><span class="cab-text" id="cab-text">0건 선택</span><button class="cab-btn" onclick="showComparePanel()">비교하기</button><button class="cab-btn" onclick="clearCompare()">선택 해제</button></div>
     <div class="compare-panel" id="compare-panel"><h3><span>📊 선택 항목 비교</span><button class="close-btn" onclick="hideComparePanel()">✕</button></h3><div class="compare-grid" id="compare-grid"></div></div>
   </div>
@@ -2283,7 +2283,7 @@ function searchProducts(){
     // 견적일 + 1년 이상 경과 판정 (gDays<-365) → 행 흐리게 + ⚠ 뱃지
     const qd=i.견적일자||i.발주일||null;const qdDays=qd?gDays(qd):null;const isStale=qdDays!=null&&qdDays<-365;
     const qdCell=qd?`${qd}${isStale?'<span class="stale-badge" title="견적일로부터 1년 이상 경과 — 환율·원자재가 변동으로 단가 재확인 권장">⚠ 1년+</span>':''}`:`<span class="no-date">미기재</span>`;
-    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td class="qd-cell">${qdCell}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
