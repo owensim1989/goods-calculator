@@ -378,6 +378,11 @@ tbody tr:hover{background:var(--primary-light);}
 .qs-reset:hover{color:var(--text);border-color:var(--primary);}
 .filter-toggle-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:2px 0;margin:0 0 10px 34px;}
 #p-detail-filters{margin-left:34px;}
+/* 빠른검색 다중선택 칩 (2026-06-05) */
+.qs-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px 34px;}
+.qs-chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-light);color:var(--text);border:1px solid var(--primary);border-radius:16px;padding:4px 6px 4px 12px;font-size:13px;}
+.qs-chip .qs-chip-x{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;border-radius:50%;}
+.qs-chip .qs-chip-x:hover{background:var(--primary);color:#fff;}
 .filter-toggle-btn:hover{color:var(--text);}
 .filter-toggle-btn .arrow{display:inline-block;transition:transform .15s;}
 .filter-toggle-btn.open .arrow{transform:rotate(90deg);}
@@ -856,6 +861,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <button class="qs-reset" onclick="clearProductSearch()" title="검색 초기화·전체 보기">전체 보기</button>
   </div>
+  <div class="qs-chips" id="p-qs-chips" style="display:none;"></div>
   <button class="filter-toggle-btn" onclick="toggleProductFilters()"><span class="arrow" id="p-filter-arrow">▸</span> 상세 필터 (품목·품명·국가 다중선택)</button>
   <div class="filter-bar" id="p-detail-filters" style="display:none;">
     <div class="filter-group"><label>품목</label><div class="cat-dd-wrap" id="p-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-cat')"><span id="p-cat-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="p-cat-menu"></div></div></div>
@@ -1924,18 +1930,35 @@ function initFilters(){
   setupDD('p-quicksearch','dd-p-quicksearch',allProds,pCnt,{onSelect:selectProductQuick});
   renderCombo();
 }
-// 빠른검색: 제품명 선택 → 품목·국가 전체로, 품명 단일선택 후 즉시 조회 (2026-06-05)
+// 빠른검색 다중선택 (2026-06-05): 제품명을 칩으로 누적 → 선택된 품명들로 즉시 조회
+let qsSelected=new Set();
 function selectProductQuick(name){
+  qsSelected.add(name);
+  applyQsSelection();
+  const inp=document.getElementById('p-quicksearch'); if(inp){inp.value='';inp.focus();}
+}
+function applyQsSelection(){
+  renderQsChips();
+  if(qsSelected.size===0){ clearProductSearch(); return; }
   if(allCats.length) checkDDState['p-cat']=new Set(allCats);
   if((checkDDItems['p-country']||[]).length) checkDDState['p-country']=new Set(checkDDItems['p-country']);
-  checkDDState['p-prod']=new Set([name]);
+  checkDDState['p-prod']=new Set(qsSelected);
   updateCheckLabel('p-cat','p-cat-label',allCats);
   updateCheckLabel('p-prod','p-prod-label',checkDDItems['p-prod']||[]);
   updateCheckLabel('p-country','p-country-label',checkDDItems['p-country']||[]);
   searchProducts();
 }
+function renderQsChips(){
+  const c=document.getElementById('p-qs-chips'); if(!c) return;
+  const arr=[...qsSelected];
+  c.innerHTML=arr.map(n=>{const ev=n.replace(/\\/g,'\\\\').replace(/'/g,"\\'");return`<span class="qs-chip">${escapeHtml(n)}<button class="qs-chip-x" onclick="removeQsChip('${ev}')" title="제거">✕</button></span>`;}).join('');
+  c.style.display=arr.length?'flex':'none';
+}
+function removeQsChip(name){ qsSelected.delete(name); applyQsSelection(); }
 function clearProductSearch(){
   const inp=document.getElementById('p-quicksearch'); if(inp) inp.value='';
+  qsSelected.clear();
+  const c=document.getElementById('p-qs-chips'); if(c){c.innerHTML='';c.style.display='none';}
   if(allCats.length) checkDDState['p-cat']=new Set(allCats);
   if((checkDDItems['p-prod']||[]).length) checkDDState['p-prod']=new Set(checkDDItems['p-prod']);
   if((checkDDItems['p-country']||[]).length) checkDDState['p-country']=new Set(checkDDItems['p-country']);
