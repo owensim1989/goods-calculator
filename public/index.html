@@ -431,6 +431,25 @@ tbody tr:hover{background:var(--primary-light);}
 .su-bulk-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
 .su-bulk-foot{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--border);}
 .su-bulk-status{flex:1;font-size:12px;color:var(--text-muted);}
+/* 견적 비교 (2026-06-09) — 제목헤더 + 거래처=열 비교표, 채택 항상 맨앞 */
+.qc-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
+.qc-chk{font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:5px;cursor:pointer;}
+.qc-hint{font-size:12px;color:var(--text-muted);margin-left:auto;}
+.qc-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:18px;}
+.qc-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:13px 16px;background:var(--input-bg);border-bottom:1px solid var(--border);}
+.qc-head .ico{font-size:17px;} .qc-title{font-weight:700;font-size:14.5px;}
+.qc-pill{font-size:11px;padding:2px 9px;border-radius:11px;background:rgba(34,197,94,.14);color:#86efac;}
+.qc-cnt{font-size:11px;padding:2px 9px;border-radius:11px;background:var(--primary-light);color:#93c5fd;margin-left:auto;}
+.qc-grid{display:grid;font-size:12.5px;}
+.qc-grid>div{padding:9px 11px;border-top:1px solid #1f2b3e;border-right:1px solid #1f2b3e;text-align:center;}
+.qc-rh{color:var(--text-muted);background:var(--input-bg);font-size:11px;text-align:left!important;}
+.qc-vh{font-weight:700;background:var(--card2,#172033);display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
+.qc-vh.ad{border-bottom:2px solid var(--ok,#22c55e);}
+.qc-cell.ad,.qc-vh.ad{background:rgba(34,197,94,.1);}
+.qc-badge{background:var(--ok,#22c55e);color:#06280f;font-weight:700;font-size:10px;padding:1px 7px;border-radius:5px;}
+.qc-adopt{border:1px solid var(--border);background:var(--input-bg);color:var(--text-muted);font-size:10.5px;padding:2px 8px;border-radius:5px;cursor:pointer;}
+.qc-adopt:hover{border-color:var(--ok,#22c55e);color:#86efac;}
+.qc-foot{padding:10px 16px;border-top:1px solid var(--border);font-size:12.5px;color:#86efac;}
 .filter-toggle-btn:hover{color:var(--text);}
 .filter-toggle-btn .arrow{display:inline-block;transition:transform .15s;}
 .filter-toggle-btn.open .arrow{transform:rotate(90deg);}
@@ -861,6 +880,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">제품 단가</button>
       <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 조합</button>
       <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
+      <button class="sidebar-item" data-page="quote-compare" onclick="switchPage(this)">견적 비교</button>
     </div>
     <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">미스터두낫띵</div>
@@ -1043,6 +1063,17 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
   <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">거래처별 평균단가 비교</h3><canvas id="vendorBarChart"></canvas></div>
   <div class="empty-state" id="vendor-empty"><div class="icon">🏭</div><p>품명을 선택하면 거래처별 단가·납품실적을 비교합니다</p></div>
+</div>
+
+<!-- 견적 비교 (한 건을 위해 받은 여러 견적 묶음 + 채택 표시, 2026-06-09) -->
+<div class="tab-page" id="page-quote-compare">
+  <div class="qc-bar">
+    <input type="text" id="qcSearch" class="search-input" placeholder="견적건·제품명 검색 (초성 가능)" autocomplete="off" oninput="renderQuoteCompare()" style="max-width:360px;">
+    <label class="qc-chk"><input type="checkbox" id="qcOnlyAdopted" onchange="renderQuoteCompare()"> 채택건만</label>
+    <span class="qc-hint" id="qcHint"></span>
+  </div>
+  <div id="qcBody"></div>
+  <div class="empty-state" id="qcEmpty" style="display:none;"><div class="icon">📦</div><p>묶인 견적이 없습니다</p></div>
 </div>
 
 <!-- 탭4: 🌏 소비자가 산정 -->
@@ -2160,6 +2191,54 @@ async function saveSuBulk(){
   }catch(e){ st.textContent='❌ '+(e.message||e); }
   finally{ btn.disabled=false; updateSuBulkCount(); }
 }
+// ━━ 견적 비교 (2026-06-09) — 한 건 위해 받은 여러 견적 묶음 + 채택 표시 ━━
+let _qcGroups=[];
+function _qcKey(name){ let s=(name||'').trim(); s=s.replace(/\s*[—-]\s*[^—-]*$/,'').trim(); return s||'(미지정)'; }
+function _qcKrw(r){ const v=r.개당단가; if(v==null) return null; const c=r.통화||'KRW'; const fx=c==='USD'?FX.USD:c==='RMB'?FX.RMB:1; return Math.round(v*fx); }
+function renderQuoteCompare(){
+  const q=((document.getElementById('qcSearch')||{}).value||'').trim();
+  const onlyAd=(document.getElementById('qcOnlyAdopted')||{}).checked;
+  const items=(typeof DATA!=='undefined'&&Array.isArray(DATA))?DATA:[];
+  const groups={};
+  items.forEach(it=>{ const k=_qcKey(it.프로젝트명); (groups[k]=groups[k]||[]).push(it); });
+  let keys=Object.keys(groups).filter(k=>groups[k].length>=2);
+  if(q) keys=keys.filter(k=> matchQ(k,q) || groups[k].some(it=>(it.품명||[]).some(n=>matchQ(n,q))));
+  if(onlyAd) keys=keys.filter(k=> groups[k].some(it=>it.견적상태==='발주확정'));
+  keys.sort((a,b)=>groups[b].length-groups[a].length);
+  _qcGroups=keys.map(k=>{
+    const sorted=groups[k].slice().sort((a,b)=>{ const aw=a.견적상태==='발주확정'?0:1,bw=b.견적상태==='발주확정'?0:1; if(aw!==bw)return aw-bw; return (_qcKrw(a)||1e12)-(_qcKrw(b)||1e12); }).slice(0,6);
+    return { key:k, rows:sorted, allIds:groups[k].filter(r=>!String(r.id).startsWith('parsed:')).map(r=>r.id), prices:groups[k].map(_qcKrw).filter(v=>v!=null) };
+  });
+  const body=document.getElementById('qcBody'), empty=document.getElementById('qcEmpty'), hint=document.getElementById('qcHint');
+  if(hint) hint.textContent=_qcGroups.length+'개 견적건';
+  if(!_qcGroups.length){ body.innerHTML=''; if(empty)empty.style.display='block'; return; }
+  if(empty) empty.style.display='none';
+  body.innerHTML=_qcGroups.map((g,gi)=>_qcCard(g,gi)).join('');
+}
+function _qcCard(g,gi){
+  const rows=g.rows;
+  const su=rows.find(r=>r.수요처유형);
+  const suPill=su?`<span class="qc-pill">${(SU_META[su.수요처유형]||{}).i||''} ${escapeHtml(su.수요처명||su.수요처유형)}</span>`:'';
+  const adopted=rows.find(r=>r.견적상태==='발주확정');
+  let foot='';
+  if(adopted && g.prices.length>1){ const max=Math.max(...g.prices); const ad=_qcKrw(adopted); if(max>ad){ foot=`<div class="qc-foot">💰 채택 ${escapeHtml(adopted.거래처||'')} — 최고가 대비 -${Math.round((1-ad/max)*100)}% / 건당 ${fmtP(max-ad)} 절감</div>`; } }
+  let h=`<div class="qc-card"><div class="qc-head"><span class="ico">📦</span><span class="qc-title">${escapeHtml(g.key)}</span>${suPill}<span class="qc-cnt">${rows.length}개 비교</span></div>`;
+  const colH=rows.map(r=>{ const ad=r.견적상태==='발주확정'; const parsed=String(r.id).startsWith('parsed:');
+    return `<div class="qc-vh${ad?' ad':''}">${ad?'⭐ ':''}${escapeHtml(r.거래처||'-')}${ad?'<span class="qc-badge">채택</span>':(parsed?'':`<button class="qc-adopt" onclick="qcAdopt(${gi},'${r.id}')">채택</button>`)}</div>`;
+  }).join('');
+  const defs=[['단가',r=>{const k=_qcKrw(r);return k!=null?fmtP(k)+(r.통화&&r.통화!=='KRW'?`<br><span style="font-size:10px;color:var(--text-muted)">${r.통화} ${r.개당단가}</span>`:''):'-';}],['국가',r=>cB(r.국가)||'-'],['납기',r=>r.제작일수?r.제작일수+'일':'-'],['견적일',r=>r.견적일자||r.발주일||'-']];
+  let grid=`<div class="qc-grid" style="grid-template-columns:60px repeat(${rows.length},minmax(0,1fr));"><div class="qc-rh"></div>${colH}`;
+  defs.forEach(([label,fn])=>{ grid+=`<div class="qc-rh">${label}</div>`+rows.map(r=>`<div class="qc-cell${r.견적상태==='발주확정'?' ad':''}">${fn(r)}</div>`).join(''); });
+  grid+='</div>';
+  return h+grid+foot+'</div>';
+}
+function qcAdopt(gi, adoptedId){
+  const g=_qcGroups[gi]; if(!g||!g.allIds.length) return;
+  fetch('/api/quote-adopt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:g.allIds, adoptedId})})
+    .then(r=>r.json()).then(j=>{ if(j&&j.ok){ if(typeof showToast==='function')showToast('✓ 채택 반영 ('+j.updated+'건)'); if(typeof loadData==='function'){ loadData().then(()=>renderQuoteCompare()); } else renderQuoteCompare(); }
+      else { if(typeof showToast==='function')showToast('실패: '+((j&&j.error)||'')); } })
+    .catch(e=>{ if(typeof showToast==='function')showToast('실패: '+e.message); });
+}
 function toggleProductFilters(){
   const el=document.getElementById('p-detail-filters');
   const btn=document.querySelector('.filter-toggle-btn');
@@ -2376,6 +2455,10 @@ function switchPage(item){
   // catalog 진입 시 데이터 로드
   if(item.dataset.page==='catalog'){
     if(typeof catInit==='function') catInit();
+  }
+  // 견적 비교 진입 — 그룹핑 렌더
+  if(item.dataset.page==='quote-compare'){
+    if(typeof renderQuoteCompare==='function') renderQuoteCompare();
   }
   // orders 진입 — iframe lazy load (첫 진입 시만 src 박음, 이후 reload 안 함 → 상태 보존)
   if(item.dataset.page==='orders'){

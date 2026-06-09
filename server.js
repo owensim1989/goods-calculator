@@ -645,6 +645,26 @@ app.post('/api/products/demand-source-bulk', async (req, res) => {
   res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 20) });
 });
 
+// 견적 채택 (2026-06-09) — 한 견적그룹에서 adoptedId = 발주확정, 나머지 = 미채택
+app.post('/api/quote-adopt', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion 미설정' });
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+  const adoptedId = req.body && req.body.adoptedId;
+  if (!ids.length || !adoptedId) return res.status(400).json({ error: 'ids·adoptedId 필요' });
+  let updated = 0; const errors = [];
+  for (const id of ids) {
+    if (String(id).startsWith('parsed:')) continue; // 노션 미등재 건은 스킵
+    const status = (id === adoptedId) ? '발주확정' : '미채택';
+    try {
+      await notion.pages.update({ page_id: id, properties: { '견적상태': { select: { name: status } } } });
+      const ci = (cache.items || []).find(x => x.id === id); if (ci) ci.견적상태 = status;
+      updated++;
+    } catch (e) { errors.push({ id, error: e.message }); }
+  }
+  if (updated) { try { saveCache(cache); } catch (e) {} }
+  res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 10) });
+});
+
 // 품명 → 단가 조회 (필터: 품목, 품명, 국가, 거래처)
 app.get('/api/products', (req, res) => {
   let items = cache.items || [];
