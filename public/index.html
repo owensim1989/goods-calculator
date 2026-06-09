@@ -1073,7 +1073,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <span class="qc-hint" id="qcHint"></span>
   </div>
   <div id="qcBody"></div>
-  <div class="empty-state" id="qcEmpty" style="display:none;"><div class="icon">📦</div><p>묶인 견적이 없습니다</p></div>
+  <div class="empty-state" id="qcEmpty" style="display:none;"><div class="icon">📦</div><p>묶인 견적이 없습니다<br><span style="font-size:12px;color:var(--text-muted)">"○○ <b>비교견적</b> - 거래처" 또는 "○○ <b>견적비교</b> - 거래처" 식으로 등록된 견적이 2건 이상이면 자동으로 묶입니다.</span></p></div>
 </div>
 
 <!-- 탭4: 🌏 소비자가 산정 -->
@@ -2200,7 +2200,8 @@ function renderQuoteCompare(){
   const onlyAd=(document.getElementById('qcOnlyAdopted')||{}).checked;
   const items=(typeof DATA!=='undefined'&&Array.isArray(DATA))?DATA:[];
   const groups={};
-  items.forEach(it=>{ const k=_qcKey(it.프로젝트명); (groups[k]=groups[k]||[]).push(it); });
+  // "○○ 비교견적/견적비교 - 거래처" 처럼 명시적 비교 견적만 자동 묶음 (다른 제품 오묶음 방지, 2026-06-09)
+  items.forEach(it=>{ const name=it.프로젝트명||''; if(!/비교견적|견적비교/.test(name)) return; const k=_qcKey(name); (groups[k]=groups[k]||[]).push(it); });
   let keys=Object.keys(groups).filter(k=>groups[k].length>=2);
   if(q) keys=keys.filter(k=> matchQ(k,q) || groups[k].some(it=>(it.품명||[]).some(n=>matchQ(n,q))));
   if(onlyAd) keys=keys.filter(k=> groups[k].some(it=>it.견적상태==='발주확정'));
