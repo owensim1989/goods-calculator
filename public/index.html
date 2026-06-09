@@ -385,6 +385,16 @@ tbody tr:hover{background:var(--primary-light);}
 .qs-chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-light);color:var(--text);border:1px solid var(--primary);border-radius:16px;padding:4px 6px 4px 12px;font-size:13px;}
 .qs-chip .qs-chip-x{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;border-radius:50%;}
 .qs-chip .qs-chip-x:hover{background:var(--primary);color:#fff;}
+/* 수요처 (2026-06-08) */
+.su-filter-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px 34px;}
+.su-filter-bar .su-flabel{font-size:12px;color:var(--text-muted);margin-right:2px;}
+.su-btn{padding:5px 11px;border:1px solid var(--border);border-radius:14px;background:var(--input-bg);color:var(--text-muted);font-size:12px;cursor:pointer;}
+.su-btn:hover{color:var(--text);}
+.su-btn.active{border-color:var(--primary);background:var(--primary-light);color:var(--text);}
+.su-chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:11px;white-space:nowrap;}
+.su-chip.su-own{background:rgba(34,197,94,.15);color:#86efac;}
+.su-chip.su-client{background:var(--primary-light);color:#93c5fd;}
+.su-chip.su-lic{background:rgba(167,139,250,.16);color:#c4b5fd;}
 .filter-toggle-btn:hover{color:var(--text);}
 .filter-toggle-btn .arrow{display:inline-block;transition:transform .15s;}
 .filter-toggle-btn.open .arrow{transform:rotate(90deg);}
@@ -864,6 +874,13 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <button class="qs-reset" onclick="clearProductSearch()" title="검색 초기화·전체 보기">전체 보기</button>
   </div>
   <div class="qs-chips" id="p-qs-chips" style="display:none;"></div>
+  <div class="su-filter-bar" id="p-su-filter">
+    <span class="su-flabel">수요처</span>
+    <button class="su-btn active" onclick="setSuFilter(null,this)">전체</button>
+    <button class="su-btn" onclick="setSuFilter('자체브랜드',this)">🟢 자체브랜드</button>
+    <button class="su-btn" onclick="setSuFilter('고객사',this)">🔵 고객사</button>
+    <button class="su-btn" onclick="setSuFilter('라이선스·콜라보',this)">🟣 라이선스</button>
+  </div>
   <button class="filter-toggle-btn" onclick="toggleProductFilters()"><span class="arrow" id="p-filter-arrow">▸</span> 상세 필터 (품목·품명·국가 다중선택)</button>
   <div class="filter-bar" id="p-detail-filters" style="display:none;">
     <div class="filter-group"><label>품목</label><div class="cat-dd-wrap" id="p-cat-wrap"><div class="cat-dd-btn" onclick="toggleCheckDD('p-cat')"><span id="p-cat-label">전체</span><span class="arrow">▼</span></div><div class="cat-dd-menu" id="p-cat-menu"></div></div></div>
@@ -893,7 +910,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <h3 style="margin:0">상세 데이터</h3>
       <button class="btn-goto-vendor" onclick="goToVendorTab()">🏭 이 품명으로 거래처 비교 →</button>
     </div>
-    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>견적일</th><th>제품명</th><th>거래처</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>견적일</th><th>제품명</th><th>거래처</th><th>수요처</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
     <div class="compare-action-bar" id="compare-action-bar"><span class="cab-text" id="cab-text">0건 선택</span><button class="cab-btn" onclick="showComparePanel()">비교하기</button><button class="cab-btn" onclick="clearCompare()">선택 해제</button></div>
     <div class="compare-panel" id="compare-panel"><h3><span>📊 선택 항목 비교</span><button class="close-btn" onclick="hideComparePanel()">✕</button></h3><div class="compare-grid" id="compare-grid"></div></div>
   </div>
@@ -1970,6 +1987,21 @@ function clearProductSearch(){
   ['product-stats','scatter-wrap','product-table-wrap'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
   const emp=document.getElementById('product-empty'); if(emp) emp.style.display='block';
 }
+// 수요처 (2026-06-08) — 이 견적이 누구를 위한 것인가
+const SU_META={'자체브랜드':{c:'own',i:'🟢'},'고객사':{c:'client',i:'🔵'},'라이선스·콜라보':{c:'lic',i:'🟣'}};
+let suFilter=null;
+function suCell(i){
+  const t=i.수요처유형; if(!t) return '<span style="color:var(--text-muted)">-</span>';
+  const m=SU_META[t]||{c:'own',i:'•'};
+  const nm=i.수요처명?escapeHtml(i.수요처명):t;
+  return `<span class="su-chip su-${m.c}" title="${escapeHtml(t)}${i.수요처명?' · '+escapeHtml(i.수요처명):''}">${m.i} ${nm}</span>`;
+}
+function setSuFilter(type,btn){
+  suFilter=type;
+  document.querySelectorAll('#p-su-filter .su-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  searchProducts();
+}
 function toggleProductFilters(){
   const el=document.getElementById('p-detail-filters');
   const btn=document.querySelector('.filter-toggle-btn');
@@ -2313,6 +2345,7 @@ function searchProducts(){
   if(aCats)items=items.filter(i=>aCats.includes(i.품목));
   if(aProds)items=items.filter(i=>(i.품명||[]).some(n=>aProds.includes(n)));
   if(aCountry)items=items.filter(i=>aCountry.includes(i.국가));
+  if(suFilter)items=items.filter(i=>i.수요처유형===suFilter);
   const en=items.map(i=>{
     if(i.개당단가_부대비용포함!=null&&i.제작비_KRW!==undefined)return i;
     const r=SURCHARGE[i.국가]||0;const cur=i.통화||'KRW';const fx=cur==='USD'?FX.USD:cur==='RMB'?FX.RMB:1;
@@ -2367,7 +2400,7 @@ function searchProducts(){
     // 견적일 + 1년 이상 경과 판정 (gDays<-365) → 행 흐리게 + ⚠ 뱃지
     const qd=i.견적일자||i.발주일||null;const qdDays=qd?gDays(qd):null;const isStale=qdDays!=null&&qdDays<-365;
     const qdCell=qd?`${qd}${isStale?'<span class="stale-badge" title="견적일로부터 1년 이상 경과 — 환율·원자재가 변동으로 단가 재확인 권장">⚠ 1년+</span>':''}`:`<span class="no-date">미기재</span>`;
-    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${suCell(i)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
@@ -7107,6 +7140,8 @@ function renderParsedCard(it, status){
       '<div><label>거래처</label><input id="ov-vendor-'+it.id+'" value="'+escapeAttr(overrides.거래처||it.vendor||'')+'"></div>'+
       '<div><label>국가</label><select id="ov-country-'+it.id+'"><option value="">— 선택 —</option>'+countryOptions+'</select></div>'+
       '<div><label>품목</label><select id="ov-category-'+it.id+'"><option value="">— 선택 —</option>'+categoryOptions+'</select></div>'+
+      '<div><label>수요처 유형</label><select id="ov-sutype-'+it.id+'"><option value="">— 선택 —</option><option value="자체브랜드"'+((overrides.수요처유형||'')==='자체브랜드'?' selected':'')+'>🟢 자체브랜드</option><option value="고객사"'+((overrides.수요처유형||'')==='고객사'?' selected':'')+'>🔵 고객사</option><option value="라이선스·콜라보"'+((overrides.수요처유형||'')==='라이선스·콜라보'?' selected':'')+'>🟣 라이선스·콜라보</option></select></div>'+
+      '<div><label>수요처명 (브랜드/고객)</label><input id="ov-suname-'+it.id+'" value="'+escapeAttr(overrides.수요처명||'')+'" placeholder="예: 미스터두낫띵 / OO기업"></div>'+
     '</div>' : '') +
     _aiRenderProductTable(it, isPending) +
     ((packagingCnt||oneTimeCnt) ? '<div class="ai-card-extras"><details><summary>📦 포장 '+packagingCnt+'건 / 💰 일회성 '+oneTimeCnt+'건 (참고만, 합집합 제외)</summary><pre style="font-size:11px;background:var(--card-2,#f5f5f5);padding:8px;border-radius:5px;overflow:auto;">'+escapeHtml(JSON.stringify({packaging:it.packaging,oneTime:it.oneTime},null,2))+'</pre></details></div>' : '') +
@@ -7191,6 +7226,8 @@ async function approveParsed(id){
   const v1 = document.getElementById('ov-vendor-'+id); if(v1 && v1.value) overrides.거래처 = v1.value.trim();
   const v2 = document.getElementById('ov-country-'+id); if(v2 && v2.value) overrides.국가 = v2.value;
   const v3 = document.getElementById('ov-category-'+id); if(v3 && v3.value) overrides.품목 = v3.value;
+  const v4 = document.getElementById('ov-sutype-'+id); if(v4 && v4.value) overrides.수요처유형 = v4.value;
+  const v5 = document.getElementById('ov-suname-'+id); if(v5 && v5.value) overrides.수요처명 = v5.value.trim();
   // 인라인 편집된 products 머지
   const editedProducts = _aiEditState.get(id);
   if(Array.isArray(editedProducts) && editedProducts.length){

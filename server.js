@@ -372,6 +372,8 @@ async function pushApprovedItemToUnifiedDb(it) {
     if (r.통화) properties['통화'] = { select: { name: String(r.통화).substring(0, 20) } };
     properties['거래상태'] = { select: { name: r.거래상태 || '견적접수' } };
     if (r.견적일자 && /^\d{4}-\d{2}-\d{2}/.test(String(r.견적일자))) properties['견적일자'] = { date: { start: String(r.견적일자).slice(0, 10) } };
+    if (r.수요처유형) properties['수요처유형'] = { select: { name: String(r.수요처유형).substring(0, 100) } };
+    if (r.수요처명) properties['수요처명'] = { rich_text: [{ text: { content: String(r.수요처명).substring(0, 1900) } }] };
     properties['데이터유형'] = { select: { name: r.데이터유형 || 'AI파싱' } };
     properties['데이터출처'] = { rich_text: [{ text: { content: dataSrc } }] };
     const page = await notion.pages.create({ parent: { database_id: UNIFIED_DB_ID }, properties });
@@ -475,6 +477,9 @@ function parsePage(page) {
     // ━━ 업체 추천 (2026-05-29) — "이 견적건(이 제품·이 업체)이 좋았다" 견적 단위 ★ ━━
     추천: extractProp(page, '추천', 'checkbox') || false,
     추천메모: extractProp(page, '추천메모', 'rich_text') || '',
+    // ━━ 수요처 (2026-06-08) — 이 견적이 누구를 위한 것인가 (자체브랜드/고객사/라이선스) ━━
+    수요처유형: extractProp(page, '수요처유형', 'select'),
+    수요처명: extractProp(page, '수요처명', 'rich_text') || '',
   };
 }
 
