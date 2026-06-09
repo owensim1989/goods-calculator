@@ -622,6 +622,29 @@ app.get('/api/demand-names', (req, res) => {
   res.json({ names: [...set].sort((a, b) => a.localeCompare(b, 'ko')) });
 });
 
+// 수요처 일괄 설정 (2026-06-09) — [{id, 수요처유형, 수요처명}] 받아 Notion + 캐시 업데이트
+app.post('/api/products/demand-source-bulk', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion 미설정' });
+  const updates = Array.isArray(req.body && req.body.updates) ? req.body.updates : [];
+  if (!updates.length) return res.json({ ok: true, updated: 0, failed: 0 });
+  let updated = 0; const errors = [];
+  for (const u of updates) {
+    const id = u && u.id; if (!id) continue;
+    const props = {};
+    if (u.수요처유형) props['수요처유형'] = { select: { name: String(u.수요처유형).substring(0, 100) } };
+    if (u.수요처명 != null) props['수요처명'] = { rich_text: u.수요처명 ? [{ text: { content: String(u.수요처명).substring(0, 1900) } }] : [] };
+    if (!Object.keys(props).length) continue;
+    try {
+      await notion.pages.update({ page_id: id, properties: props });
+      const ci = (cache.items || []).find(x => x.id === id);
+      if (ci) { if (u.수요처유형) ci.수요처유형 = u.수요처유형; if (u.수요처명 != null) ci.수요처명 = u.수요처명; }
+      updated++;
+    } catch (e) { errors.push({ id, error: e.message }); }
+  }
+  if (updated) { try { saveCache(cache); } catch (e) {} }
+  res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 20) });
+});
+
 // 품명 → 단가 조회 (필터: 품목, 품명, 국가, 거래처)
 app.get('/api/products', (req, res) => {
   let items = cache.items || [];

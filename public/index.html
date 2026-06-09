@@ -409,6 +409,28 @@ tbody tr:hover{background:var(--primary-light);}
 .su-name-dd-item{padding:8px 12px;cursor:pointer;color:var(--text);white-space:nowrap;}
 .su-name-dd-item:hover,.su-name-dd-item.hl{background:var(--primary-light);}
 .su-name-dd-empty{padding:9px 12px;color:var(--text-muted);font-size:12px;}
+/* 수요처 일괄 설정 모달 (2026-06-09) */
+.su-bulk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9998;display:flex;align-items:center;justify-content:center;padding:24px;}
+.su-bulk-modal{background:var(--card);border:1px solid var(--border);border-radius:14px;width:min(860px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+.su-bulk-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);}
+.su-bulk-count{font-size:12px;color:var(--text-muted);font-weight:400;margin-left:6px;}
+.su-bulk-x{background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;}
+.su-bulk-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--input-bg);}
+.su-bulk-body{overflow-y:auto;padding:10px 20px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.su-bulk-body::-webkit-scrollbar{width:8px;}.su-bulk-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+.su-bulk-group{margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.sbg-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;background:var(--input-bg);font-size:13px;}
+.sbg-cnt{font-size:11px;color:var(--text-muted);margin-right:auto;}
+.su-bulk-row{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid #1f2b3e;}
+.sbr-p{flex:1;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.su-bulk-sel,.su-bulk-inp{border:1px solid var(--border);border-radius:7px;background:var(--input-bg);color:var(--text);padding:6px 9px;font-size:12.5px;font-family:inherit;}
+.su-bulk-sel{min-width:130px;} .su-bulk-sel.sm{min-width:118px;} .su-bulk-inp{width:150px;} .su-bulk-inp.sm{width:130px;}
+.su-bulk-btn{border:1px solid var(--primary);background:var(--primary-light);color:var(--text);border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;}
+.su-bulk-btn.ghost{border-color:var(--border);background:var(--input-bg);color:var(--text-muted);}
+.su-bulk-btn.tiny{padding:4px 9px;font-size:11px;}
+.su-bulk-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+.su-bulk-foot{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--border);}
+.su-bulk-status{flex:1;font-size:12px;color:var(--text-muted);}
 .filter-toggle-btn:hover{color:var(--text);}
 .filter-toggle-btn .arrow{display:inline-block;transition:transform .15s;}
 .filter-toggle-btn.open .arrow{transform:rotate(90deg);}
@@ -894,6 +916,30 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <button class="su-btn" onclick="setSuFilter('자체브랜드',this)">🟢 자체브랜드</button>
     <button class="su-btn" onclick="setSuFilter('고객사',this)">🔵 고객사</button>
     <button class="su-btn" onclick="setSuFilter('라이선스·콜라보',this)">🟣 라이선스</button>
+    <button class="su-btn" style="margin-left:auto;border-color:var(--primary);color:var(--text);" onclick="openSuBulk()">⚙ 수요처 일괄설정</button>
+  </div>
+  <!-- 수요처 일괄 설정 모달 (2026-06-09) -->
+  <div class="su-bulk-overlay" id="suBulkOverlay" style="display:none;">
+    <div class="su-bulk-modal">
+      <div class="su-bulk-head">
+        <h3 style="margin:0;font-size:16px;">⚙ 수요처 일괄 설정 <span id="suBulkCount" class="su-bulk-count"></span></h3>
+        <button class="su-bulk-x" onclick="closeSuBulk()">✕</button>
+      </div>
+      <div class="su-bulk-toolbar">
+        <span style="font-size:12px;color:var(--text-muted);">전체 적용</span>
+        <select id="suBulkAllType" class="su-bulk-sel"><option value="">유형 —</option><option value="자체브랜드">🟢 자체브랜드</option><option value="고객사">🔵 고객사</option><option value="라이선스·콜라보">🟣 라이선스·콜라보</option></select>
+        <input id="suBulkAllName" class="su-bulk-inp su-name-ac" placeholder="이름" autocomplete="off" style="max-width:160px;">
+        <button class="su-bulk-btn" onclick="suBulkApplyAll()">전체 채우기</button>
+        <button class="su-bulk-btn ghost" onclick="suBulkPreset('자체브랜드','미스터두낫띵')">전부 미스터두낫띵</button>
+        <button class="su-bulk-btn ghost" onclick="suBulkPreset('자체브랜드','뚜비')">전부 뚜비</button>
+      </div>
+      <div class="su-bulk-body" id="suBulkBody"></div>
+      <div class="su-bulk-foot">
+        <span id="suBulkStatus" class="su-bulk-status"></span>
+        <button class="su-bulk-btn ghost" onclick="closeSuBulk()">닫기</button>
+        <button class="su-bulk-btn primary" id="suBulkSaveBtn" onclick="saveSuBulk()">저장</button>
+      </div>
+    </div>
   </div>
   <button class="filter-toggle-btn" onclick="toggleProductFilters()"><span class="arrow" id="p-filter-arrow">▸</span> 상세 필터 (품목·품명·국가 다중선택)</button>
   <div class="filter-bar" id="p-detail-filters" style="display:none;">
@@ -2058,6 +2104,62 @@ document.addEventListener('keydown', e=>{ const t=e.target; if(!t||!t.classList|
   else if(e.key==='Escape'){ _suHide(); }
 });
 document.addEventListener('focusout', e=>{ const t=e.target; if(t&&t.classList&&t.classList.contains('su-name-ac')){ const v=t.value; setTimeout(()=>{ suNameRemember(v); _suHide(); },120); } });
+// ━━ 수요처 일괄 설정 모달 (2026-06-09) ━━
+let _suBulkRows=[], _suBulkGiIdx={};
+async function openSuBulk(){
+  const ov=document.getElementById('suBulkOverlay'), body=document.getElementById('suBulkBody');
+  body.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-muted);">불러오는 중…</div>'; ov.style.display='flex';
+  if(typeof loadDemandNames==='function') loadDemandNames();
+  try{
+    const r=await fetch('/api/products',{credentials:'same-origin'}); const data=await r.json();
+    const rows=Array.isArray(data)?data:(data.items||data.products||[]);
+    _suBulkRows=rows.filter(it=>!it.수요처유형 && !String(it.id).startsWith('parsed:')).map(it=>({id:it.id,p:it.프로젝트명||'(제목없음)',v:it.거래처||'(미지정)',type:'',name:''}));
+    renderSuBulk();
+  }catch(e){ body.innerHTML='<div style="padding:30px;color:#fca5a5;">불러오기 실패: '+escapeHtml(e.message||String(e))+'</div>'; }
+}
+function closeSuBulk(){ document.getElementById('suBulkOverlay').style.display='none'; }
+function _suTypeOpts(sel){ const L={'자체브랜드':'🟢 자체브랜드','고객사':'🔵 고객사','라이선스·콜라보':'🟣 라이선스·콜라보'}; return ['','자체브랜드','고객사','라이선스·콜라보'].map(t=>'<option value="'+t+'"'+(t===sel?' selected':'')+'>'+(t===''?'유형 —':L[t])+'</option>').join(''); }
+function renderSuBulk(){
+  const groups={}; _suBulkRows.forEach((r,i)=>{ (groups[r.v]=groups[r.v]||[]).push(i); });
+  const vendors=Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
+  _suBulkGiIdx={}; let h='';
+  vendors.forEach((v,gi)=>{ const idxs=groups[v]; _suBulkGiIdx[gi]=idxs;
+    h+='<div class="su-bulk-group"><div class="sbg-head"><b>'+escapeHtml(v)+'</b><span class="sbg-cnt">×'+idxs.length+'</span>'
+      +'<select class="su-bulk-sel sm" id="sbg-type-'+gi+'">'+_suTypeOpts('')+'</select>'
+      +'<input class="su-bulk-inp sm su-name-ac" id="sbg-name-'+gi+'" placeholder="이름" autocomplete="off">'
+      +'<button class="su-bulk-btn tiny" onclick="suBulkApplyVendor('+gi+')">이 거래처 적용</button></div>';
+    idxs.forEach(i=>{ const r=_suBulkRows[i];
+      h+='<div class="su-bulk-row"><span class="sbr-p" title="'+escapeAttr(r.p)+'">'+escapeHtml(r.p)+'</span>'
+        +'<select class="su-bulk-sel" onchange="_suBulkSet('+i+",'type',this.value)\">"+_suTypeOpts(r.type)+'</select>'
+        +'<input class="su-bulk-inp su-name-ac" value="'+escapeAttr(r.name)+'" oninput="_suBulkSet('+i+",'name',this.value)\" placeholder=\"이름\" autocomplete=\"off\"></div>";
+    });
+    h+='</div>';
+  });
+  document.getElementById('suBulkBody').innerHTML=h||'<div style="padding:24px;text-align:center;color:var(--text-muted);">미설정 건이 없습니다 🎉</div>';
+  updateSuBulkCount();
+}
+function _suBulkSet(i,f,v){ if(_suBulkRows[i]){ _suBulkRows[i][f]=v; updateSuBulkCount(); } }
+function suBulkApplyVendor(gi){ const idxs=_suBulkGiIdx[gi]||[]; const t=(document.getElementById('sbg-type-'+gi)||{}).value||''; const n=(document.getElementById('sbg-name-'+gi)||{}).value||''; if(!t&&!n) return; idxs.forEach(i=>{ if(t)_suBulkRows[i].type=t; if(n)_suBulkRows[i].name=n; }); if(n) suNameRemember(n); renderSuBulk(); }
+function suBulkApplyAll(){ const t=document.getElementById('suBulkAllType').value, n=document.getElementById('suBulkAllName').value; _suBulkRows.forEach(r=>{ if(t)r.type=t; if(n)r.name=n; }); if(n) suNameRemember(n); renderSuBulk(); }
+function suBulkPreset(t,n){ _suBulkRows.forEach(r=>{ r.type=t; r.name=n; }); suNameRemember(n); renderSuBulk(); }
+function updateSuBulkCount(){ const set=_suBulkRows.filter(r=>r.type).length, tot=_suBulkRows.length; const c=document.getElementById('suBulkCount'); if(c)c.textContent='— 미설정 '+tot+'건 중 '+set+'건 지정'; const b=document.getElementById('suBulkSaveBtn'); if(b)b.textContent='저장 ('+set+'건)'; }
+async function saveSuBulk(){
+  const updates=_suBulkRows.filter(r=>r.type).map(r=>({id:r.id,수요처유형:r.type,수요처명:(r.name||'').trim()}));
+  if(!updates.length){ alert('유형을 지정한 항목이 없습니다.'); return; }
+  const btn=document.getElementById('suBulkSaveBtn'), st=document.getElementById('suBulkStatus');
+  btn.disabled=true; btn.textContent='저장 중…';
+  try{
+    const r=await fetch('/api/products/demand-source-bulk',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates})});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    st.textContent='✅ '+(j.updated||0)+'건 저장'+(j.failed?(' / 실패 '+j.failed):'');
+    updates.forEach(u=>suNameRemember(u.수요처명));
+    const saved=new Set(updates.map(u=>u.id));
+    _suBulkRows=_suBulkRows.filter(r=>!(r.type && saved.has(r.id)));
+    renderSuBulk();
+    if(typeof loadData==='function') loadData();
+  }catch(e){ st.textContent='❌ '+(e.message||e); }
+  finally{ btn.disabled=false; updateSuBulkCount(); }
+}
 function toggleProductFilters(){
   const el=document.getElementById('p-detail-filters');
   const btn=document.querySelector('.filter-toggle-btn');
