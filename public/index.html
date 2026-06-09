@@ -402,6 +402,13 @@ tbody tr:hover{background:var(--primary-light);}
 .su-chip.su-own{background:rgba(34,197,94,.15);color:#86efac;}
 .su-chip.su-client{background:var(--primary-light);color:#93c5fd;}
 .su-chip.su-lic{background:rgba(167,139,250,.16);color:#c4b5fd;}
+/* 채택 표시 (2026-06-09) */
+.adopt-cell{white-space:nowrap;text-align:center;}
+.adopt-badge{display:inline-block;background:var(--success,#22c55e);color:#06280f;font-weight:700;font-size:10.5px;padding:2px 8px;border-radius:5px;cursor:pointer;}
+.adopt-btn{border:1px solid var(--border);background:var(--input-bg);color:var(--text-muted);font-size:10.5px;padding:2px 9px;border-radius:5px;cursor:pointer;}
+.adopt-btn:hover{border-color:var(--success,#22c55e);color:#86efac;}
+#product-tbody tr.adopt-row{background:color-mix(in srgb,#22c55e 9%,var(--bg));}
+#product-tbody tr.adopt-row:hover{background:color-mix(in srgb,#22c55e 15%,var(--bg));}
 /* 수요처명 자동완성 드롭다운 (초성 검색, 2026-06-09) */
 .su-name-dd{position:absolute;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
 .su-name-dd::-webkit-scrollbar{width:8px;}
@@ -880,7 +887,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">제품 단가</button>
       <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 조합</button>
       <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
-      <button class="sidebar-item" data-page="quote-compare" onclick="switchPage(this)">견적 비교</button>
     </div>
     <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">미스터두낫띵</div>
@@ -990,7 +996,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <h3 style="margin:0">상세 데이터</h3>
       <button class="btn-goto-vendor" onclick="goToVendorTab()">🏭 이 품명으로 거래처 비교 →</button>
     </div>
-    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>국가</th><th>견적일</th><th>제품명</th><th>거래처</th><th>수요처</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th style="width:32px;"><input type="checkbox" id="chk-all" onchange="toggleAllCompare(this.checked)" title="전체선택"></th><th>채택</th><th>국가</th><th>견적일</th><th>제품명</th><th>거래처</th><th>수요처</th><th>수량</th><th>①제작단가</th><th>②부대비용</th><th>③최종단가</th><th>총 제작비</th><th>스펙</th><th>납기판단</th></tr></thead><tbody id="product-tbody"></tbody></table></div>
     <div class="compare-action-bar" id="compare-action-bar"><span class="cab-text" id="cab-text">0건 선택</span><button class="cab-btn" onclick="showComparePanel()">비교하기</button><button class="cab-btn" onclick="clearCompare()">선택 해제</button></div>
     <div class="compare-panel" id="compare-panel"><h3><span>📊 선택 항목 비교</span><button class="close-btn" onclick="hideComparePanel()">✕</button></h3><div class="compare-grid" id="compare-grid"></div></div>
   </div>
@@ -1063,17 +1069,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
   <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">거래처별 평균단가 비교</h3><canvas id="vendorBarChart"></canvas></div>
   <div class="empty-state" id="vendor-empty"><div class="icon">🏭</div><p>품명을 선택하면 거래처별 단가·납품실적을 비교합니다</p></div>
-</div>
-
-<!-- 견적 비교 (한 건을 위해 받은 여러 견적 묶음 + 채택 표시, 2026-06-09) -->
-<div class="tab-page" id="page-quote-compare">
-  <div class="qc-bar">
-    <input type="text" id="qcSearch" class="search-input" placeholder="견적건·제품명 검색 (초성 가능)" autocomplete="off" oninput="renderQuoteCompare()" style="max-width:360px;">
-    <label class="qc-chk"><input type="checkbox" id="qcOnlyAdopted" onchange="renderQuoteCompare()"> 채택건만</label>
-    <span class="qc-hint" id="qcHint"></span>
-  </div>
-  <div id="qcBody"></div>
-  <div class="empty-state" id="qcEmpty" style="display:none;"><div class="icon">📦</div><p>묶인 견적이 없습니다<br><span style="font-size:12px;color:var(--text-muted)">"○○ <b>비교견적</b> - 거래처" 또는 "○○ <b>견적비교</b> - 거래처" 식으로 등록된 견적이 2건 이상이면 자동으로 묶입니다.</span></p></div>
 </div>
 
 <!-- 탭4: 🌏 소비자가 산정 -->
@@ -2093,6 +2088,14 @@ function suCell(i){
   const nm=i.수요처명?escapeHtml(i.수요처명):t;
   return `<span class="su-chip su-${m.c}" title="${escapeHtml(t)}${i.수요처명?' · '+escapeHtml(i.수요처명):''}">${m.i} ${nm}</span>`;
 }
+// 견적 채택 토글 (2026-06-09) — 제품단가 표 건별
+function toggleAdopt(id, adopt){
+  const status=adopt?'발주확정':'미채택';
+  fetch('/api/quote-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status})})
+    .then(r=>r.json()).then(j=>{ if(j&&j.ok){ const it=(typeof DATA!=='undefined'?DATA:[]).find(x=>x.id===id); if(it) it.견적상태=status; const le=(typeof lastEnriched!=='undefined'?lastEnriched:[]).find(x=>x.id===id); if(le) le.견적상태=status; if(typeof showToast==='function')showToast(adopt?'✓ 채택했어요':'채택 해제'); searchProducts(); }
+      else { if(typeof showToast==='function')showToast('실패: '+((j&&j.error)||'')); } })
+    .catch(e=>{ if(typeof showToast==='function')showToast('실패: '+e.message); });
+}
 function setSuFilter(type,btn){
   suFilter=type;
   document.querySelectorAll('#p-su-filter .su-btn').forEach(b=>b.classList.remove('active'));
@@ -2459,10 +2462,6 @@ function switchPage(item){
   if(item.dataset.page==='catalog'){
     if(typeof catInit==='function') catInit();
   }
-  // 견적 비교 진입 — 그룹핑 렌더
-  if(item.dataset.page==='quote-compare'){
-    if(typeof renderQuoteCompare==='function') renderQuoteCompare();
-  }
   // orders 진입 — iframe lazy load (첫 진입 시만 src 박음, 이후 reload 안 함 → 상태 보존)
   if(item.dataset.page==='orders'){
     const ifr = document.getElementById('ordersIframe');
@@ -2602,7 +2601,7 @@ function searchProducts(){
     return{...i,개당단가_KRW:krw,개당부대비용:개당부대,개당단가_부대비용포함:adj,제작비_KRW,총제작비_자동};
   });
   // 견적일(견적일자 우선, 없으면 발주일) 최신순 기본정렬 — 최근 견적이 위로, 날짜 미기재는 맨 아래 (2026-06-05)
-  en.sort((a,b)=>((b.견적일자||b.발주일||'0').localeCompare(a.견적일자||a.발주일||'0')));
+  en.sort((a,b)=>{ const aw=a.견적상태==='발주확정'?0:1,bw=b.견적상태==='발주확정'?0:1; if(aw!==bw)return aw-bw; return (b.견적일자||b.발주일||'0').localeCompare(a.견적일자||a.발주일||'0'); });
   if(!en.length){document.getElementById('product-stats').style.display='none';document.getElementById('scatter-wrap').style.display='none';document.getElementById('product-table-wrap').style.display='none';document.getElementById('product-empty').style.display='none';return;}
   document.getElementById('product-empty').style.display='none';
   const pr=en.map(i=>i.개당단가_부대비용포함).filter(Boolean);
@@ -2644,7 +2643,10 @@ function searchProducts(){
     // 견적일 + 1년 이상 경과 판정 (gDays<-365) → 행 흐리게 + ⚠ 뱃지
     const qd=i.견적일자||i.발주일||null;const qdDays=qd?gDays(qd):null;const isStale=qdDays!=null&&qdDays<-365;
     const qdCell=qd?`${qd}${isStale?'<span class="stale-badge" title="견적일로부터 1년 이상 경과 — 환율·원자재가 변동으로 단가 재확인 권장">⚠ 1년+</span>':''}`:`<span class="no-date">미기재</span>`;
-    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${suCell(i)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    // 채택 (견적상태=발주확정) — 건별 토글
+    const adopted=i.견적상태==='발주확정';
+    const adoptCell=adopted?`<span class="adopt-badge" onclick="event.stopPropagation();toggleAdopt('${i.id}',false)" title="채택 해제">✓채택</span>`:(String(i.id).startsWith('parsed:')?'<span style="color:var(--text-muted);font-size:11px">-</span>':`<button class="adopt-btn" onclick="event.stopPropagation();toggleAdopt('${i.id}',true)">채택</button>`);
+    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}${adopted?' adopt-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td class="adopt-cell">${adoptCell}</td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${suCell(i)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
