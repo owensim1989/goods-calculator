@@ -2195,6 +2195,7 @@ async function saveSuBulk(){
 let _qcGroups=[];
 function _qcKey(name){ let s=(name||'').trim(); s=s.replace(/\s*[—-]\s*[^—-]*$/,'').trim(); return s||'(미지정)'; }
 function _qcKrw(r){ const v=r.개당단가; if(v==null) return null; const c=r.통화||'KRW'; const fx=c==='USD'?FX.USD:c==='RMB'?FX.RMB:1; return Math.round(v*fx); }
+function _qcDedup(rows){ const byV={}; rows.forEach(r=>{ const v=r.거래처||'-'; const cur=byV[v]; if(!cur){ byV[v]=r; return; } const rAd=r.견적상태==='발주확정', cAd=cur.견적상태==='발주확정'; if(rAd&&!cAd){byV[v]=r;return;} if(!rAd&&cAd)return; if((_qcKrw(r)||1e12)<(_qcKrw(cur)||1e12)) byV[v]=r; }); return Object.values(byV); }
 function renderQuoteCompare(){
   const q=((document.getElementById('qcSearch')||{}).value||'').trim();
   const onlyAd=(document.getElementById('qcOnlyAdopted')||{}).checked;
@@ -2207,8 +2208,9 @@ function renderQuoteCompare(){
   if(onlyAd) keys=keys.filter(k=> groups[k].some(it=>it.견적상태==='발주확정'));
   keys.sort((a,b)=>groups[b].length-groups[a].length);
   _qcGroups=keys.map(k=>{
-    const sorted=groups[k].slice().sort((a,b)=>{ const aw=a.견적상태==='발주확정'?0:1,bw=b.견적상태==='발주확정'?0:1; if(aw!==bw)return aw-bw; return (_qcKrw(a)||1e12)-(_qcKrw(b)||1e12); }).slice(0,6);
-    return { key:k, rows:sorted, allIds:groups[k].filter(r=>!String(r.id).startsWith('parsed:')).map(r=>r.id), prices:groups[k].map(_qcKrw).filter(v=>v!=null) };
+    const ded=_qcDedup(groups[k]); // 거래처당 1열 (채택 > 최저가 대표)
+    const sorted=ded.slice().sort((a,b)=>{ const aw=a.견적상태==='발주확정'?0:1,bw=b.견적상태==='발주확정'?0:1; if(aw!==bw)return aw-bw; return (_qcKrw(a)||1e12)-(_qcKrw(b)||1e12); }).slice(0,6);
+    return { key:k, rows:sorted, allIds:groups[k].filter(r=>!String(r.id).startsWith('parsed:')).map(r=>r.id), prices:ded.map(_qcKrw).filter(v=>v!=null) };
   });
   const body=document.getElementById('qcBody'), empty=document.getElementById('qcEmpty'), hint=document.getElementById('qcHint');
   if(hint) hint.textContent=_qcGroups.length+'개 견적건';
