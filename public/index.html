@@ -2025,7 +2025,10 @@ function setSuFilter(type,btn){
 // ━━ 수요처명 자동완성 (2026-06-09) — 기존 입력값 누적 + 초성 검색 ━━
 function _suNamesStore(){ try{ return JSON.parse(localStorage.getItem('goods_suNames')||'[]'); }catch(e){ return []; } }
 function suNameRemember(v){ v=(v||'').trim(); if(!v) return; const a=_suNamesStore(); if(!a.includes(v)){ a.unshift(v); try{ localStorage.setItem('goods_suNames', JSON.stringify(a.slice(0,200))); }catch(e){} } }
-function getSuNames(){ const s=new Set(); const _d=(typeof DATA!=='undefined'&&Array.isArray(DATA))?DATA:[]; _d.forEach(i=>{ if(i&&i.수요처명) s.add(i.수요처명); }); _suNamesStore().forEach(v=>s.add(v)); return [...s].sort((a,b)=>a.localeCompare(b,'ko')); }
+// 팀 공유 마스터 목록 — 서버 캐시(=모두 같은 Notion 동기화)에서 가져옴 (2026-06-09)
+let _suServerNames=[], _suLoaded=false, _suLoading=false;
+async function loadDemandNames(){ if(_suLoading) return; _suLoading=true; try{ const r=await fetch('/api/demand-names',{credentials:'same-origin'}); if(r.ok){ const j=await r.json(); _suServerNames=Array.isArray(j.names)?j.names:[]; } }catch(e){} finally{ _suLoaded=true; _suLoading=false; } }
+function getSuNames(){ const s=new Set(); _suServerNames.forEach(v=>s.add(v)); const _d=(typeof DATA!=='undefined'&&Array.isArray(DATA))?DATA:[]; _d.forEach(i=>{ if(i&&i.수요처명) s.add(i.수요처명); }); _suNamesStore().forEach(v=>s.add(v)); return [...s].sort((a,b)=>a.localeCompare(b,'ko')); }
 let _suDD=null,_suInput=null,_suHl=-1;
 function _suDDEl(){
   if(_suDD) return _suDD;
@@ -2036,6 +2039,7 @@ function _suDDEl(){
 }
 function _suShow(input){
   _suInput=input; const dd=_suDDEl(); const q=(input.value||'').trim();
+  if(!_suLoaded && !_suLoading){ loadDemandNames().then(()=>{ if(_suInput===input) _suShow(input); }); }
   const names=getSuNames().filter(n=>matchQ(n,q)).slice(0,30);
   if(!names.length){ _suHide(); return; }
   dd.innerHTML=names.map(n=>`<div class="su-name-dd-item" data-v="${String(n).replace(/"/g,'&quot;')}">${escapeHtml(n)}</div>`).join('');
@@ -7309,6 +7313,7 @@ async function approveParsed(id){
     _aiEditState.delete(id); // 검수완료 후 메모리 정리
     loadParsedList('pending');
     loadParsedSummary();
+    if(typeof loadDemandNames==='function'){ _suLoaded=false; loadDemandNames(); } // 새 수요처명 팀 공유 목록 갱신
   }catch(e){ alert('검수완료 실패: '+e.message); }
 }
 

@@ -615,6 +615,13 @@ app.get('/api/summary', (req, res) => {
   });
 });
 
+// 수요처명 마스터 목록 (팀 공유 자동완성용, 2026-06-09) — 캐시(=Notion 동기화)에서 distinct
+app.get('/api/demand-names', (req, res) => {
+  const set = new Set();
+  (cache.items || []).forEach(it => { if (it && it.수요처명) { const v = String(it.수요처명).trim(); if (v) set.add(v); } });
+  res.json({ names: [...set].sort((a, b) => a.localeCompare(b, 'ko')) });
+});
+
 // 품명 → 단가 조회 (필터: 품목, 품명, 국가, 거래처)
 app.get('/api/products', (req, res) => {
   let items = cache.items || [];
