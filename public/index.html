@@ -225,6 +225,13 @@ a.sidebar-item:hover{color:var(--text);}
 .inbox-text-head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px;}
 .inbox-text-head .ttl{font-weight:600;font-size:13px;color:var(--text);}
 .inbox-text-head .sub{font-size:11px;color:var(--text-muted);}
+/* 섹션 접기 (2026-06-09) — 업로드 결과가 바로 보이도록 보조 입력 섹션 기본 접힘 */
+.inbox-text-box{position:relative;}
+.inbox-sec-arrow{position:absolute;top:15px;right:15px;color:var(--text-muted);font-size:13px;transition:transform .15s;}
+.inbox-text-box:not(.collapsed) .inbox-sec-arrow{transform:rotate(90deg);}
+.inbox-text-box.collapsed .inbox-sec-body{display:none;}
+.inbox-text-box.collapsed .inbox-text-head{margin-bottom:0;}
+.inbox-text-head:hover .inbox-sec-arrow{color:var(--text);}
 .inbox-text-box textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:90px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);padding:10px 12px;font-size:13px;line-height:1.5;font-family:inherit;}
 .inbox-text-box textarea:focus{outline:none;border-color:var(--primary);}
 .inbox-text-actions{display:flex;justify-content:flex-end;margin-top:10px;}
@@ -1572,23 +1579,28 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <input type="file" id="inboxFileInput" multiple accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/*" onchange="inboxOnFilesPicked(event)">
   </div>
 
-  <!-- 메일·텍스트 직접 분석 (2026-05-29 신설) -->
-  <div class="inbox-text-box">
-    <div class="inbox-text-head">
+  <!-- 메일·텍스트 직접 분석 (2026-05-29 신설 · 2026-06-09 기본 접힘) -->
+  <div class="inbox-text-box collapsed" id="inboxTextBox">
+    <div class="inbox-text-head" onclick="toggleInboxSection('inboxTextBox')" style="cursor:pointer;">
       <span class="ttl">📧 메일·텍스트 직접 분석</span>
       <span class="sub">텍스트 붙여넣기</span>
+      <span class="inbox-sec-arrow">▸</span>
     </div>
-    <textarea id="inboxTextInput" rows="5" placeholder="견적 메일 본문이나 메시지를 그대로 붙여넣으세요 (단가·수량·거래처·통화 등이 담긴 텍스트)"></textarea>
-    <div class="inbox-text-actions">
-      <button type="button" class="inbox-dropzone-btn" id="inboxTextBtn" onclick="inboxAnalyzeText()">🤖 AI로 분석</button>
+    <div class="inbox-sec-body">
+      <textarea id="inboxTextInput" rows="5" placeholder="견적 메일 본문이나 메시지를 그대로 붙여넣으세요 (단가·수량·거래처·통화 등이 담긴 텍스트)"></textarea>
+      <div class="inbox-text-actions">
+        <button type="button" class="inbox-dropzone-btn" id="inboxTextBtn" onclick="inboxAnalyzeText()">🤖 AI로 분석</button>
+      </div>
     </div>
   </div>
 
-  <!-- 받은 견적 직접 입력 (2026-05-29 신설) -->
-  <div class="inbox-text-box">
-    <div class="inbox-text-head">
+  <!-- 받은 견적 직접 입력 (2026-05-29 신설 · 2026-06-09 기본 접힘) -->
+  <div class="inbox-text-box collapsed" id="inboxManualBox">
+    <div class="inbox-text-head" onclick="toggleInboxSection('inboxManualBox')" style="cursor:pointer;">
       <span class="ttl">✍️ 받은 견적 직접 입력</span>
+      <span class="inbox-sec-arrow">▸</span>
     </div>
+    <div class="inbox-sec-body">
     <div class="inbox-manual-grid">
       <div class="imf"><label>거래처</label><input type="text" id="manVendor" placeholder="예: 광동 키치 / 한국 ○○사"></div>
       <div class="imf"><label>수취 법인</label>
@@ -1631,6 +1643,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div class="imf" style="margin-top:10px;"><label>메모 (선택 — 포장비·금형비·납기 등)</label><input type="text" id="manMemo" placeholder="예: 금형비 USD 150 / 박스당 USD 0.05 / 납기 30일"></div>
     <div class="inbox-text-actions">
       <button type="button" class="inbox-dropzone-btn" id="manBtn" onclick="inboxManualSubmit()">＋ 미검수로 등록</button>
+    </div>
     </div>
   </div>
 
@@ -7508,6 +7521,18 @@ async function inboxStartUpload(filesArr){
     // 미검수 탭으로 전환 + 리스트 새로고침
     if(typeof switchParsedTab === 'function') switchParsedTab('pending');
   }
+  // 처리 결과로 자동 스크롤 (업로드가 멀리 아래에 반영돼 확인 어렵다는 피드백, 2026-06-09)
+  inboxScrollToResult();
+}
+// 보조 입력 섹션 접기/펴기 (메일·텍스트, 직접 입력)
+function toggleInboxSection(id){
+  const el=document.getElementById(id); if(el) el.classList.toggle('collapsed');
+}
+// 업로드·분석·등록 후 결과(진행 패널→리스트)로 부드럽게 스크롤
+function inboxScrollToResult(){
+  const t=document.getElementById('inboxUploadProgress');
+  const target=(t && !t.classList.contains('hidden'))?t:document.querySelector('.inbox-toolbar-b');
+  if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 // 업로드 결과 패널 초기화 (다음 건 업로드 전 정리) — 2026-05-29
@@ -7548,6 +7573,7 @@ async function inboxAnalyzeText(){
     if(ta) ta.value = '';
     loadParsedSummary();
     if(typeof switchParsedTab === 'function') switchParsedTab('pending');
+    if(typeof inboxScrollToResult==='function') inboxScrollToResult();
   }catch(e){
     alert('분석 실패: '+(e.message||e));
   }finally{
@@ -7609,6 +7635,7 @@ async function inboxManualSubmit(){
     inboxManualAddRow();
     loadParsedSummary();
     if(typeof switchParsedTab==='function') switchParsedTab('pending');
+    if(typeof inboxScrollToResult==='function') inboxScrollToResult();
   }catch(e){ alert('등록 실패: '+(e.message||e)); }
   finally{ if(btn){ btn.disabled=false; btn.textContent=orig; } }
 }
