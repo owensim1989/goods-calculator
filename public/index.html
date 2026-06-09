@@ -402,6 +402,13 @@ tbody tr:hover{background:var(--primary-light);}
 .su-chip.su-own{background:rgba(34,197,94,.15);color:#86efac;}
 .su-chip.su-client{background:var(--primary-light);color:#93c5fd;}
 .su-chip.su-lic{background:rgba(167,139,250,.16);color:#c4b5fd;}
+/* 수요처명 자동완성 드롭다운 (초성 검색, 2026-06-09) */
+.su-name-dd{position:absolute;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.su-name-dd::-webkit-scrollbar{width:8px;}
+.su-name-dd::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+.su-name-dd-item{padding:8px 12px;cursor:pointer;color:var(--text);white-space:nowrap;}
+.su-name-dd-item:hover,.su-name-dd-item.hl{background:var(--primary-light);}
+.su-name-dd-empty{padding:9px 12px;color:var(--text-muted);font-size:12px;}
 .filter-toggle-btn:hover{color:var(--text);}
 .filter-toggle-btn .arrow{display:inline-block;transition:transform .15s;}
 .filter-toggle-btn.open .arrow{transform:rotate(90deg);}
@@ -2015,6 +2022,38 @@ function setSuFilter(type,btn){
   if(btn)btn.classList.add('active');
   searchProducts();
 }
+// ━━ 수요처명 자동완성 (2026-06-09) — 기존 입력값 누적 + 초성 검색 ━━
+function _suNamesStore(){ try{ return JSON.parse(localStorage.getItem('goods_suNames')||'[]'); }catch(e){ return []; } }
+function suNameRemember(v){ v=(v||'').trim(); if(!v) return; const a=_suNamesStore(); if(!a.includes(v)){ a.unshift(v); try{ localStorage.setItem('goods_suNames', JSON.stringify(a.slice(0,200))); }catch(e){} } }
+function getSuNames(){ const s=new Set(); const _d=(typeof DATA!=='undefined'&&Array.isArray(DATA))?DATA:[]; _d.forEach(i=>{ if(i&&i.수요처명) s.add(i.수요처명); }); _suNamesStore().forEach(v=>s.add(v)); return [...s].sort((a,b)=>a.localeCompare(b,'ko')); }
+let _suDD=null,_suInput=null,_suHl=-1;
+function _suDDEl(){
+  if(_suDD) return _suDD;
+  _suDD=document.createElement('div'); _suDD.className='su-name-dd'; _suDD.style.display='none';
+  document.body.appendChild(_suDD);
+  _suDD.addEventListener('mousedown', e=>{ const it=e.target.closest('.su-name-dd-item'); if(!it) return; e.preventDefault(); if(_suInput){ _suInput.value=it.getAttribute('data-v'); suNameRemember(_suInput.value); } _suHide(); });
+  return _suDD;
+}
+function _suShow(input){
+  _suInput=input; const dd=_suDDEl(); const q=(input.value||'').trim();
+  const names=getSuNames().filter(n=>matchQ(n,q)).slice(0,30);
+  if(!names.length){ _suHide(); return; }
+  dd.innerHTML=names.map(n=>`<div class="su-name-dd-item" data-v="${String(n).replace(/"/g,'&quot;')}">${escapeHtml(n)}</div>`).join('');
+  const r=input.getBoundingClientRect();
+  dd.style.left=(r.left+window.scrollX)+'px'; dd.style.top=(r.bottom+window.scrollY+2)+'px'; dd.style.minWidth=r.width+'px';
+  dd.style.display='block'; _suHl=-1;
+}
+function _suHide(){ if(_suDD) _suDD.style.display='none'; _suInput=null; _suHl=-1; }
+document.addEventListener('focusin', e=>{ const t=e.target; if(t&&t.classList&&t.classList.contains('su-name-ac')) _suShow(t); });
+document.addEventListener('input', e=>{ const t=e.target; if(t&&t.classList&&t.classList.contains('su-name-ac')) _suShow(t); });
+document.addEventListener('keydown', e=>{ const t=e.target; if(!t||!t.classList||!t.classList.contains('su-name-ac')||!_suDD||_suDD.style.display==='none') return;
+  const items=_suDD.querySelectorAll('.su-name-dd-item');
+  if(e.key==='ArrowDown'){ e.preventDefault(); _suHl=Math.min(_suHl+1,items.length-1); items.forEach((n,i)=>n.classList.toggle('hl',i===_suHl)); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); _suHl=Math.max(_suHl-1,-1); items.forEach((n,i)=>n.classList.toggle('hl',i===_suHl)); }
+  else if(e.key==='Enter'&&_suHl>=0&&items[_suHl]){ e.preventDefault(); t.value=items[_suHl].getAttribute('data-v'); suNameRemember(t.value); _suHide(); }
+  else if(e.key==='Escape'){ _suHide(); }
+});
+document.addEventListener('focusout', e=>{ const t=e.target; if(t&&t.classList&&t.classList.contains('su-name-ac')){ const v=t.value; setTimeout(()=>{ suNameRemember(v); _suHide(); },120); } });
 function toggleProductFilters(){
   const el=document.getElementById('p-detail-filters');
   const btn=document.querySelector('.filter-toggle-btn');
@@ -7154,7 +7193,7 @@ function renderParsedCard(it, status){
       '<div><label>국가</label><select id="ov-country-'+it.id+'"><option value="">— 선택 —</option>'+countryOptions+'</select></div>'+
       '<div><label>품목</label><select id="ov-category-'+it.id+'"><option value="">— 선택 —</option>'+categoryOptions+'</select></div>'+
       '<div><label>수요처 유형</label><select id="ov-sutype-'+it.id+'"><option value="">— 선택 —</option><option value="자체브랜드"'+((overrides.수요처유형||'')==='자체브랜드'?' selected':'')+'>🟢 자체브랜드</option><option value="고객사"'+((overrides.수요처유형||'')==='고객사'?' selected':'')+'>🔵 고객사</option><option value="라이선스·콜라보"'+((overrides.수요처유형||'')==='라이선스·콜라보'?' selected':'')+'>🟣 라이선스·콜라보</option></select></div>'+
-      '<div><label>수요처명 (브랜드/고객)</label><input id="ov-suname-'+it.id+'" value="'+escapeAttr(overrides.수요처명||'')+'" placeholder="예: 미스터두낫띵 / OO기업"></div>'+
+      '<div><label>수요처명 (브랜드/고객)</label><input id="ov-suname-'+it.id+'" class="su-name-ac" autocomplete="off" value="'+escapeAttr(overrides.수요처명||'')+'" placeholder="예: 미스터두낫띵 / OO기업"></div>'+
     '</div>' : '') +
     _aiRenderProductTable(it, isPending) +
     ((packagingCnt||oneTimeCnt) ? '<div class="ai-card-extras"><details><summary>📦 포장 '+packagingCnt+'건 / 💰 일회성 '+oneTimeCnt+'건 (참고만, 합집합 제외)</summary><pre style="font-size:11px;background:var(--card-2,#f5f5f5);padding:8px;border-radius:5px;overflow:auto;">'+escapeHtml(JSON.stringify({packaging:it.packaging,oneTime:it.oneTime},null,2))+'</pre></details></div>' : '') +
@@ -7240,7 +7279,7 @@ async function approveParsed(id){
   const v2 = document.getElementById('ov-country-'+id); if(v2 && v2.value) overrides.국가 = v2.value;
   const v3 = document.getElementById('ov-category-'+id); if(v3 && v3.value) overrides.품목 = v3.value;
   const v4 = document.getElementById('ov-sutype-'+id); if(v4 && v4.value) overrides.수요처유형 = v4.value;
-  const v5 = document.getElementById('ov-suname-'+id); if(v5 && v5.value) overrides.수요처명 = v5.value.trim();
+  const v5 = document.getElementById('ov-suname-'+id); if(v5 && v5.value){ overrides.수요처명 = v5.value.trim(); if(typeof suNameRemember==='function') suNameRemember(overrides.수요처명); }
   // 인라인 편집된 products 머지
   const editedProducts = _aiEditState.get(id);
   if(Array.isArray(editedProducts) && editedProducts.length){
