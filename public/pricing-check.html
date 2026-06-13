@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🔍 가격 정합성 점검 — GOODS OS</title>
+<style>
+  :root{ --bg:#1f1f1f; --card:#2a2a2a; --line:#3a3a3a; --txt:#e2e8f0; --muted:#94a3b8; --accent:#a78bfa; --red:#ef4444; --orange:#fb923c; --green:#6ee7b7; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--txt); font-family:'IBM Plex Sans KR','Pretendard',system-ui,sans-serif; padding:28px 32px 80px; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  .sub{ color:var(--muted); font-size:12px; margin-bottom:18px; line-height:1.6; }
+  .bar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px; }
+  button{ background:var(--accent); color:#1a1a1a; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+  button.ghost{ background:transparent; color:var(--txt); border:1px solid var(--line); }
+  .kpis{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+  .kpi{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 16px; min-width:120px; }
+  .kpi .n{ font-size:22px; font-weight:700; }
+  .kpi .l{ font-size:11px; color:var(--muted); margin-top:2px; }
+  .sec{ margin:26px 0 10px; font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  table{ width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:8px; overflow:hidden; font-size:13px; }
+  th,td{ padding:9px 12px; text-align:left; border-bottom:1px solid var(--line); }
+  th{ background:#242424; color:var(--muted); font-weight:500; font-size:11px; }
+  tr:last-child td{ border-bottom:none; }
+  .grp{ background:#241f33; }
+  .grp td{ font-weight:700; color:var(--accent); }
+  .flag-red{ color:var(--red); font-weight:700; }
+  .scatter{ color:var(--orange); font-weight:600; }
+  .target{ color:var(--green); }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  .pill{ display:inline-block; padding:1px 7px; border-radius:10px; font-size:10px; background:#333; color:var(--muted); margin-left:6px; }
+  .note{ font-size:11px; color:var(--muted); margin-top:6px; }
+  #err{ color:var(--red); padding:16px; background:var(--card); border-radius:8px; display:none; }
+  .loading{ color:var(--muted); padding:30px 0; }
+</style>
+</head>
+<body>
+  <h1>🔍 가격 정합성 점검</h1>
+  <div class="sub">
+    같은 제품 라인인데 한국가는 동일한데 해외 현지가가 흩어진 케이스를 추적합니다.<br>
+    산식 적정가 = (KR + 배송비 + 인증비) × (1+관세) × (1+VAT) ÷ 환율, 올림 — 현재 환율 기준. · 🇹🇼 TW는 레거시 출시가 규칙으로 제외.
+  </div>
+  <div class="bar">
+    <button onclick="load()">🔄 다시 점검</button>
+    <span id="meta" class="note"></span>
+  </div>
+  <div id="err"></div>
+  <div id="content"><div class="loading">불러오는 중…</div></div>
+
+<script>
+const API = '/api/admin/pricing-audit/consistency';
+const fmt = n => (n==null?'—':Number(n).toLocaleString());
+
+async function load(){
+  const c = document.getElementById('content');
+  const err = document.getElementById('err');
+  err.style.display='none';
+  c.innerHTML = '<div class="loading">불러오는 중…</div>';
+  try{
+    const r = await fetch(API, { credentials:'same-origin' });
+    if(r.status===401 || r.status===403){
+      err.style.display='block';
+      err.innerHTML = '로그인이 필요합니다. <a href="/login.html" style="color:#a78bfa">로그인하기</a> 후 새로고침하세요.';
+      c.innerHTML=''; return;
+    }
+    const d = await r.json();
+    if(!d.ok){ throw new Error(d.error||'unknown'); }
+    render(d);
+  }catch(e){
+    err.style.display='block'; err.textContent = '점검 실패: ' + e.message; c.innerHTML='';
+  }
+}
+
+function render(d){
+  document.getElementById('meta').textContent =
+    `점검 ${d.totalChecked}개 · 단위오류 ${d.unitErrors.length}건 · 불일치 그룹 ${d.flaggedGroups.length}개 · FX(THB ${d.fxUsed.THB}·IDR ${d.fxUsed.IDR})`;
+  let html = '';
+
+  // 🔴 단위 오류
+  html += `<div class="sec">🔴 단위 오류 의심 <span class="pill">최우선 · ${d.unitErrors.length}건</span></div>`;
+  if(d.unitErrors.length){
+    html += '<table><tr><th>제품</th><th>국가</th><th>현재값</th><th>산식 적정가</th><th>KR</th></tr>';
+    for(const u of d.unitErrors){
+      html += `<tr><td>${esc(u.name)}</td><td>${u.country}</td><td class="flag-red mono">${fmt(u.stored)}</td><td class="target mono">${fmt(u.formulaTarget)}</td><td class="mono">${fmt(u.kr)}</td></tr>`;
+    }
+    html += '</table><div class="note">현재값이 산식 적정가의 1/5 미만 또는 5배 초과 = 000 누락 등 입력 오류 의심.</div>';
+  } else { html += '<div class="note">없음 👍</div>'; }
+
+  // 🟠 라인 내 불일치
+  html += `<div class="sec">🟠 라인 내 해외가 불일치 <span class="pill">${d.flaggedGroups.length}개 그룹</span></div>`;
+  if(d.flaggedGroups.length){
+    html += '<table><tr><th>라인 / 국가</th><th>현재 흩어진 값</th><th>산식 적정가</th></tr>';
+    for(const g of d.flaggedGroups){
+      const krLabel = g.krUniform ? `KR ${fmt(g.kr)}원` : `KR ${Array.isArray(g.kr)?g.kr.map(fmt).join(' / '):fmt(g.kr)}원 ⚠️비균일`;
+      html += `<tr class="grp"><td colspan="3">📂 ${esc(g.prefix)} · ${g.skuCount}종 · ${krLabel}${g.krUniform?'':' <span class="pill">KR이 달라 정상일 수 있음</span>'}</td></tr>`;
+      for(const c of g.countries){
+        const tgt = Array.isArray(c.formulaTarget) ? c.formulaTarget.map(fmt).join(' ~ ')+' <span class="pill">HS 차이</span>' : fmt(c.formulaTarget);
+        html += `<tr><td style="padding-left:24px">${c.country}</td><td class="scatter mono">${c.distinctStored.map(fmt).join(' / ')}</td><td class="target mono">${tgt}</td></tr>`;
+      }
+    }
+    html += '</table><div class="note">산식 적정가가 범위(~)면 그 라인 일부 제품의 HS코드가 비어 기본관세가 적용된 것 — HS 통일하면 한 값으로 수렴.</div>';
+  } else { html += '<div class="note">없음 👍</div>'; }
+
+  document.getElementById('content').innerHTML = html;
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+load();
+</script>
+</body>
+</html>
