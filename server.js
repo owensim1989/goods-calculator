@@ -4241,6 +4241,112 @@ app.get('/api/admin/pricing-audit/publish-migrate', async (req, res) => {
 //   카탈로그 179건 전체에 새 산식 적용 → 어제 박힌 값 vs 새 값 비교 Excel 다운로드
 //   ※ DRY-RUN 전용 — Notion·DB 변경 0
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 가격 정합성 점검 (2026-06-13) — "같은 제품 라인 + 한국가 동일인데 해외 현지가가 제각각" 추적
+//   · 제품명 앞부분(prefix) 으로 라인 그룹화 → KR가 동일한 그룹만 점검
+//   · 각 나라 stored 값들이 2개 이상으로 흩어지면 = 불일치 (산식 적정가를 정답 후보로 제시)
+//   · 🇹🇼 TW = 기존 출시가 유지(레거시) 규칙 → 신제품(등록일 ≥ FORMULA_DATE)끼리만 점검
+//   · 단위 오류(1000배 등): stored 가 산식 적정가의 1/5 미만 또는 5배 초과 → 별도 🔴 플래그
+//   · SSO 보호 (전역 미들웨어) — 읽기 전용, Notion/DB 변경 0
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/api/admin/pricing-audit/consistency', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  const FORMULA_DATE = '2026-04-28';
+  const STORED_FIELD = { TW:'Retail_TW_TWD', HK:'Retail_HK_HKD', CN:'Retail_CN_CNY', TH:'Retail_TH_THB', US:'Retail_US_USD', JP:'Retail_JP_JPY', IDN:'Retail_ID_IDR' };
+  const fxByCur = { TWD:fxCache.TWD, HKD:fxCache.HKD, CNY:fxCache.CNY, THB:fxCache.THB, USD:fxCache.USD, JPY:fxCache.JPY, IDR:fxCache.IDR };
+  try {
+    const allPages = []; let cursor;
+    do {
+      const r = await notion.databases.query({ database_id: PRODUCT_CATALOG_DB_ID, start_cursor: cursor, page_size: 100 });
+      allPages.push(...r.results);
+      cursor = r.has_more ? r.next_cursor : undefined;
+    } while (cursor);
+    const gText = (pr,k)=>(pr[k]&&(pr[k].rich_text||pr[k].title)||[]).map(t=>t.plain_text||'').join('');
+    const gNum = (pr,k)=>pr[k]&&pr[k].number!=null?pr[k].number:null;
+    const gSel = (pr,k)=>pr[k]&&pr[k].select?pr[k].select.name:null;
+    const gDate = (pr,k)=>pr[k]&&pr[k].date?pr[k].date.start:null;
+
+    // 산식 적정가 (라이브 NEW_FORMULA 재사용) — KR가 + 카테고리 + HS + FX 기반
+    function formulaRec(kr, name, cat, hs, ccode) {
+      const c = NEW_FORMULA_COUNTRIES.find(x=>x.code===ccode); if(!c) return null;
+      const fxv = fxByCur[c.currency]; if(!fxv) return null;
+      const grp = NEW_FORMULA_CATEGORY_SHIPPING[cat] || NEW_FORMULA_CATEGORY_SHIPPING['기타'];
+      const cert = kr * newFormulaCertPct(name, cat) / 100;
+      const ship = Math.max(kr*grp.pct/100, grp.min) * c.shipMult;
+      const tariff = newFormulaLookupTariff(hs, ccode);
+      const minKrw = (kr + ship + cert) * (1 + tariff/100) * (1 + c.vatPct/100);
+      return newFormulaRoundLocal(minKrw / fxv, c.round);
+    }
+
+    // 라인(prefix) 그룹화
+    const groups = new Map();
+    const unitErrors = [];
+    for (const p of allPages) {
+      const pr = p.properties || {};
+      if (gSel(pr,'판매상태') === '단종') continue;
+      const kr = gNum(pr,'Retail_KR_KRW'); if (!kr) continue;
+      const name = gText(pr,'Product Name'); if (!name) continue;
+      const cat = gSel(pr,'Category') || '기타';
+      const hs = gText(pr,'HS_Code');
+      const reg = gDate(pr,'등록일');
+      const isNew = !!(reg && reg >= FORMULA_DATE);
+      const prefix = name.split(/\s*[-–]\s*/)[0].trim();
+      if (!groups.has(prefix)) groups.set(prefix, []);
+      const rec = {}; // country -> 산식 적정가
+      for (const code of Object.keys(STORED_FIELD)) {
+        const stored = gNum(pr, STORED_FIELD[code]);
+        const target = formulaRec(kr, name, cat, hs, code === 'IDN' ? 'IDN' : code);
+        rec[code] = { stored, target };
+        // 단위 오류: 산식 대비 1/5 미만 또는 5배 초과
+        if (stored != null && target && (stored < target/5 || stored > target*5)) {
+          unitErrors.push({ name, country: code==='IDN'?'ID':code, stored, formulaTarget: target, kr });
+        }
+      }
+      groups.get(prefix).push({ name, kr, cat, hs, isNew, reg, rec });
+    }
+
+    // 그룹별 점검 — KR 동일 + 특정 나라 stored 2개 이상 흩어짐
+    const flagged = [];
+    for (const [prefix, items] of groups) {
+      if (items.length < 2) continue;
+      const krSet = new Set(items.map(i=>i.kr));
+      const krUniform = krSet.size === 1;
+      const countryIssues = [];
+      for (const code of Object.keys(STORED_FIELD)) {
+        // TW 는 신제품끼리만 (레거시 제외)
+        const pool = code === 'TW' ? items.filter(i=>i.isNew) : items;
+        const storedVals = pool.map(i=>i.rec[code].stored).filter(v=>v!=null);
+        const distinct = [...new Set(storedVals)];
+        if (distinct.length > 1) {
+          const targets = [...new Set(pool.map(i=>i.rec[code].target).filter(Boolean))];
+          countryIssues.push({
+            country: code==='IDN'?'ID':code,
+            distinctStored: distinct.sort((a,b)=>a-b),
+            formulaTarget: targets.length===1 ? targets[0] : targets.sort((a,b)=>a-b)  // HS 다르면 타깃도 다를 수 있음
+          });
+        }
+      }
+      if (countryIssues.length) {
+        flagged.push({ prefix, krUniform, kr: krUniform ? [...krSet][0] : [...krSet].sort((a,b)=>a-b), skuCount: items.length, countries: countryIssues });
+      }
+    }
+    flagged.sort((a,b)=> b.countries.length - a.countries.length);
+
+    res.json({
+      ok: true,
+      generatedNote: '산식 적정가 = (KR + 배송비 + 인증비) × (1+관세) × (1+VAT) ÷ 환율, 올림. 현재 환율 기준.',
+      fxUsed: fxByCur,
+      formulaDate: FORMULA_DATE,
+      totalChecked: allPages.length,
+      unitErrors,        // 🔴 단위 오류 의심 (최우선)
+      flaggedGroups: flagged   // 🟠 라인 내 해외가 불일치
+    });
+  } catch (e) {
+    console.error('[pricing-audit/consistency]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) => {
   if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
     return res.status(403).json({ error: 'unauthorized' });
