@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📊 과거 vs 현재 가격 비교 — GOODS OS</title>
+<style>
+  :root{ --bg:#1f1f1f; --card:#2a2a2a; --line:#3a3a3a; --txt:#e2e8f0; --muted:#94a3b8; --hint:#64748b; --up:#fb7185; --ok:#6ee7b7; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--txt); font-family:'IBM Plex Sans KR','Pretendard',system-ui,sans-serif; padding:26px 30px 80px; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  .sub{ color:var(--muted); font-size:12px; margin-bottom:18px; line-height:1.6; }
+  .insight{ background:var(--card); border:1px solid var(--line); border-left:3px solid var(--up); border-radius:8px; padding:12px 16px; margin-bottom:22px; }
+  .insight b{ font-weight:600; }
+  .sec{ font-size:16px; font-weight:600; margin:24px 0 8px; }
+  table{ width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:8px; overflow:hidden; font-size:13px; }
+  th,td{ padding:9px 12px; border-bottom:1px solid var(--line); }
+  th{ background:#242424; color:var(--muted); font-weight:500; font-size:11px; text-align:left; }
+  td.num{ text-align:right; font-family:'IBM Plex Mono',monospace; }
+  tr:last-child td{ border-bottom:none; }
+  .past{ color:var(--muted); }
+  .up{ color:var(--up); font-weight:600; }
+  .ok{ color:var(--ok); font-weight:600; }
+  .note{ font-size:11px; color:var(--hint); margin-top:8px; line-height:1.6; }
+  .flag{ display:inline-block; font-size:10px; padding:1px 7px; border-radius:10px; background:#3a2a2a; color:var(--up); margin-left:6px; }
+</style>
+</head>
+<body>
+  <h1>📊 과거 팝업 실판매가 vs 현재 카탈로그가</h1>
+  <div class="sub">방콕·홍콩 등 과거 팝업 실판매 평균(할인 포함 가능, 과거 환율 THB40·HKD175) 대비 현재 goods 카탈로그 정가 비교.</div>
+
+  <div class="insight">
+    <div style="font-size:14px; margin-bottom:4px;">핵심 — 🇹🇭 태국 · 🇭🇰 홍콩만 과거보다 <span class="up">+40~84%</span> 비쌈</div>
+    <div style="font-size:12px; color:var(--muted); line-height:1.6;">🇹🇼 대만 · 🇰🇷 한국 · 🇮🇩 인니는 과거와 거의 동일. 과거 팝업이 대만 주도라 TH·HK도 대만가에 가깝게 팔렸고, 현재는 새 산식(관세·VAT·배송)이라 TH·HK가 올라감. <b>다음주 방콕 토이쇼에 그대로 쓰면 과거보다 40~80% 비싸짐.</b></div>
+  </div>
+
+  <div class="sec">🇹🇭 태국 (THB)</div>
+  <table>
+    <tr><th>제품군</th><th style="text-align:right">과거 실판매</th><th style="text-align:right">현재 카탈로그</th><th style="text-align:right">증감</th></tr>
+    <tbody id="th"></tbody>
+  </table>
+  <div class="note">A3 태국은 과거(299)→현재(300)로 일치 — 과거 실판매가 기준으로 맞춰둔 것.</div>
+
+  <div class="sec">🇭🇰 홍콩 (HKD)</div>
+  <table>
+    <tr><th>제품군</th><th style="text-align:right">과거 실판매</th><th style="text-align:right">현재 카탈로그</th><th style="text-align:right">증감</th></tr>
+    <tbody id="hk"></tbody>
+  </table>
+
+  <div class="sec">✅ 과거와 거의 동일 (대만·한국·인니)</div>
+  <table>
+    <tr><th>제품군 · 국가</th><th style="text-align:right">과거</th><th style="text-align:right">현재</th><th style="text-align:right">증감</th></tr>
+    <tbody id="ok"></tbody>
+  </table>
+
+  <div class="note">매칭 제외: Hoodie · Sweatshirt · Squeeze ball (카탈로그 이름이 달라 자동 매칭 안 됨). 수량 30개 이상 판매 제품군만 점검. 과거값은 할인 포함 평균이라 정가보다 약간 낮을 수 있으나, +40% 이상은 할인만으로 설명 안 되는 실제 가격 체계 차이.</div>
+
+<script>
+(function(){
+  const TH=[['Keyring Acrylic',189.5,340,79],['Plush keyring',362.1,620,71],['Mug',451.9,750,66],['Plush Doll',871.5,1450,66],['T-shirts',1076.6,1770,64],['Figure',365.6,570,56],['Blanket',1960.9,3030,55],['Sticker Pack',156.6,240,53],['Keyring PVC',445.9,650,46],['Stand Acrylic',291.9,420,44],['Mouse pad',180,250,39],['A3',298.8,300,0]];
+  const HK=[['Mouse pad',26.1,48,84],['Keyring Acrylic',44.1,68,54],['Sticker Pack',26.1,40,53],['Plush Doll',202.5,256,26]];
+  const OK=[['A3 · 대만',313.9,330,5],['Figure · 대만',376.4,420,12],['Keyring Acrylic · 대만',210.9,220,4],['Keyring PVC · 대만',470.4,490,4],['Blanket · 대만',2335.5,2200,-6],['A3 · 인니',179000,189000,6],['Figure · 인니',229000,220000,-4],['Keyring Acrylic · 인니',109900,110000,0]];
+  const f=n=>Number(n).toLocaleString();
+  const row=(r,cls)=>`<tr><td>${r[0]}</td><td class="num past">${f(r[1])}</td><td class="num">${f(r[2])}</td><td class="num ${cls||(r[3]>=20?'up':'ok')}">${r[3]>0?'+':''}${r[3]}%</td></tr>`;
+  document.getElementById('th').innerHTML=TH.map(r=>row(r, r[3]>=20?'up':'ok')).join('');
+  document.getElementById('hk').innerHTML=HK.map(r=>row(r,'up')).join('');
+  document.getElementById('ok').innerHTML=OK.map(r=>row(r,'ok')).join('');
+})();
+</script>
+</body>
+</html>
