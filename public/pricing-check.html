@@ -50,6 +50,17 @@
 <script>
 const API = '/api/admin/pricing-audit/consistency';
 const fmt = n => (n==null?'—':Number(n).toLocaleString());
+const CUR = { TW:'TWD', HK:'HKD', CN:'CNY', TH:'THB', US:'USD', JP:'JPY', ID:'IDR' };
+let FX = {};
+const toKRW = (country, v) => { const r = FX[CUR[country]]; return (r && v!=null) ? Math.round(v*r) : null; };
+// 현지가 1개 → "값 (₩환산)"
+const wOne = (country, v) => { const k = toKRW(country, v); return fmt(v) + (k!=null?` <span style="color:var(--color-text-secondary,#94a3b8);font-size:11px">₩${fmt(k)}</span>`:''); };
+// 흩어진 값들 → "a / b / c (₩최소~최대)"
+const wRange = (country, arr) => {
+  const ks = arr.map(v=>toKRW(country,v)).filter(x=>x!=null);
+  const tag = ks.length ? ` <span style="color:var(--color-text-secondary,#94a3b8);font-size:11px">₩${fmt(Math.min(...ks))}${ks.length>1?'~'+fmt(Math.max(...ks)):''}</span>` : '';
+  return arr.map(fmt).join(' / ') + tag;
+};
 
 async function load(){
   const c = document.getElementById('content');
@@ -72,6 +83,7 @@ async function load(){
 }
 
 function render(d){
+  FX = d.fxUsed || {};
   document.getElementById('meta').textContent =
     `점검 ${d.totalChecked}개 · 단위오류 ${d.unitErrors.length}건 · 불일치 그룹 ${d.flaggedGroups.length}개 · FX(THB ${d.fxUsed.THB}·IDR ${d.fxUsed.IDR})`;
   let html = '';
@@ -81,7 +93,7 @@ function render(d){
   if(d.unitErrors.length){
     html += '<table><tr><th>제품</th><th>국가</th><th>현재값</th><th>산식 적정가</th><th>KR</th></tr>';
     for(const u of d.unitErrors){
-      html += `<tr><td>${esc(u.name)}</td><td>${u.country}</td><td class="flag-red mono">${fmt(u.stored)}</td><td class="target mono">${fmt(u.formulaTarget)}</td><td class="mono">${fmt(u.kr)}</td></tr>`;
+      html += `<tr><td>${esc(u.name)}</td><td>${u.country}</td><td class="flag-red mono">${wOne(u.country,u.stored)}</td><td class="target mono">${wOne(u.country,u.formulaTarget)}</td><td class="mono">${fmt(u.kr)}원</td></tr>`;
     }
     html += '</table><div class="note">현재값이 산식 적정가의 1/5 미만 또는 5배 초과 = 000 누락 등 입력 오류 의심.</div>';
   } else { html += '<div class="note">없음 👍</div>'; }
@@ -94,8 +106,10 @@ function render(d){
       const krLabel = g.krUniform ? `KR ${fmt(g.kr)}원` : `KR ${Array.isArray(g.kr)?g.kr.map(fmt).join(' / '):fmt(g.kr)}원 ⚠️비균일`;
       html += `<tr class="grp"><td colspan="3">📂 ${esc(g.prefix)} · ${g.skuCount}종 · ${krLabel}${g.krUniform?'':' <span class="pill">KR이 달라 정상일 수 있음</span>'}</td></tr>`;
       for(const c of g.countries){
-        const tgt = Array.isArray(c.formulaTarget) ? c.formulaTarget.map(fmt).join(' ~ ')+' <span class="pill">HS 차이</span>' : fmt(c.formulaTarget);
-        html += `<tr><td style="padding-left:24px">${c.country}</td><td class="scatter mono">${c.distinctStored.map(fmt).join(' / ')}</td><td class="target mono">${tgt}</td></tr>`;
+        const tgt = Array.isArray(c.formulaTarget)
+          ? wRange(c.country, c.formulaTarget).replace(' / ', ' ~ ') + ' <span class="pill">HS 차이</span>'
+          : wOne(c.country, c.formulaTarget);
+        html += `<tr><td style="padding-left:24px">${c.country}</td><td class="scatter mono">${wRange(c.country, c.distinctStored)}</td><td class="target mono">${tgt}</td></tr>`;
       }
     }
     html += '</table><div class="note">산식 적정가가 범위(~)면 그 라인 일부 제품의 HS코드가 비어 기본관세가 적용된 것 — HS 통일하면 한 값으로 수렴.</div>';
