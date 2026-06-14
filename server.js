@@ -4347,6 +4347,38 @@ app.get('/api/admin/pricing-audit/consistency', async (req, res) => {
   }
 });
 
+// 가격 보정 적용 (2026-06-14) — 카탈로그 retail 가격 일괄 수정 (정합성 점검 결과 보정용)
+//   body: { dryRun?:bool, updates:[ { id:pageId, retails:{ HK?,CN?,TH?,US?,JP?,ID?,TW?,KR? } } ] }
+//   SSO 보호(전역). dryRun=true 면 노션 변경 없이 적용 예정 필드만 반환.
+app.post('/api/admin/pricing-audit/apply-prices', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  const FIELD = { HK:'Retail_HK_HKD', CN:'Retail_CN_CNY', TH:'Retail_TH_THB', US:'Retail_US_USD', JP:'Retail_JP_JPY', ID:'Retail_ID_IDR', TW:'Retail_TW_TWD', KR:'Retail_KR_KRW' };
+  const dryRun = !!(req.body && req.body.dryRun);
+  const updates = (req.body && Array.isArray(req.body.updates)) ? req.body.updates : [];
+  if (!updates.length) return res.status(400).json({ error: 'updates_required' });
+  if (updates.length > 500) return res.status(400).json({ error: 'too_many' });
+  const results = [];
+  for (const u of updates) {
+    if (!u || !u.id || !u.retails) { results.push({ id: u && u.id, ok:false, err:'bad_item' }); continue; }
+    const props = {};
+    for (const k of Object.keys(u.retails)) {
+      if (!FIELD[k]) continue;
+      const n = Number(u.retails[k]);
+      if (!Number.isFinite(n) || n < 0) continue;
+      props[FIELD[k]] = { number: n };
+    }
+    if (!Object.keys(props).length) { results.push({ id:u.id, ok:false, err:'no_valid_fields' }); continue; }
+    if (dryRun) { results.push({ id:u.id, ok:true, willSet: Object.keys(props) }); continue; }
+    try {
+      await notion.pages.update({ page_id: u.id, properties: props });
+      results.push({ id:u.id, ok:true, set: Object.keys(props) });
+    } catch (e) {
+      results.push({ id:u.id, ok:false, err: e.message });
+    }
+  }
+  res.json({ ok:true, dryRun, total: updates.length, applied: results.filter(r=>r.ok && !dryRun).length, failed: results.filter(r=>!r.ok).length, results });
+});
+
 app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) => {
   if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
     return res.status(403).json({ error: 'unauthorized' });
