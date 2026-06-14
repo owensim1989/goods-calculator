@@ -27,7 +27,7 @@
 </head>
 <body>
   <h1>📊 과거 팝업 실판매가 vs 현재 카탈로그가</h1>
-  <div class="sub">방콕·홍콩 등 과거 팝업 실판매 평균(할인 포함 가능, 과거 환율 THB40·HKD175) 대비 현재 goods 카탈로그 정가 비교.</div>
+  <div class="sub">방콕·홍콩 등 과거 팝업 실판매 평균(할인 포함 가능) 대비 현재 goods 카탈로그 정가 비교. 각 칸 아래 <b>₩</b>는 비교 일관성 위해 <b>현재 환율</b>로 환산(THB46.64·HKD194.86·TWD43·IDR0.0849).</div>
 
   <div class="insight">
     <div style="font-size:14px; margin-bottom:4px;">핵심 — 🇹🇭 태국 · 🇭🇰 홍콩만 과거보다 <span class="up">+40~84%</span> 비쌈</div>
@@ -57,14 +57,16 @@
 
 <script>
 (function(){
+  const FX={ THB:46.64, HKD:194.86, TWD:43, IDR:0.0849, CNY:225, USD:1527, JPY:9.543 };  // 현재 환율 (KRW/단위)
   const TH=[['Keyring Acrylic',189.5,340,79],['Plush keyring',362.1,620,71],['Mug',451.9,750,66],['Plush Doll',871.5,1450,66],['T-shirts',1076.6,1770,64],['Figure',365.6,570,56],['Blanket',1960.9,3030,55],['Sticker Pack',156.6,240,53],['Keyring PVC',445.9,650,46],['Stand Acrylic',291.9,420,44],['Mouse pad',180,250,39],['A3',298.8,300,0]];
   const HK=[['Mouse pad',26.1,48,84],['Keyring Acrylic',44.1,68,54],['Sticker Pack',26.1,40,53],['Plush Doll',202.5,256,26]];
-  const OK=[['A3 · 대만',313.9,330,5],['Figure · 대만',376.4,420,12],['Keyring Acrylic · 대만',210.9,220,4],['Keyring PVC · 대만',470.4,490,4],['Blanket · 대만',2335.5,2200,-6],['A3 · 인니',179000,189000,6],['Figure · 인니',229000,220000,-4],['Keyring Acrylic · 인니',109900,110000,0]];
+  const OK=[['A3 · 대만','TWD',313.9,330,5],['Figure · 대만','TWD',376.4,420,12],['Keyring Acrylic · 대만','TWD',210.9,220,4],['Keyring PVC · 대만','TWD',470.4,490,4],['Blanket · 대만','TWD',2335.5,2200,-6],['A3 · 인니','IDR',179000,189000,6],['Figure · 인니','IDR',229000,220000,-4],['Keyring Acrylic · 인니','IDR',109900,110000,0]];
   const f=n=>Number(n).toLocaleString();
-  const row=(r,cls)=>`<tr><td>${r[0]}</td><td class="num past">${f(r[1])}</td><td class="num">${f(r[2])}</td><td class="num ${cls||(r[3]>=20?'up':'ok')}">${r[3]>0?'+':''}${r[3]}%</td></tr>`;
-  document.getElementById('th').innerHTML=TH.map(r=>row(r, r[3]>=20?'up':'ok')).join('');
-  document.getElementById('hk').innerHTML=HK.map(r=>row(r,'up')).join('');
-  document.getElementById('ok').innerHTML=OK.map(r=>row(r,'ok')).join('');
+  const cell=(v,cur,muted)=>`<td class="num${muted?' past':''}">${f(v)}<div style="font-size:10px;color:#64748b">₩${f(Math.round(v*FX[cur]))}</div></td>`;
+  const row=(name,cur,past,now,pct)=>`<tr><td>${name}</td>${cell(past,cur,true)}${cell(now,cur,false)}<td class="num ${pct>=20?'up':'ok'}">${pct>0?'+':''}${pct}%</td></tr>`;
+  document.getElementById('th').innerHTML=TH.map(r=>row(r[0],'THB',r[1],r[2],r[3])).join('');
+  document.getElementById('hk').innerHTML=HK.map(r=>row(r[0],'HKD',r[1],r[2],r[3])).join('');
+  document.getElementById('ok').innerHTML=OK.map(r=>row(r[0],r[1],r[2],r[3],r[4])).join('');
 })();
 </script>
 </body>
