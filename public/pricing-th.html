@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🇹🇭 태국 가격 3종 비교 — GOODS OS</title>
+<style>
+  :root{ --bg:#1f1f1f; --card:#2a2a2a; --line:#3a3a3a; --txt:#e2e8f0; --muted:#94a3b8; --hint:#64748b; --past:#94a3b8; --formula:#6ee7b7; --cur:#fb923c; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--txt); font-family:'IBM Plex Sans KR','Pretendard',system-ui,sans-serif; padding:26px 30px 80px; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  .sub{ color:var(--muted); font-size:12px; margin-bottom:18px; line-height:1.6; }
+  .legend{ display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-bottom:14px; }
+  .legend b{ font-weight:600; }
+  table{ width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:8px; overflow:hidden; font-size:13px; }
+  th,td{ padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th{ background:#242424; color:var(--muted); font-weight:500; font-size:11px; text-align:right; }
+  th.l,td.l{ text-align:left; }
+  td{ text-align:right; font-family:'IBM Plex Mono',monospace; }
+  tr:last-child td{ border-bottom:none; }
+  .grpname{ font-family:inherit; font-weight:500; }
+  .krw{ font-size:10px; color:var(--hint); }
+  .pct{ font-weight:600; }
+  .c-past{ color:var(--past); } .c-formula{ color:var(--formula); } .c-cur{ color:var(--cur); }
+  .colgrp-past{ background:rgba(148,163,184,0.05); } .colgrp-formula{ background:rgba(110,231,183,0.06); } .colgrp-cur{ background:rgba(251,146,60,0.06); }
+  .note{ font-size:11px; color:var(--hint); margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+  <h1>🇹🇭 태국 가격 3종 비교 — 한국가 대비</h1>
+  <div class="sub">제품군별 <b>과거 실판매가 · 산식 적정가(운송·통관 반영) · 현재 카탈로그가</b>를 나란히, 각각 <b>한국 소비자가 대비 %</b>까지. 원화·% 는 현재 환율(THB 46.64) 기준.</div>
+  <div class="legend">
+    <span><span class="c-past">●</span> 과거 실판매 (방콕 팝업)</span>
+    <span><span class="c-formula">●</span> 산식 적정가 (추천)</span>
+    <span><span class="c-cur">●</span> 현재 카탈로그</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="l">제품군</th>
+        <th>한국가</th>
+        <th class="colgrp-past">과거 ฿</th><th class="colgrp-past">₩</th><th class="colgrp-past">한국비</th>
+        <th class="colgrp-formula">산식 ฿</th><th class="colgrp-formula">₩</th><th class="colgrp-formula">한국비</th>
+        <th class="colgrp-cur">현재 ฿</th><th class="colgrp-cur">₩</th><th class="colgrp-cur">한국비</th>
+      </tr>
+    </thead>
+    <tbody id="body"></tbody>
+  </table>
+  <div class="note">한국비 = 해당 가격을 원화로 환산해 한국 소비자가와 비교한 증감률. 과거값은 할인 포함 평균 실판매가. 산식 적정가 = (한국가+배송+인증)×(1+관세)×(1+VAT)÷환율, 올림.</div>
+
+<script>
+(function(){
+  const FX=46.64;
+  // [제품군, 한국가, 과거TH, 산식TH, 현재TH]
+  const D=[
+    ['Keyring Acrylic',8000,189.5,260,340],
+    ['Sticker Pack',4500,156.6,140,240],
+    ['Mouse pad',5000,180,180,250],
+    ['Plush Doll',39000,871.5,1060,1450],
+    ['Mug',20000,451.9,640,750],
+    ['Figure',16000,365.6,480,570],
+    ['Keyring PVC',19000,445.9,570,650],
+    ['Plush keyring',22000,362.1,640,620],
+    ['Stand Acrylic',12000,291.9,430,420],
+    ['A3',11000,298.8,290,300],
+    ['Blanket',88000,1960.9,2850,3030]
+  ];
+  const f=n=>Number(Math.round(n)).toLocaleString();
+  const pct=(th,kr)=>{const p=Math.round((th*FX-kr)/kr*100);return (p>0?'+':'')+p+'%';};
+  const cell=(th,kr,cls)=>`<td class="${cls}">${f(th)}</td><td class="${cls} krw">₩${f(th*FX)}</td><td class="${cls} pct">${pct(th,kr)}</td>`;
+  document.getElementById('body').innerHTML = D.map(r=>`<tr>
+    <td class="l grpname">${r[0]}</td>
+    <td>${f(r[1])}원</td>
+    ${cell(r[2],r[1],'c-past colgrp-past')}
+    ${cell(r[3],r[1],'c-formula colgrp-formula')}
+    ${cell(r[4],r[1],'c-cur colgrp-cur')}
+  </tr>`).join('');
+})();
+</script>
+</body>
+</html>
