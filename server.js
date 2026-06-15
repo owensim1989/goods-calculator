@@ -382,6 +382,34 @@ async function pushApprovedItemToUnifiedDb(it) {
   return created;
 }
 
+// 품명 정규화 (2026-06-15) — AI가 만든 영문 인형·키링 품명을 표준값으로 통일. 멱등(이미 정리되면 no-op).
+// 운임·포장·시공(부스) 라인은 비용 데이터라 건드리지 않음. 기존 한글 인형↔인형키링 분리는 별도 확인 후.
+const PRODNAME_MAP = {
+  'Customized Plush Toy': '인형키링',
+  'Customized Plush Toy (한톨 키링인형)': '인형키링',
+  'plush keychain': '인형키링',
+  'pvc keyring 3d keychains': 'PVC키링',
+  'PVC keyring': 'PVC키링',
+};
+async function normalizeProductNames() {
+  if (!notion) return;
+  let fixed = 0;
+  for (const it of (cache.items || [])) {
+    if (!it || String(it.id).startsWith('parsed:')) continue;
+    const names = Array.isArray(it.품명) ? it.품명 : [];
+    if (!names.length) continue;
+    let changed = false;
+    const mapped = names.map(n => { if (PRODNAME_MAP[n]) { changed = true; return PRODNAME_MAP[n]; } return n; });
+    if (!changed) continue;
+    const uniq = [...new Set(mapped)];
+    try {
+      await notion.pages.update({ page_id: it.id, properties: { '품명': { multi_select: uniq.map(n => ({ name: n })) } } });
+      it.품명 = uniq; fixed++;
+    } catch (e) { console.error('[품명정규화] 실패', it.id, e.message); }
+  }
+  if (fixed) { try { saveCache(cache); } catch (e) {} console.log('[품명정규화]', fixed, '행 표준화'); }
+}
+
 // 되돌리기·반려 시 이미 push 된 노션 row archive (재승인 시 stale·중복 방지). archive = 휴지통(복구 가능), hard delete X
 function archivePushedNotionPages(pageIds, ctx) {
   if (!notion || !Array.isArray(pageIds) || !pageIds.length) return;
@@ -6861,6 +6889,7 @@ try {
   // 시작 시 동기화 + 환율
   loadFxCache();  // 디스크에 저장된 마지막 환율 먼저 복구 (외부 API 실패해도 합리적 값 보장)
   await Promise.all([syncFromNotion(), refreshFx()]);
+  try { await normalizeProductNames(); } catch (e) { console.error('[품명정규화] 오류', e.message); }
   // 30분마다 자동 동기화, 6시간마다 환율 갱신 (한국수출입은행은 영업일 1회 발표 — 6시간이면 평일 오전 갱신 보장)
   setInterval(syncFromNotion, 30 * 60 * 1000);
   setInterval(refreshFx, 6 * 60 * 60 * 1000);
