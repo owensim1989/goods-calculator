@@ -2022,6 +2022,27 @@ async function doSync(){
     btn.textContent='✅ 완료';setTimeout(()=>{btn.textContent='동기화';btn.disabled=false;},2000);
   }catch(e){btn.textContent='❌ 실패';setTimeout(()=>{btn.textContent='동기화';btn.disabled=false;},2000);}
 }
+// 비파괴 자동 갱신 (2026-06-15) — DATA·검색목록만 갱신, 필터 선택/표 화면은 그대로 유지
+let _lastSoftRefresh=0;
+async function softRefresh(force){
+  const now=Date.now();
+  if(!force && now-_lastSoftRefresh<60000) return; // 1분 throttle
+  _lastSoftRefresh=now;
+  try{
+    const res=await fetch('/api/products',{credentials:'same-origin'});
+    if(!res.ok) return; const j=await res.json();
+    DATA=j.items||j||[];
+    const cs=new Set(),ps=new Set(),cos=new Set();
+    DATA.forEach(d=>{if(d.품목)cs.add(d.품목);(d.품명||[]).forEach(n=>ps.add(n));if(d.국가)cos.add(d.국가);});
+    allCats.length=0;allCats.push(...cs);
+    allProds.length=0;allProds.push(...ps);
+    allCountries.length=0;allCountries.push(...cos);
+    ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타','국내','기타해외'].forEach(c=>{if(!allCountries.includes(c))allCountries.push(c);});
+  }catch(e){}
+}
+// 트리거: 창 포커스 복귀 + 5분 주기 (열어둔 페이지가 알아서 최신 반영 → 동기화 버튼 거의 불필요)
+window.addEventListener('focus', ()=>{ if(typeof softRefresh==='function') softRefresh(); });
+setInterval(()=>{ if(typeof softRefresh==='function') softRefresh(); }, 5*60*1000);
 function initFilters(){
   const allCatsSet=new Set(), allProdsSet=new Set(), allCountriesSet=new Set();
   DATA.forEach(d=>{if(d.품목)allCatsSet.add(d.품목);(d.품명||[]).forEach(n=>allProdsSet.add(n));if(d.국가)allCountriesSet.add(d.국가);});
@@ -2467,6 +2488,8 @@ function switchPage(item){
   if(item.dataset.page==='catalog'){
     if(typeof catInit==='function') catInit();
   }
+  // 제품 단가 진입 시 비파괴 자동 갱신 (열어둔 채 다른 곳에서 변경된 데이터 반영)
+  if(item.dataset.page==='product'){ if(typeof softRefresh==='function') softRefresh(); }
   // orders 진입 — iframe lazy load (첫 진입 시만 src 박음, 이후 reload 안 함 → 상태 보존)
   if(item.dataset.page==='orders'){
     const ifr = document.getElementById('ordersIframe');
