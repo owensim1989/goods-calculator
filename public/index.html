@@ -2025,7 +2025,10 @@ async function doSync(){
 function initFilters(){
   const allCatsSet=new Set(), allProdsSet=new Set(), allCountriesSet=new Set();
   DATA.forEach(d=>{if(d.품목)allCatsSet.add(d.품목);(d.품명||[]).forEach(n=>allProdsSet.add(n));if(d.국가)allCountriesSet.add(d.국가);});
-  allCats=[...allCatsSet];allProds=[...allProdsSet];allCountries=[...allCountriesSet];
+  // in-place 갱신 — setupDD 가 캡처한 배열 참조를 유지해 동기화/검수완료 후에도 최신 검색목록 반영 (2026-06-15)
+  allCats.length=0;allCats.push(...allCatsSet);
+  allProds.length=0;allProds.push(...allProdsSet);
+  allCountries.length=0;allCountries.push(...allCountriesSet);
   // 2026-05-25 신 9개 국가 보강 + 옛 호환 (데이터 0건이어도 옵션 노출). 데이터 있으면 자동으로도 잡힘
   ['한국','중국','대만','태국','베트남','일본','홍콩','미국','인도네시아','기타','국내','기타해외'].forEach(c => {
     if(!allCountries.includes(c)) allCountries.push(c);
@@ -2037,8 +2040,10 @@ function initFilters(){
   initCheckDD('b-cat','b-cat-menu','b-cat-label',allCats);
   initCheckDD('b-prod','b-prod-menu','b-prod-label',allProds);
   initCheckDD('b-country','b-country-menu','b-country-label',allCountries);
-  setupDD('v-product','dd-v-product',allProds,pCnt);
-  setupDD('p-quicksearch','dd-p-quicksearch',allProds,pCnt,{onSelect:selectProductQuick,isSelected:(n)=>qsSelected.has(n),keepOpen:true});
+  if(!window._typeaheadInited){ window._typeaheadInited=true;
+    setupDD('v-product','dd-v-product',allProds,pCnt);
+    setupDD('p-quicksearch','dd-p-quicksearch',allProds,pCnt,{onSelect:selectProductQuick,isSelected:(n)=>qsSelected.has(n),keepOpen:true});
+  }
   renderCombo();
 }
 // 빠른검색 다중선택 (2026-06-05): 제품명을 칩으로 누적 → 선택된 품명들로 즉시 조회
@@ -7504,6 +7509,7 @@ async function approveParsed(id){
     loadParsedList('pending');
     loadParsedSummary();
     if(typeof loadDemandNames==='function'){ _suLoaded=false; loadDemandNames(); } // 새 수요처명 팀 공유 목록 갱신
+    if(typeof loadData==='function') loadData(); // 메인 DATA·검색목록 갱신 → 새 견적 바로 검색 가능 (2026-06-15)
   }catch(e){ alert('검수완료 실패: '+e.message); }
 }
 
