@@ -2134,6 +2134,13 @@ function suNameRemember(v){ v=(v||'').trim(); if(!v) return; const a=_suNamesSto
 // 팀 공유 마스터 목록 — 서버 캐시(=모두 같은 Notion 동기화)에서 가져옴 (2026-06-09)
 let _suServerNames=[], _suLoaded=false, _suLoading=false;
 async function loadDemandNames(){ if(_suLoading) return; _suLoading=true; try{ const r=await fetch('/api/demand-names',{credentials:'same-origin'}); if(r.ok){ const j=await r.json(); _suServerNames=Array.isArray(j.names)?j.names:[]; } }catch(e){} finally{ _suLoaded=true; _suLoading=false; } }
+// 표준 품명 datalist (검수·직접입력 자동완성 → 변형 양산 방지, 2026-06-15)
+async function loadStdProdNames(){
+  try{ const r=await fetch('/api/product-names',{credentials:'same-origin'}); if(!r.ok)return; const j=await r.json();
+    let dl=document.getElementById('stdProdNames'); if(!dl){ dl=document.createElement('datalist'); dl.id='stdProdNames'; document.body.appendChild(dl); }
+    dl.innerHTML=(j.names||[]).map(n=>'<option value="'+String(n).replace(/"/g,'&quot;')+'"></option>').join('');
+  }catch(e){}
+}
 function getSuNames(){ const s=new Set(); _suServerNames.forEach(v=>s.add(v)); const _d=(typeof DATA!=='undefined'&&Array.isArray(DATA))?DATA:[]; _d.forEach(i=>{ if(i&&i.수요처명) s.add(i.수요처명); }); _suNamesStore().forEach(v=>s.add(v)); return [...s].sort((a,b)=>a.localeCompare(b,'ko')); }
 let _suDD=null,_suInput=null,_suHl=-1;
 function _suDDEl(){
@@ -2479,6 +2486,7 @@ function switchPage(item){
       document.querySelectorAll('#page-ai-review .ai-modal-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.status==='pending'));
       switchParsedTab('pending');
     }
+    if(typeof loadStdProdNames==='function') loadStdProdNames();
   }
   // customs 진입 시 데이터 로드
   if(item.dataset.page==='customs'){
@@ -7327,7 +7335,7 @@ function _aiRenderProductTable(it, isPending){
   ).join('');
   const rows = products.map((p, idx) =>
     '<tr data-row="'+idx+'">'+
-      '<td><input type="text" data-f="name" data-idx="'+idx+'" value="'+escapeAttr(p.name||'')+'" placeholder="제품명"></td>'+
+      '<td><input type="text" list="stdProdNames" data-f="name" data-idx="'+idx+'" value="'+escapeAttr(p.name||'')+'" placeholder="제품명 (표준 품명에서 선택 권장)"></td>'+
       '<td style="width:90px;"><input type="number" step="any" min="0" data-f="qty" data-idx="'+idx+'" value="'+escapeAttr(p.qty)+'" placeholder="수량"></td>'+
       '<td style="width:110px;"><input type="number" step="any" min="0" data-f="unitPrice" data-idx="'+idx+'" value="'+escapeAttr(p.unitPrice)+'" placeholder="단가"></td>'+
       '<td style="width:78px;"><select data-f="currency" data-idx="'+idx+'"><option value="">—</option>'+currencyOpts(p.currency)+'</select></td>'+
@@ -7480,7 +7488,7 @@ function _aiRerenderTable(id){
   ).join('');
   const rows = arr.map((p, idx) =>
     '<tr data-row="'+idx+'">'+
-      '<td><input type="text" data-f="name" data-idx="'+idx+'" value="'+escapeAttr(p.name||'')+'" placeholder="제품명"></td>'+
+      '<td><input type="text" list="stdProdNames" data-f="name" data-idx="'+idx+'" value="'+escapeAttr(p.name||'')+'" placeholder="제품명 (표준 품명에서 선택 권장)"></td>'+
       '<td style="width:90px;"><input type="number" step="any" min="0" data-f="qty" data-idx="'+idx+'" value="'+escapeAttr(p.qty)+'" placeholder="수량"></td>'+
       '<td style="width:110px;"><input type="number" step="any" min="0" data-f="unitPrice" data-idx="'+idx+'" value="'+escapeAttr(p.unitPrice)+'" placeholder="단가"></td>'+
       '<td style="width:78px;"><select data-f="currency" data-idx="'+idx+'"><option value="">—</option>'+currencyOpts(p.currency)+'</select></td>'+

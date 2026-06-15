@@ -615,6 +615,14 @@ app.get('/api/summary', (req, res) => {
   });
 });
 
+// 표준 품명 목록 (검수 자동완성용, 2026-06-15) — 캐시에서 distinct, 빈도 높은 순
+app.get('/api/product-names', (req, res) => {
+  const cnt = {};
+  (cache.items || []).forEach(it => (it.품명 || []).forEach(n => { const v = String(n).trim(); if (v) cnt[v] = (cnt[v] || 0) + 1; }));
+  const names = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([n]) => n);
+  res.json({ names });
+});
+
 // 수요처명 마스터 목록 (팀 공유 자동완성용, 2026-06-09) — 캐시(=Notion 동기화)에서 distinct
 app.get('/api/demand-names', (req, res) => {
   const set = new Set();
