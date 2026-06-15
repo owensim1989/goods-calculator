@@ -355,6 +355,12 @@ async function pushApprovedItemToUnifiedDb(it) {
   } catch (e) {
     console.warn('[parsed-approve] 중복 체크 query 실패 (계속 진행):', e.message);
   }
+  // 포장·배송비 자동 안분 (2026-06-15) — 한 견적의 포장+운임을 KRW 환산해 제품들에 금액비율로 배분 → 부대비용(확정)
+  const _surLines = [...(Array.isArray(it.packaging) ? it.packaging : []), ...(Array.isArray(it.other) ? it.other : [])];
+  const _lineKrw = li => Math.round((Number(li.totalAmount) || (Number(li.qty) * Number(li.unitPrice)) || 0) * fxOf(li.currency || it.currency || 'USD'));
+  const _totalSurchargeKRW = _surLines.reduce((s, li) => s + _lineKrw(li), 0);
+  const _rowWeight = r => Math.max(0, Math.round((Number(r.제작비) || 0) * fxOf(r.통화 || it.currency || 'USD')));
+  const _sumWeights = rows.reduce((s, r) => s + _rowWeight(r), 0);
   const created = [];
   for (const r of rows) {
     const dataSrc = (String(r.데이터출처 || '') + ` ${srcMarker}`).trim().substring(0, 1900);
@@ -370,6 +376,15 @@ async function pushApprovedItemToUnifiedDb(it) {
     if (r.제작비 != null) properties['제작비'] = { number: Math.round(Number(r.제작비)) };  // 개당단가 는 formula → 제작비/수량 으로 자동 계산
     if (r.상세스펙) properties['상세스펙'] = { rich_text: [{ text: { content: String(r.상세스펙).substring(0, 1900) } }] };
     if (r.통화) properties['통화'] = { select: { name: String(r.통화).substring(0, 20) } };
+    // 포장·배송 안분분 → 이 제품의 부대비용(확정)
+    if (_totalSurchargeKRW > 0 && r.수량) {
+      const share = _sumWeights > 0 ? Math.round(_totalSurchargeKRW * _rowWeight(r) / _sumWeights) : Math.round(_totalSurchargeKRW / rows.length);
+      if (share > 0) {
+        properties['기타부대비용'] = { number: share };
+        properties['부대비용상태'] = { select: { name: '확정' } };
+        properties['부대비용메모'] = { rich_text: [{ text: { content: ('AI 자동: 포장·배송 ₩' + _totalSurchargeKRW.toLocaleString('en') + ' 금액비율 안분 → 이 제품 ₩' + share.toLocaleString('en')).substring(0, 1900) } }] };
+      }
+    }
     properties['거래상태'] = { select: { name: r.거래상태 || '견적접수' } };
     if (r.견적일자 && /^\d{4}-\d{2}-\d{2}/.test(String(r.견적일자))) properties['견적일자'] = { date: { start: String(r.견적일자).slice(0, 10) } };
     if (r.수요처유형) properties['수요처유형'] = { select: { name: String(r.수요처유형).substring(0, 100) } };
@@ -496,6 +511,8 @@ function parsePage(page) {
     기타부대비용: extractProp(page, '기타부대비용', 'number'),
     부대비용메모: extractProp(page, '부대비용메모', 'rich_text'),
     부대비용상태: extractProp(page, '부대비용상태', 'select'),
+    // 부대비용합계(KRW) — 제품 단가 표가 확정 부대비용을 반영하도록 캐시에 포함 (2026-06-15)
+    부대비용합계: (extractProp(page, '해외운송비', 'number') || 0) + (extractProp(page, '관세', 'number') || 0) + (extractProp(page, '부가세', 'number') || 0) + (extractProp(page, '기타부대비용', 'number') || 0),
     // ━━ 견적 단계 트래킹 (2026-05-17 v3 사이클 — 견적 작성 시 제조사 견적 + 고객사 이력 매칭용) ━━
     // 기존 row 는 견적상태=NULL → 코드에서 '발주확정' 취급 (backward compatible)
     견적상태: extractProp(page, '견적상태', 'select'),   // 견적단계 / 발주확정 / 미채택
