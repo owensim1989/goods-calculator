@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>할인 한화표시 시안 — 실제화면 적용</title>
+<style>
+:root{--bg:#1f1f1f;--panel:#0f172a;--hdr:#0a1424;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--hint:#64748b;--accent:#a78bfa;--green:#10b981;--up:#fb923c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:'IBM Plex Sans KR',Pretendard,system-ui,sans-serif;padding:24px 28px 80px}
+h1{font-size:19px;margin:0 0 4px}.sub{color:var(--muted);font-size:12px;margin-bottom:20px;line-height:1.6}
+.opthdr{display:flex;align-items:center;gap:10px;margin:26px 0 8px}.opthdr h2{font-size:15px;margin:0}
+.tag{font-size:10px;padding:2px 9px;border-radius:10px;background:#1e3a8a;color:#93c5fd}.tag.rec{background:#10331f;color:#6ee7b7}
+.optdesc{font-size:12px;color:var(--muted);margin-bottom:8px}
+.screen{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.bar{background:#1e293b;padding:8px 14px;font-size:12px;color:var(--accent);border-bottom:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+th,td{padding:6px 8px;border-bottom:1px solid #1f2937;text-align:right}
+th{background:var(--hdr);color:var(--muted);font-size:11px;font-weight:500;position:sticky;top:0}
+th.l,td.l{text-align:left}.mono{font-family:'IBM Plex Mono',monospace}
+.won{font-size:10px;color:var(--hint)}.apply{color:var(--green);font-weight:500}.src{color:var(--accent)}
+.inp{display:inline-block;min-width:42px;padding:2px 6px;background:#1f2937;border:1px solid var(--line);border-radius:4px;font-family:'IBM Plex Mono',monospace;text-align:right}
+.inp.g{border-color:var(--green);color:var(--green)}
+.chip{display:inline-block;font-size:10px;padding:1px 7px;border-radius:9px;font-family:'IBM Plex Mono',monospace}
+.chip-won{background:#1e293b;color:#cbd5e1}.chip-up{background:#3a2410;color:#fb923c}
+.pros{font-size:11px;color:var(--hint);margin-top:8px}.note{font-size:11px;color:var(--hint);margin-top:20px;line-height:1.6}
+</style></head><body>
+<h1>🎯 할인 한화 표시 — 실제 할인화면에 적용했을 때</h1>
+<div class="sub">방콕 토이쇼(THB·환율 46.64) 실제 할인 설정 화면 기준. 회색=정가, 초록=적용가(할인후), 보라=현지창고. <b>할인해도 한국가보다 비싼지</b>를 한화·% 로 바로 확인.</div>
+
+<div class="opthdr"><h2>옵션 A — 적용가 칸 아래 인라인</h2><span class="tag rec">추천</span></div>
+<div class="optdesc">적용가 숫자 밑에 작은 글씨로 ≈₩환산 · 한국대비%. 컬럼 안 늘어남.</div>
+<div class="screen"><div class="bar">🎯 할인 설정 — 방콕 토이쇼 2026 (THB)</div>
+<table><colgroup><col style="width:34%"><col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:12%"><col style="width:22%"></colgroup>
+<tr><th class="l">제품</th><th>정가</th><th>현재고</th><th>현지창고</th><th>값</th><th>적용가</th></tr>
+<tr><td class="l">A3 - 3rd round</td><td class="mono">฿300</td><td class="mono">5</td><td class="mono src">65</td><td><span class="inp">0</span></td><td><span class="inp">300</span><div class="won">≈₩13,992 · 한국 +27%</div></td></tr>
+<tr><td class="l">Figure_Random</td><td class="mono">฿480</td><td class="mono">120</td><td class="mono src">882</td><td><span class="inp">15%</span></td><td><span class="inp g">408</span><div class="won">≈₩19,029 · 한국 +19%</div></td></tr>
+<tr><td class="l">Mug - Chilling</td><td class="mono">฿750</td><td class="mono">5</td><td class="mono src">—</td><td><span class="inp">10%</span></td><td><span class="inp g">675</span><div class="won">≈₩31,482 · 한국 +57%</div></td></tr>
+<tr><td class="l">Blanket - Break time</td><td class="mono">฿2,980</td><td class="mono">5</td><td class="mono src">5</td><td><span class="inp">0</span></td><td><span class="inp">2,980</span><div class="won">≈₩138,987 · 한국 +58%</div></td></tr>
+</table></div>
+<div class="pros">👍 컬럼 추가 0 · 모든 행 바로 / 👎 글씨 작음</div>
+
+<div class="opthdr"><h2>옵션 B — 한화·한국대비 칩</h2></div>
+<div class="optdesc">적용가 옆에 알약 칩 2개. 한국보다 비싸면 주황으로 강조.</div>
+<div class="screen"><div class="bar">🎯 할인 설정 — 방콕 토이쇼 2026 (THB)</div>
+<table><colgroup><col style="width:26%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:12%"><col style="width:26%"></colgroup>
+<tr><th class="l">제품</th><th>정가</th><th>현재고</th><th>현지창고</th><th>값</th><th>적용가</th><th class="l">한화 / 한국대비</th></tr>
+<tr><td class="l">Figure_Random</td><td class="mono">฿480</td><td class="mono">120</td><td class="mono src">882</td><td><span class="inp">15%</span></td><td><span class="inp g">408</span></td><td class="l"><span class="chip chip-won">≈₩19,029</span> <span class="chip chip-up">한국 +19%</span></td></tr>
+<tr><td class="l">Mug - Chilling</td><td class="mono">฿750</td><td class="mono">5</td><td class="mono src">—</td><td><span class="inp">10%</span></td><td><span class="inp g">675</span></td><td class="l"><span class="chip chip-won">≈₩31,482</span> <span class="chip chip-up">한국 +57%</span></td></tr>
+<tr><td class="l">Blanket - Break time</td><td class="mono">฿2,980</td><td class="mono">5</td><td class="mono src">5</td><td><span class="inp">0</span></td><td><span class="inp">2,980</span></td><td class="l"><span class="chip chip-won">≈₩138,987</span> <span class="chip chip-up">한국 +58%</span></td></tr>
+</table></div>
+<div class="pros">👍 한국대비 색 강조로 직관 / 👎 가로 폭 더 필요</div>
+
+<div class="opthdr"><h2>옵션 C — 전용 컬럼 2개</h2></div>
+<div class="optdesc">"한화"·"한국대비" 컬럼 신설. 정렬·비교 가장 명확하나 표가 빽빽.</div>
+<div class="screen"><div class="bar">🎯 할인 설정 — 방콕 토이쇼 2026 (THB)</div>
+<table><colgroup><col style="width:24%"><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:10%"><col style="width:13%"><col style="width:10%"></colgroup>
+<tr><th class="l">제품</th><th>정가</th><th>현재고</th><th>현지창고</th><th>값</th><th>적용가</th><th>한화</th><th>한국대비</th></tr>
+<tr><td class="l">Figure_Random</td><td class="mono">480</td><td class="mono">120</td><td class="mono src">882</td><td><span class="inp">15%</span></td><td class="mono apply">408</td><td class="mono won">₩19,029</td><td class="mono" style="color:#fb923c">+19%</td></tr>
+<tr><td class="l">Mug - Chilling</td><td class="mono">750</td><td class="mono">5</td><td class="mono src">—</td><td><span class="inp">10%</span></td><td class="mono apply">675</td><td class="mono won">₩31,482</td><td class="mono" style="color:#fb923c">+57%</td></tr>
+<tr><td class="l">Blanket - Break time</td><td class="mono">2,980</td><td class="mono">5</td><td class="mono src">5</td><td><span class="inp">0</span></td><td class="mono">2,980</td><td class="mono won">₩138,987</td><td class="mono" style="color:#fb923c">+58%</td></tr>
+</table></div>
+<div class="pros">👍 가장 명확·정렬 / 👎 이미 컬럼 많은 표가 더 빽빽 (가로 스크롤 가능)</div>
+
+<div class="note">＋ 옵션 D(보조): 좌측 통계 패널에 "할인 적용가 평균 — 한국가 대비 +43% (한화 기준)" 한 줄. A·B·C 중 하나 + D 조합 추천. · 모든 ₩·%는 현재 환율(THB 46.64) 기준 실시간 계산.</div>
+</body></html>
