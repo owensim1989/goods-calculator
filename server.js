@@ -698,6 +698,29 @@ app.post('/api/products/demand-source-bulk', async (req, res) => {
   res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 20) });
 });
 
+// 분류 일괄 저장 (2026-06-15) — 분류 점검 화면에서 품목/품명 확정. 품명 multi_select 새 옵션은 서버가 자동생성.
+app.post('/api/products/classify-bulk', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion 미설정' });
+  const updates = Array.isArray(req.body && req.body.updates) ? req.body.updates : [];
+  if (!updates.length) return res.json({ ok: true, updated: 0, failed: 0 });
+  let updated = 0; const errors = [];
+  for (const u of updates) {
+    const id = u && u.id; if (!id || String(id).startsWith('parsed:')) continue;
+    const props = {};
+    if (u.품목) props['품목'] = { select: { name: String(u.품목).substring(0, 100) } };
+    if (Array.isArray(u.품명)) props['품명'] = { multi_select: u.품명.filter(Boolean).map(n => ({ name: String(n).substring(0, 100) })) };
+    if (!Object.keys(props).length) continue;
+    try {
+      await notion.pages.update({ page_id: id, properties: props });
+      const ci = (cache.items || []).find(x => x.id === id);
+      if (ci) { if (u.품목) ci.품목 = u.품목; if (Array.isArray(u.품명)) ci.품명 = u.품명; }
+      updated++;
+    } catch (e) { errors.push({ id, error: e.message }); }
+  }
+  if (updated) { try { saveCache(cache); } catch (e) {} }
+  res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 20) });
+});
+
 // 견적 채택 토글 (2026-06-09) — 제품단가 표에서 건별로 발주확정/미채택 설정
 app.post('/api/quote-status', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion 미설정' });

@@ -416,6 +416,23 @@ tbody tr:hover{background:var(--primary-light);}
 .pb-btn:hover{color:var(--text);}
 .pb-btn.active{border-color:var(--primary);background:var(--primary-light);color:var(--text);}
 .sur-warn{background:rgba(245,158,11,.12);border:1px solid var(--warning,#f59e0b);border-radius:8px;padding:9px 13px;font-size:12.5px;color:#fcd34d;margin-bottom:12px;}
+/* 분류 점검 (2026-06-15) */
+.cf-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+.cf-chk{font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:5px;cursor:pointer;}
+.cf-hint{font-size:12px;color:var(--text-muted);}
+.cf-save{margin-left:auto;background:var(--primary);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;}
+.cf-note{background:rgba(59,130,246,.08);border-left:3px solid var(--primary);border-radius:6px;padding:10px 13px;font-size:12.5px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;}.cf-note b{color:#93c5fd;}
+.cf-table-wrap{overflow-x:auto;}
+.cf-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.cf-table th,.cf-table td{padding:7px 10px;border-bottom:1px solid #1f2b3e;text-align:left;vertical-align:middle;}
+.cf-table th{color:var(--text-muted);font-size:11px;background:var(--input-bg);position:sticky;top:0;}
+.cf-table tr.cf-prop{background:rgba(245,158,11,.08);}
+.cf-pj{max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+.cf-v{color:var(--text-muted);white-space:nowrap;}
+.cf-cat,.cf-name{border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);padding:5px 8px;font-size:12.5px;font-family:inherit;}
+.cf-cat{min-width:130px;} .cf-name{width:200px;}
+.cf-flag{font-size:10px;color:var(--danger,#ef4444);margin-left:5px;}
+.cf-old{display:block;font-size:10px;color:var(--text-muted);margin-top:2px;}
 /* 수요처명 자동완성 드롭다운 (초성 검색, 2026-06-09) */
 .su-name-dd{position:absolute;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
 .su-name-dd::-webkit-scrollbar{width:8px;}
@@ -905,6 +922,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="sidebar-group-title">기타</div>
       <button class="sidebar-item" data-page="ai-review" onclick="switchPage(this)">받은 견적서 <span id="aiReviewSidebarBadge" class="sidebar-badge" style="display:none;">0</span></button>
       <button class="sidebar-item" data-page="customs" onclick="switchPage(this)">통관 데이터</button>
+      <button class="sidebar-item" data-page="classify" onclick="switchPage(this)">🔍 분류 점검</button>
     </div>
     <div class="sidebar-group sidebar-group-soon">
       <div class="sidebar-group-title">Phase 3 (예정)</div>
@@ -1082,6 +1100,19 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
   <div class="chart-wrap" id="vendor-chart-wrap" style="display:none;"><h3 style="margin-bottom:12px">거래처별 평균단가 비교</h3><canvas id="vendorBarChart"></canvas></div>
   <div class="empty-state" id="vendor-empty"><div class="icon">🏭</div><p>품명을 선택하면 거래처별 단가·납품실적을 비교합니다</p></div>
+</div>
+
+<!-- 분류 점검 (전체 품목·품명 1차분류 → 검증 확정, 2026-06-15) -->
+<div class="tab-page" id="page-classify">
+  <div class="cf-bar">
+    <input type="text" id="cfSearch" class="search-input" placeholder="검색 (프로젝트명·거래처·품명, 초성 가능)" autocomplete="off" oninput="renderClassifyRows()" style="max-width:340px;">
+    <label class="cf-chk"><input type="checkbox" id="cfOnlyProposed" checked onchange="renderClassifyRows()"> 제안 있는 것만</label>
+    <span class="cf-hint" id="cfHint"></span>
+    <button class="cf-save" id="cfSaveBtn" onclick="saveClassify()">저장</button>
+  </div>
+  <div class="cf-note">🔍 제가 1차 분류한 <b>제안(노랑)</b>을 확인 → 맞으면 그대로, 틀리면 고쳐서 <b>저장</b>하세요. 품명에 "키링" 들어간 인형은 <b>인형키링</b> 제안. 운임·포장·시공 라인은 비용이라 유지.</div>
+  <div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>제품/프로젝트</th><th>거래처</th><th>품목</th><th>품명</th></tr></thead><tbody id="cfBody"></tbody></table></div>
+  <div class="empty-state" id="cfEmpty" style="display:none;"><div class="icon">✅</div><p>제안할 항목이 없습니다</p></div>
 </div>
 
 <!-- 탭4: 🌏 소비자가 산정 -->
@@ -2141,6 +2172,78 @@ function setSuFilter(type,btn){
   if(btn)btn.classList.add('active');
   searchProducts();
 }
+// ━━ 분류 점검 (2026-06-15) — 전체 품목·품명 1차분류 → 사용자 검증·확정 ━━
+let _cfRows=[];
+const _CF_NAME_MAP={'Customized Plush Toy':'인형키링','Customized Plush Toy (한톨 키링인형)':'인형키링','plush keychain':'인형키링','pvc keyring 3d keychains':'PVC키링','PVC keyring':'PVC키링'};
+async function renderClassify(){
+  if(typeof loadStdProdNames==='function') loadStdProdNames();
+  const body=document.getElementById('cfBody');
+  body.innerHTML='<tr><td colspan="4" style="padding:30px;text-align:center;color:var(--text-muted)">불러오는 중…</td></tr>';
+  try{
+    const r=await fetch('/api/products',{credentials:'same-origin'}); const data=await r.json();
+    const rows=Array.isArray(data)?data:(data.items||data.products||[]);
+    _cfRows=rows.filter(it=>!String(it.id).startsWith('parsed:')).map(it=>{
+      const cur=Array.isArray(it.품명)?it.품명.slice():[];
+      let prop=cur.map(n=>_CF_NAME_MAP[n]||n);
+      const ctx=(it.프로젝트명||'')+' '+(it.상세스펙||'')+' '+cur.join(' ');
+      if(prop.includes('인형') && /키링|keychain|keyring/i.test(ctx)) prop=prop.map(n=>n==='인형'?'인형키링':n);
+      prop=[...new Set(prop)];
+      const changed=(JSON.stringify(prop)!==JSON.stringify(cur))||!it.품목;
+      return {id:it.id, pj:it.프로젝트명||'(제목없음)', vendor:it.거래처||'', 품목:it.품목||'', 품명:cur, np품명:prop, changed, _eCat:null, _eName:null};
+    });
+    renderClassifyRows();
+  }catch(e){ body.innerHTML='<tr><td colspan="4" style="color:#fca5a5;padding:20px">불러오기 실패: '+escapeHtml(e.message||String(e))+'</td></tr>'; }
+}
+function _cfSet(i,f,v){ if(!_cfRows[i])return; if(f==='cat')_cfRows[i]._eCat=v; else _cfRows[i]._eName=v; }
+function renderClassifyRows(){
+  const q=((document.getElementById('cfSearch')||{}).value||'').trim();
+  const onlyP=(document.getElementById('cfOnlyProposed')||{}).checked;
+  let rows=_cfRows;
+  if(onlyP) rows=rows.filter(r=>r.changed);
+  if(q) rows=rows.filter(r=>matchQ(r.pj,q)||matchQ(r.vendor,q)||(r.품명||[]).some(n=>matchQ(n,q)));
+  const body=document.getElementById('cfBody'),empty=document.getElementById('cfEmpty'),hint=document.getElementById('cfHint');
+  if(hint) hint.textContent=rows.length+'건 표시 / 제안 '+_cfRows.filter(r=>r.changed).length+'건';
+  if(!rows.length){ body.innerHTML=''; if(empty)empty.style.display='block'; return; }
+  if(empty)empty.style.display='none';
+  const catOpts=sel=>['',...(typeof AI_CATEGORIES!=='undefined'?AI_CATEGORIES:[])].map(c=>'<option value="'+c+'"'+(c===sel?' selected':'')+'>'+(c||'— 품목 —')+'</option>').join('');
+  body.innerHTML=rows.map(r=>{
+    const idx=_cfRows.indexOf(r);
+    const curNameStr=(r.품명||[]).join(', ');
+    const propNameStr=(r.np품명||[]).join(', ');
+    const nameChanged=propNameStr!==curNameStr;
+    const eCat=r._eCat!=null?r._eCat:(r.품목||'');
+    const eName=r._eName!=null?r._eName:propNameStr;
+    return '<tr class="'+(r.changed?'cf-prop':'')+'">'+
+      '<td class="cf-pj" title="'+escapeAttr(r.pj)+'">'+escapeHtml(r.pj.slice(0,44))+'</td>'+
+      '<td class="cf-v">'+escapeHtml((r.vendor||'').slice(0,18))+'</td>'+
+      '<td><select class="cf-cat" onchange="_cfSet('+idx+",'cat',this.value)\">"+catOpts(eCat)+'</select>'+(!r.품목?'<span class="cf-flag">미지정</span>':'')+'</td>'+
+      '<td><input class="cf-name su-name-ac" list="stdProdNames" value="'+escapeAttr(eName)+'" oninput="_cfSet('+idx+",'name',this.value)\">"+(nameChanged?'<span class="cf-old">기존: '+escapeHtml(curNameStr||'-')+'</span>':'')+'</td>'+
+    '</tr>';
+  }).join('');
+}
+async function saveClassify(){
+  const updates=[];
+  _cfRows.forEach(r=>{
+    const eCat=r._eCat!=null?r._eCat:(r.품목||'');
+    const eNameStr=r._eName!=null?r._eName:(r.np품명||[]).join(', ');
+    const eName=eNameStr.split(',').map(s=>s.trim()).filter(Boolean);
+    const u={id:r.id}; let dirty=false;
+    if(eCat && eCat!==r.품목){ u.품목=eCat; dirty=true; }
+    if(JSON.stringify(eName)!==JSON.stringify(r.품명||[])){ u.품명=eName; dirty=true; }
+    if(dirty) updates.push(u);
+  });
+  if(!updates.length){ alert('변경된 항목이 없습니다.'); return; }
+  if(!confirm(updates.length+'건을 저장합니다. 계속할까요?')) return;
+  const btn=document.getElementById('cfSaveBtn'); btn.disabled=true; const o=btn.textContent; btn.textContent='저장 중…';
+  try{
+    const r=await fetch('/api/products/classify-bulk',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates})});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    if(typeof showToast==='function') showToast('✅ '+(j.updated||0)+'건 저장'+(j.failed?(' / 실패 '+j.failed):''));
+    if(typeof loadData==='function') loadData();
+    renderClassify();
+  }catch(e){ alert('저장 실패: '+(e.message||e)); }
+  finally{ btn.disabled=false; btn.textContent=o; }
+}
 // ━━ 수요처명 자동완성 (2026-06-09) — 기존 입력값 누적 + 초성 검색 ━━
 function _suNamesStore(){ try{ return JSON.parse(localStorage.getItem('goods_suNames')||'[]'); }catch(e){ return []; } }
 function suNameRemember(v){ v=(v||'').trim(); if(!v) return; const a=_suNamesStore(); if(!a.includes(v)){ a.unshift(v); try{ localStorage.setItem('goods_suNames', JSON.stringify(a.slice(0,200))); }catch(e){} } }
@@ -2511,6 +2614,8 @@ function switchPage(item){
   }
   // 제품 단가 진입 시 비파괴 자동 갱신 (열어둔 채 다른 곳에서 변경된 데이터 반영)
   if(item.dataset.page==='product'){ if(typeof softRefresh==='function') softRefresh(); }
+  // 분류 점검 진입 — 전체 로드 + 1차 분류 렌더
+  if(item.dataset.page==='classify'){ if(typeof renderClassify==='function') renderClassify(); }
   // orders 진입 — iframe lazy load (첫 진입 시만 src 박음, 이후 reload 안 함 → 상태 보존)
   if(item.dataset.page==='orders'){
     const ifr = document.getElementById('ordersIframe');
