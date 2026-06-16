@@ -433,6 +433,11 @@ tbody tr:hover{background:var(--primary-light);}
 .cf-cat{min-width:130px;} .cf-name{width:200px;}
 .cf-flag{font-size:10px;color:var(--danger,#ef4444);margin-left:5px;}
 .cf-old{display:block;font-size:10px;color:var(--text-muted);margin-top:2px;}
+.cf-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--input-bg);border:1px solid var(--primary);border-radius:8px;padding:8px 12px;margin-bottom:12px;}
+.cf-bulk-cnt{font-size:12.5px;font-weight:700;color:#93c5fd;}
+.cf-clearsel{background:var(--input-bg);border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer;}
+.cf-chk-td{text-align:center;}
+.cf-table tr.cf-selrow{background:rgba(59,130,246,.12)!important;}
 /* 수요처명 자동완성 드롭다운 (초성 검색, 2026-06-09) */
 .su-name-dd{position:absolute;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
 .su-name-dd::-webkit-scrollbar{width:8px;}
@@ -1110,8 +1115,16 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <span class="cf-hint" id="cfHint"></span>
     <button class="cf-save" id="cfSaveBtn" onclick="saveClassify()">저장</button>
   </div>
-  <div class="cf-note">🔍 제가 1차 분류한 <b>제안(노랑)</b>을 확인 → 맞으면 그대로, 틀리면 고쳐서 <b>저장</b>하세요. 품명에 "키링" 들어간 인형은 <b>인형키링</b> 제안. 운임·포장·시공 라인은 비용이라 유지.</div>
-  <div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>제품/프로젝트</th><th>거래처</th><th>품목</th><th>품명</th></tr></thead><tbody id="cfBody"></tbody></table></div>
+  <div class="cf-note">🔍 제가 1차 분류한 <b>제안(노랑)</b>을 확인 → 맞으면 그대로, 틀리면 고쳐서 <b>저장</b>하세요. 품명에 "키링" 들어간 인형은 <b>인형키링</b> 제안. 운임·포장·시공 라인은 비용이라 유지. <b>왼쪽 체크박스로 여러 건 골라 한 번에 지정</b> 가능.</div>
+  <div class="cf-bulk" id="cfBulk" style="display:none;">
+    <span id="cfBulkCount" class="cf-bulk-cnt">0건 선택</span>
+    <span style="color:var(--text-muted);">→ 일괄</span>
+    <select id="cfBulkCat" class="cf-cat"><option value="">— 품목 유지 —</option></select>
+    <input id="cfBulkName" class="cf-name su-name-ac" list="stdProdNames" placeholder="품명 (비우면 유지)">
+    <button class="cf-save" style="margin-left:0;" onclick="cfBulkApply()">선택 항목에 적용</button>
+    <button class="cf-clearsel" onclick="cfClearSel()">선택 해제</button>
+  </div>
+  <div class="cf-table-wrap"><table class="cf-table"><thead><tr><th style="width:30px;"><input type="checkbox" id="cfAll" onchange="cfToggleAll(this.checked)" title="표시된 것 전체선택"></th><th>제품/프로젝트</th><th>거래처</th><th>품목</th><th>품명</th></tr></thead><tbody id="cfBody"></tbody></table></div>
   <div class="empty-state" id="cfEmpty" style="display:none;"><div class="icon">✅</div><p>제안할 항목이 없습니다</p></div>
 </div>
 
@@ -2177,8 +2190,9 @@ let _cfRows=[];
 const _CF_NAME_MAP={'Customized Plush Toy':'인형키링','Customized Plush Toy (한톨 키링인형)':'인형키링','plush keychain':'인형키링','pvc keyring 3d keychains':'PVC키링','PVC keyring':'PVC키링'};
 async function renderClassify(){
   if(typeof loadStdProdNames==='function') loadStdProdNames();
+  const _bc=document.getElementById('cfBulkCat'); if(_bc) _bc.innerHTML='<option value="">— 품목 유지 —</option>'+(typeof AI_CATEGORIES!=='undefined'?AI_CATEGORIES:[]).map(c=>'<option value="'+c+'">'+c+'</option>').join('');
   const body=document.getElementById('cfBody');
-  body.innerHTML='<tr><td colspan="4" style="padding:30px;text-align:center;color:var(--text-muted)">불러오는 중…</td></tr>';
+  body.innerHTML='<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--text-muted)">불러오는 중…</td></tr>';
   try{
     const r=await fetch('/api/products',{credentials:'same-origin'}); const data=await r.json();
     const rows=Array.isArray(data)?data:(data.items||data.products||[]);
@@ -2192,7 +2206,7 @@ async function renderClassify(){
       return {id:it.id, pj:it.프로젝트명||'(제목없음)', vendor:it.거래처||'', 품목:it.품목||'', 품명:cur, np품명:prop, changed, _eCat:null, _eName:null};
     });
     renderClassifyRows();
-  }catch(e){ body.innerHTML='<tr><td colspan="4" style="color:#fca5a5;padding:20px">불러오기 실패: '+escapeHtml(e.message||String(e))+'</td></tr>'; }
+  }catch(e){ body.innerHTML='<tr><td colspan="5" style="color:#fca5a5;padding:20px">불러오기 실패: '+escapeHtml(e.message||String(e))+'</td></tr>'; }
 }
 function _cfSet(i,f,v){ if(!_cfRows[i])return; if(f==='cat')_cfRows[i]._eCat=v; else _cfRows[i]._eName=v; }
 function renderClassifyRows(){
@@ -2213,13 +2227,44 @@ function renderClassifyRows(){
     const nameChanged=propNameStr!==curNameStr;
     const eCat=r._eCat!=null?r._eCat:(r.품목||'');
     const eName=r._eName!=null?r._eName:propNameStr;
-    return '<tr class="'+(r.changed?'cf-prop':'')+'">'+
+    return '<tr class="'+(r.changed?'cf-prop':'')+(r._sel?' cf-selrow':'')+'">'+
+      '<td class="cf-chk-td"><input type="checkbox" '+(r._sel?'checked':'')+' onchange="cfSelRow('+idx+',this.checked)" onclick="event.stopPropagation()"></td>'+
       '<td class="cf-pj" title="'+escapeAttr(r.pj)+'">'+escapeHtml(r.pj.slice(0,44))+'</td>'+
       '<td class="cf-v">'+escapeHtml((r.vendor||'').slice(0,18))+'</td>'+
       '<td><select class="cf-cat" onchange="_cfSet('+idx+",'cat',this.value)\">"+catOpts(eCat)+'</select>'+(!r.품목?'<span class="cf-flag">미지정</span>':'')+'</td>'+
       '<td><input class="cf-name su-name-ac" list="stdProdNames" value="'+escapeAttr(eName)+'" oninput="_cfSet('+idx+",'name',this.value)\">"+(nameChanged?'<span class="cf-old">기존: '+escapeHtml(curNameStr||'-')+'</span>':'')+'</td>'+
     '</tr>';
   }).join('');
+  updateCfBulk();
+  // 헤더 전체선택 체크 상태 동기화 (표시된 행 기준)
+  const vis=_cfRowsVisible(); const all=document.getElementById('cfAll');
+  if(all) all.checked = vis.length>0 && vis.every(r=>r._sel);
+}
+function _cfRowsVisible(){
+  const q=((document.getElementById('cfSearch')||{}).value||'').trim();
+  const onlyP=(document.getElementById('cfOnlyProposed')||{}).checked;
+  let rows=_cfRows; if(onlyP) rows=rows.filter(r=>r.changed);
+  if(q) rows=rows.filter(r=>matchQ(r.pj,q)||matchQ(r.vendor,q)||(r.품명||[]).some(n=>matchQ(n,q)));
+  return rows;
+}
+function cfSelRow(i,checked){ if(_cfRows[i]) _cfRows[i]._sel=checked; renderClassifyRows(); }
+function cfToggleAll(checked){ _cfRowsVisible().forEach(r=>r._sel=checked); renderClassifyRows(); }
+function cfClearSel(){ _cfRows.forEach(r=>r._sel=false); renderClassifyRows(); }
+function updateCfBulk(){
+  const n=_cfRows.filter(r=>r._sel).length;
+  const bar=document.getElementById('cfBulk'); const cnt=document.getElementById('cfBulkCount');
+  if(cnt) cnt.textContent=n+'건 선택';
+  if(bar) bar.style.display=n>0?'flex':'none';
+}
+function cfBulkApply(){
+  const cat=(document.getElementById('cfBulkCat')||{}).value||'';
+  const name=((document.getElementById('cfBulkName')||{}).value||'').trim();
+  if(!cat && !name){ alert('적용할 품목 또는 품명을 입력하세요.'); return; }
+  let applied=0;
+  _cfRows.forEach(r=>{ if(r._sel){ if(cat)r._eCat=cat; if(name)r._eName=name; applied++; } });
+  if(name && typeof suNameRemember==='function') suNameRemember(name);
+  if(typeof showToast==='function') showToast(applied+'건에 적용 — 저장 눌러 확정');
+  renderClassifyRows();
 }
 async function saveClassify(){
   const updates=[];
