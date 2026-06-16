@@ -2218,11 +2218,7 @@ async function renderClassify(){
 }
 function _cfSet(i,f,v){ if(!_cfRows[i])return; if(f==='cat')_cfRows[i]._eCat=v; else _cfRows[i]._eName=v; }
 function renderClassifyRows(){
-  const q=((document.getElementById('cfSearch')||{}).value||'').trim();
-  const onlyP=(document.getElementById('cfOnlyProposed')||{}).checked;
-  let rows=_cfRows;
-  if(onlyP) rows=rows.filter(r=>r.changed);
-  if(q) rows=rows.filter(r=>matchQ(r.pj,q)||matchQ(r.vendor,q)||(r.품명||[]).some(n=>matchQ(n,q)));
+  const rows=_cfRowsVisible();
   const body=document.getElementById('cfBody'),empty=document.getElementById('cfEmpty'),hint=document.getElementById('cfHint');
   if(hint) hint.textContent=rows.length+'건 표시 / 제안 '+_cfRows.filter(r=>r.changed).length+'건';
   if(!rows.length){ body.innerHTML=''; if(empty)empty.style.display='block'; return; }
