@@ -438,6 +438,13 @@ tbody tr:hover{background:var(--primary-light);}
 .cf-clearsel{background:var(--input-bg);border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer;}
 .cf-chk-td{text-align:center;}
 .cf-table tr.cf-selrow{background:rgba(59,130,246,.12)!important;}
+.cf-catbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.cf-clabel{font-size:12px;color:var(--text-muted);margin-right:2px;}
+.cf-cchip{padding:4px 11px;border:1px solid var(--border);border-radius:14px;background:var(--input-bg);color:var(--text-muted);font-size:12px;cursor:pointer;}
+.cf-cchip:hover{color:var(--text);}
+.cf-cchip.on{border-color:var(--primary);background:var(--primary-light);color:var(--text);}
+.cf-cchip.warn{border-color:var(--danger,#ef4444);color:#fca5a5;}
+.cf-cchip.warn.on{background:rgba(239,68,68,.15);}
 /* 수요처명 자동완성 드롭다운 (초성 검색, 2026-06-09) */
 .su-name-dd{position:absolute;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
 .su-name-dd::-webkit-scrollbar{width:8px;}
@@ -1116,6 +1123,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <button class="cf-save" id="cfSaveBtn" onclick="saveClassify()">저장</button>
   </div>
   <div class="cf-note">🔍 제가 1차 분류한 <b>제안(노랑)</b>을 확인 → 맞으면 그대로, 틀리면 고쳐서 <b>저장</b>하세요. 품명에 "키링" 들어간 인형은 <b>인형키링</b> 제안. 운임·포장·시공 라인은 비용이라 유지. <b>왼쪽 체크박스로 여러 건 골라 한 번에 지정</b> 가능.</div>
+  <div class="cf-catbar" id="cfCatBar"></div>
   <div class="cf-bulk" id="cfBulk" style="display:none;">
     <span id="cfBulkCount" class="cf-bulk-cnt">0건 선택</span>
     <span style="color:var(--text-muted);">→ 일괄</span>
@@ -2205,7 +2213,7 @@ async function renderClassify(){
       const changed=(JSON.stringify(prop)!==JSON.stringify(cur))||!it.품목;
       return {id:it.id, pj:it.프로젝트명||'(제목없음)', vendor:it.거래처||'', 품목:it.품목||'', 품명:cur, np품명:prop, changed, _eCat:null, _eName:null};
     });
-    renderClassifyRows();
+    cfRenderCatBar(); renderClassifyRows();
   }catch(e){ body.innerHTML='<tr><td colspan="5" style="color:#fca5a5;padding:20px">불러오기 실패: '+escapeHtml(e.message||String(e))+'</td></tr>'; }
 }
 function _cfSet(i,f,v){ if(!_cfRows[i])return; if(f==='cat')_cfRows[i]._eCat=v; else _cfRows[i]._eName=v; }
@@ -2235,18 +2243,35 @@ function renderClassifyRows(){
       '<td><input class="cf-name su-name-ac" list="stdProdNames" value="'+escapeAttr(eName)+'" oninput="_cfSet('+idx+",'name',this.value)\">"+(nameChanged?'<span class="cf-old">기존: '+escapeHtml(curNameStr||'-')+'</span>':'')+'</td>'+
     '</tr>';
   }).join('');
-  updateCfBulk();
+  updateCfBulk(); cfRenderCatBar();
   // 헤더 전체선택 체크 상태 동기화 (표시된 행 기준)
   const vis=_cfRowsVisible(); const all=document.getElementById('cfAll');
   if(all) all.checked = vis.length>0 && vis.every(r=>r._sel);
 }
+let cfCatFilter='';
+function _cfCat(r){ return r._eCat!=null?r._eCat:(r.품목||''); }
 function _cfRowsVisible(){
   const q=((document.getElementById('cfSearch')||{}).value||'').trim();
   const onlyP=(document.getElementById('cfOnlyProposed')||{}).checked;
-  let rows=_cfRows; if(onlyP) rows=rows.filter(r=>r.changed);
+  let rows=_cfRows;
+  if(cfCatFilter==='__none__') rows=rows.filter(r=>!_cfCat(r));
+  else if(cfCatFilter) rows=rows.filter(r=>_cfCat(r)===cfCatFilter);
+  else if(onlyP) rows=rows.filter(r=>r.changed);
   if(q) rows=rows.filter(r=>matchQ(r.pj,q)||matchQ(r.vendor,q)||(r.품명||[]).some(n=>matchQ(n,q)));
   return rows;
 }
+function cfRenderCatBar(){
+  const bar=document.getElementById('cfCatBar'); if(!bar) return;
+  const cnt={}; let none=0;
+  _cfRows.forEach(r=>{ const c=_cfCat(r); if(c) cnt[c]=(cnt[c]||0)+1; else none++; });
+  const base=(typeof AI_CATEGORIES!=='undefined'?AI_CATEGORIES:[]);
+  const order=base.concat(Object.keys(cnt).filter(c=>base.indexOf(c)<0));
+  let h='<span class="cf-clabel">품목별</span><button class="cf-cchip'+(cfCatFilter===''?' on':'')+'" onclick="setCfCat(\'\')">전체 '+_cfRows.length+'</button>';
+  if(none) h+='<button class="cf-cchip warn'+(cfCatFilter==='__none__'?' on':'')+'" onclick="setCfCat(\'__none__\')">⚠ 미지정 '+none+'</button>';
+  order.forEach(c=>{ if(cnt[c]) h+='<button class="cf-cchip'+(cfCatFilter===c?' on':'')+'" onclick="setCfCat(\''+c.replace(/'/g,"\\'")+'\')">'+escapeHtml(c)+' '+cnt[c]+'</button>'; });
+  bar.innerHTML=h;
+}
+function setCfCat(c){ cfCatFilter=(cfCatFilter===c?'':c); cfRenderCatBar(); renderClassifyRows(); }
 function cfSelRow(i,checked){ if(_cfRows[i]) _cfRows[i]._sel=checked; renderClassifyRows(); }
 // 시프트+클릭 범위 선택 (표시 순서 기준)
 let _cfLastIdx=null;
