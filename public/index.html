@@ -2228,7 +2228,7 @@ function renderClassifyRows(){
     const eCat=r._eCat!=null?r._eCat:(r.품목||'');
     const eName=r._eName!=null?r._eName:propNameStr;
     return '<tr class="'+(r.changed?'cf-prop':'')+(r._sel?' cf-selrow':'')+'">'+
-      '<td class="cf-chk-td"><input type="checkbox" '+(r._sel?'checked':'')+' onchange="cfSelRow('+idx+',this.checked)" onclick="event.stopPropagation()"></td>'+
+      '<td class="cf-chk-td"><input type="checkbox" class="cf-chk" '+(r._sel?'checked':'')+' onclick="cfRowClick('+idx+',event)"></td>'+
       '<td class="cf-pj" title="'+escapeAttr(r.pj)+'">'+escapeHtml(r.pj.slice(0,44))+'</td>'+
       '<td class="cf-v">'+escapeHtml((r.vendor||'').slice(0,18))+'</td>'+
       '<td><select class="cf-cat" onchange="_cfSet('+idx+",'cat',this.value)\">"+catOpts(eCat)+'</select>'+(!r.품목?'<span class="cf-flag">미지정</span>':'')+'</td>'+
@@ -2248,6 +2248,21 @@ function _cfRowsVisible(){
   return rows;
 }
 function cfSelRow(i,checked){ if(_cfRows[i]) _cfRows[i]._sel=checked; renderClassifyRows(); }
+// 시프트+클릭 범위 선택 (표시 순서 기준)
+let _cfLastIdx=null;
+function cfRowClick(idx, ev){
+  const checked = ev.target.checked;
+  if(ev.shiftKey && _cfLastIdx!=null && _cfLastIdx!==idx){
+    const vis=_cfRowsVisible();
+    const a=vis.indexOf(_cfRows[_cfLastIdx]), b=vis.indexOf(_cfRows[idx]);
+    if(a>=0 && b>=0){ const lo=Math.min(a,b),hi=Math.max(a,b); for(let k=lo;k<=hi;k++) vis[k]._sel=checked; }
+    else if(_cfRows[idx]) _cfRows[idx]._sel=checked;
+  } else {
+    if(_cfRows[idx]) _cfRows[idx]._sel=checked;
+  }
+  _cfLastIdx=idx;
+  renderClassifyRows();
+}
 function cfToggleAll(checked){ _cfRowsVisible().forEach(r=>r._sel=checked); renderClassifyRows(); }
 function cfClearSel(){ _cfRows.forEach(r=>r._sel=false); renderClassifyRows(); }
 function updateCfBulk(){
