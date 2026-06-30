@@ -445,6 +445,12 @@ tbody tr:hover{background:var(--primary-light);}
 .cf-cchip.on{border-color:var(--primary);background:var(--primary-light);color:var(--text);}
 .cf-cchip.warn{border-color:var(--danger,#ef4444);color:#fca5a5;}
 .cf-cchip.warn.on{background:rgba(239,68,68,.15);}
+/* 저장된 프로젝트 접기 (2026-06-16) */
+.cp-fold{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:0 4px 0 0;vertical-align:middle;}
+.cp-fold:hover{color:var(--text);}
+.cp-fold .arrow{display:inline-block;transition:transform .15s;}
+#cp-list-section.cp-collapsed .cp-fold .arrow{transform:rotate(-90deg);}
+#cp-list-section.cp-collapsed #cp-list,#cp-list-section.cp-collapsed #cp-list-empty{display:none!important;}
 /* 수요처명 자동완성 드롭다운 (초성 검색, 2026-06-09) */
 .su-name-dd{position:absolute;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
 .su-name-dd::-webkit-scrollbar{width:8px;}
@@ -1139,7 +1145,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <!-- 탭4: 🌏 소비자가 산정 -->
 <div class="tab-page" id="page-consumer">
   <div class="cp-section" id="cp-list-section">
-    <h3>📚 저장된 프로젝트
+    <h3><button class="cp-fold" id="cpFoldBtn" onclick="toggleCpList()" title="목록 접기/펼치기"><span class="arrow">▾</span></button> 📚 저장된 프로젝트
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="goToCatalogPage()" title="제품 리스트·바이어 엑셀·관리 도구는 사이드바 '제품 리스트' 메뉴로 이동했습니다">제품 리스트로 이동 →</button>
     </h3>
@@ -2482,6 +2488,12 @@ function toggleProductFilters(){
   el.style.display=open?'flex':'none';
   if(btn) btn.classList.toggle('open',open);
 }
+// 저장된 프로젝트 목록 접기/펼치기 (2026-06-16) — 상태 localStorage 기억
+function toggleCpList(){
+  const sec=document.getElementById('cp-list-section'); if(!sec) return;
+  const col=sec.classList.toggle('cp-collapsed');
+  try{ localStorage.setItem('goods_cpListCollapsed', col?'1':'0'); }catch(e){}
+}
 
 // ━━━ 다크모드 ━━━
 function toggleTheme(){
@@ -2676,6 +2688,7 @@ function switchPage(item){
   }
   // consumer 첫 진입 초기화
   if(item.dataset.page==='consumer' && !window._cpInited){window._cpInited=true; if(typeof cpInit==='function') cpInit();}
+  if(item.dataset.page==='consumer'){ const _s=document.getElementById('cp-list-section'); if(_s){ try{ _s.classList.toggle('cp-collapsed', localStorage.getItem('goods_cpListCollapsed')==='1'); }catch(e){} } }
   // ai-review 진입 시 미검수 목록 자동 로드
   if(item.dataset.page==='ai-review'){
     if(typeof switchParsedTab==='function'){
