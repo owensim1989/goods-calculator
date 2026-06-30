@@ -2722,8 +2722,11 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
     fs.writeFileSync(fpath, decoded.buf);
     // ?v= 캐시버스트 — 썸네일 교체 시 URL 자체가 바뀌어야 inventory/브라우저가 새 이미지를 인식
     // (catalog-image GET 은 1주일 캐시라 고정 URL이면 옛 이미지가 계속 보임)
+    // ⚠️ 절대 URL(PUBLIC_BASE_URL 상수, 미설정 시 https://goods.jeisha.kr) 사용 필수.
+    //    process.env.PUBLIC_BASE_URL 직접 쓰면 env 미설정 환경에서 상대경로가 나와
+    //    inventory 가 자기 도메인으로 풀어 이미지 404 (publish 경로와 불일치). 2026-06-30 실측 확인.
     const v = Date.now();
-    const url = (process.env.PUBLIC_BASE_URL || '') + '/api/catalog-image/' + imgId + '?v=' + v;
+    const url = PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v;
     await notion.pages.update({
       page_id: req.params.id,
       properties: { 'Image_URL': { url } }
