@@ -2720,11 +2720,16 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
     const fname = `${imgId}.${decoded.ext}`;
     const fpath = path.join(CATALOG_IMAGE_DIR, fname);
     fs.writeFileSync(fpath, decoded.buf);
-    const url = (process.env.PUBLIC_BASE_URL || '') + '/api/catalog-image/' + imgId;
+    // ?v= 캐시버스트 — 썸네일 교체 시 URL 자체가 바뀌어야 inventory/브라우저가 새 이미지를 인식
+    // (catalog-image GET 은 1주일 캐시라 고정 URL이면 옛 이미지가 계속 보임)
+    const v = Date.now();
+    const url = (process.env.PUBLIC_BASE_URL || '') + '/api/catalog-image/' + imgId + '?v=' + v;
     await notion.pages.update({
       page_id: req.params.id,
       properties: { 'Image_URL': { url } }
     });
+    // 2026-06-30 회계팀 요청: 굿즈 썸네일 변경도 inventory 제품목록에 즉시 반영 (best-effort)
+    syncCatalogPageToInventory(req.params.id, 'image-update').catch(() => {});
     res.json({ success: true, imageUrl: url, imageId: imgId });
   } catch (e) {
     console.error('[카탈로그 이미지 업로드 실패]', e.message);
@@ -3084,6 +3089,9 @@ app.post('/api/consumer-pricing/catalog/swap-images', async (req, res) => {
       notion.pages.update({ page_id: idA, properties: { 'Image_URL': { url: urlB } } }),
       notion.pages.update({ page_id: idB, properties: { 'Image_URL': { url: urlA } } })
     ]);
+    // 2026-06-30: swap 도 inventory 양쪽에 반영 (best-effort)
+    syncCatalogPageToInventory(idA, 'image-swap').catch(() => {});
+    syncCatalogPageToInventory(idB, 'image-swap').catch(() => {});
     res.json({ success: true, swapped: { [idA]: urlB, [idB]: urlA } });
   } catch (e) {
     console.error('[카탈로그 swap-images 실패]', e.message);
