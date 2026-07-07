@@ -6537,25 +6537,31 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
 }
 
 // 2026-05-31: 카탈로그 전체 → inventory 재sync (box_unit 등 신규 필드 backfill 용). requireAuthMiddleware 자동 보호.
+// 2026-07-07: 수동 라우트 + 야간 자동 cron 공용 함수로 분리 — Notion 에서 직접 수정한 건이
+//             이벤트 push(publish/patch 훅)를 안 타서 inventory 와 어긋나던 갭을 매일 자동 보정.
+async function resyncAllCatalogToInventory(reason = 'backfill-resync') {
+  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) throw Object.assign(new Error('INVENTORY_API_URL / INVENTORY_API_KEY 미설정'), { status: 503 });
+  if (!notion) throw Object.assign(new Error('notion_unavailable'), { status: 503 });
+  const ids = [];
+  let cursor;
+  do {
+    const resp = await notion.databases.query({ database_id: PRODUCT_CATALOG_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) });
+    for (const p of resp.results) if (!p.archived) ids.push(p.id);
+    cursor = resp.has_more ? resp.next_cursor : null;
+  } while (cursor);
+  let synced = 0, skipped = 0, failed = 0;
+  for (const id of ids) {
+    const r = await syncCatalogPageToInventory(id, reason);
+    if (r && r.ok) synced++; else if (r && r.skipped) skipped++; else failed++;
+  }
+  return { total: ids.length, synced, skipped, failed };
+}
+
 app.post('/api/admin/resync-all-catalog-to-inventory', async (req, res) => {
-  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 미설정' });
-  if (!notion) return res.status(503).json({ error: 'notion_unavailable' });
   try {
-    const ids = [];
-    let cursor;
-    do {
-      const resp = await notion.databases.query({ database_id: PRODUCT_CATALOG_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) });
-      for (const p of resp.results) if (!p.archived) ids.push(p.id);
-      cursor = resp.has_more ? resp.next_cursor : null;
-    } while (cursor);
-    let synced = 0, skipped = 0, failed = 0;
-    for (const id of ids) {
-      const r = await syncCatalogPageToInventory(id, 'backfill-resync');
-      if (r && r.ok) synced++; else if (r && r.skipped) skipped++; else failed++;
-    }
-    res.json({ ok: true, total: ids.length, synced, skipped, failed });
+    res.json({ ok: true, ...(await resyncAllCatalogToInventory('backfill-resync')) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -6944,4 +6950,17 @@ try {
   // 30분마다 자동 동기화, 6시간마다 환율 갱신 (한국수출입은행은 영업일 1회 발표 — 6시간이면 평일 오전 갱신 보장)
   setInterval(syncFromNotion, 30 * 60 * 1000);
   setInterval(refreshFx, 6 * 60 * 60 * 1000);
+  // 24시간마다 카탈로그 전체 → inventory 백필 (Notion 직접 수정분 보정, CATALOG_INVENTORY_BACKFILL=0 으로 끔)
+  // 이벤트 push 가 놓치는 건만 잡는 안전망이라 야간 1회면 충분. 부팅 직후엔 10분 지연 후 1회.
+  if (process.env.CATALOG_INVENTORY_BACKFILL !== '0' && INVENTORY_API_URL && INVENTORY_API_KEY) {
+    const _backfillTick = async (label) => {
+      try {
+        const r = await resyncAllCatalogToInventory('nightly-backfill');
+        console.log(`[catalog-backfill:${label}] total=${r.total} synced=${r.synced} skipped=${r.skipped} failed=${r.failed}`);
+      } catch (e) { console.warn(`[catalog-backfill:${label}] 실패:`, e.message); }
+    };
+    setTimeout(() => _backfillTick('boot'), 10 * 60 * 1000);
+    setInterval(() => _backfillTick('daily'), 24 * 60 * 60 * 1000);
+    console.log('[catalog-backfill] inventory 야간 백필 스케줄러 활성 (24시간 간격)');
+  }
 });
