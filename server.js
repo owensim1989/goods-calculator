@@ -6872,6 +6872,19 @@ try {
   console.error('[orders] 라우터 등록 실패:', err.message);
 }
 
+// ━━━ 🚀 제품 파이프라인 (MVP, 2026-07-16) ━━━
+// 신제품·재발주 워크플로우 — 기획→디자인→업체선정(견적비교)→샘플→발주·대금→입고→등록·출시
+// 대금은 기록 전용 (입출금 관리는 granter·Notion — business 연동 안 함, Owen 확정)
+try {
+  const pipelineRoutes = require('./lib/pipeline-routes');
+  app.use('/api/pipeline', pipelineRoutes.router({
+    getFx: () => fxCache   // fxCache 는 refreshFx 가 재할당하므로 getter 로 전달
+  }));
+  console.log('[pipeline] /api/pipeline 라우터 등록 완료');
+} catch (err) {
+  console.error('[pipeline] 라우터 등록 실패:', err.message);
+}
+
 // SPA 폴백
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

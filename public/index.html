@@ -935,6 +935,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="sidebar-item" data-page="consumer" onclick="switchPage(this)">신제품 사업성 검토</button>
       <button class="sidebar-item" data-page="catalog" onclick="switchPage(this)">제품 리스트</button>
       <button class="sidebar-item" data-page="orders" onclick="switchPage(this)">수출 주문</button>
+      <button class="sidebar-item" data-page="pipeline" onclick="switchPage(this)">🚀 제품 파이프라인</button>
     </div>
     <div class="sidebar-group">
       <div class="sidebar-group-title">기타</div>
@@ -1566,6 +1567,11 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <!-- 탭6: 📥 수출 주문 처리 — orders.html iframe 임베드 (lazy load, 상태 보존) -->
 <div class="tab-page" id="page-orders" style="padding:0;max-width:none;margin:0;">
   <iframe id="ordersIframe" title="수출 주문 처리" src="about:blank" style="width:100%;height:calc(100vh - 60px);border:0;display:block;background:transparent;" allowtransparency="true"></iframe>
+</div>
+
+<!-- 탭7: 🚀 제품 파이프라인 — pipeline.html iframe 임베드 (lazy load, 상태 보존, 2026-07-16) -->
+<div class="tab-page" id="page-pipeline" style="padding:0;max-width:none;margin:0;">
+  <iframe id="pipelineIframe" title="제품 파이프라인" src="about:blank" style="width:100%;height:calc(100vh - 60px);border:0;display:block;background:transparent;" allowtransparency="true"></iframe>
 </div>
 
 <!-- 📥 무게·박스 import 모달 (2026-05-21) -->
@@ -2673,7 +2679,7 @@ async function doGoodsLogout(){
 function switchPage(item){
   // 권한 체크 — 미스터두낫띵 그룹(consumer/catalog/customs)은 사업화팀·두낫띵팀·관리자만
   const _page = item && item.dataset ? (item.dataset.page || '') : '';
-  if (['consumer','catalog','customs'].indexOf(_page) >= 0 && !_hasRestrictedAccess(window._goodsUser)) {
+  if (['consumer','catalog','customs','pipeline'].indexOf(_page) >= 0 && !_hasRestrictedAccess(window._goodsUser)) {
     if (typeof showToast === 'function') showToast('이 메뉴는 사업화팀·두낫띵팀·관리자만 접근 가능합니다', 'warn');
     return;
   }
@@ -2715,6 +2721,13 @@ function switchPage(item){
     const ifr = document.getElementById('ordersIframe');
     if (ifr && (!ifr.src || ifr.src === 'about:blank' || ifr.src.endsWith('about:blank'))) {
       ifr.src = 'orders.html';
+    }
+  }
+  // pipeline 진입 — iframe lazy load (orders 와 동일 패턴, 2026-07-16)
+  if(item.dataset.page==='pipeline'){
+    const ifr = document.getElementById('pipelineIframe');
+    if (ifr && (!ifr.src || ifr.src === 'about:blank' || ifr.src.endsWith('about:blank'))) {
+      ifr.src = 'pipeline.html';
     }
   }
 }

@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🚀 제품 파이프라인 — GOODS OS</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
+<style>
+:root{
+  --bg:#0f172a; --surface:#1e293b; --surface-2:#334155; --line:#334155;
+  --text:#e2e8f0; --text-2:#94a3b8; --text-3:#64748b;
+  --accent:#60a5fa; --accent-strong:#93c5fd; --accent-bg:rgba(96,165,250,.14);
+  --ok:#34d399; --warn:#fbbf24; --err:#f87171;
+  --new:#c4b5fd; --new-bg:rgba(139,92,246,.18); --re:#67e8f9; --re-bg:rgba(8,145,178,.22);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Pretendard Variable','Pretendard',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em}
+.page{padding:22px 28px 60px;max-width:1500px;margin:0 auto}
+h1{font-size:18px;font-weight:700}
+.sub{font-size:11.5px;color:var(--text-3);margin-top:2px}
+button{font-family:inherit;cursor:pointer}
+.btn{background:var(--surface-2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;transition:.12s}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#0f172a}
+.btn.danger{color:var(--err)}
+.btn.sm{padding:4px 10px;font-size:11.5px;border-radius:6px}
+input,select,textarea{font-family:inherit;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:7px 10px;font-size:13px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+.kpis{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap;align-items:center}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 16px;font-size:11.5px;color:var(--text-2)}
+.kpi b{display:block;font-size:19px;color:var(--text)}
+.kpi b.warn{color:var(--warn)} .kpi b.err{color:var(--err)}
+.filters{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chip{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px 12px;font-size:11.5px;color:var(--text-2);cursor:pointer}
+.chip.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-strong);font-weight:700}
+.tag{display:inline-block;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:700;white-space:nowrap}
+.t-new{background:var(--new-bg);color:var(--new)} .t-re{background:var(--re-bg);color:var(--re)}
+.t-ok{background:rgba(52,211,153,.16);color:var(--ok)} .t-warn{background:rgba(251,191,36,.14);color:var(--warn)}
+.t-gray{background:var(--surface-2);color:var(--text-2)} .t-err{background:rgba(248,113,113,.14);color:var(--err)}
+.board{display:flex;gap:11px;overflow-x:auto;padding-bottom:8px;align-items:flex-start}
+.col{flex:1;min-width:196px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:10px}
+.col h4{font-size:11.5px;color:var(--text-2);margin-bottom:9px;display:flex;justify-content:space-between;font-weight:600}
+.pcard{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:8px;cursor:pointer;transition:.12s}
+.pcard:hover{border-color:var(--accent);transform:translateY(-1px)}
+.pcard .em{font-size:19px}
+.pcard b{display:block;font-size:12.5px;margin:2px 0;line-height:1.35}
+.pcard .row{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:10.5px;color:var(--text-3)}
+.bar{height:4px;background:var(--bg);border-radius:99px;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.empty-col{font-size:11px;color:var(--text-3);text-align:center;padding:14px 0}
+.closed-strip{margin-top:18px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 16px}
+.closed-strip summary{cursor:pointer;font-size:12.5px;color:var(--text-2);font-weight:600}
+.closed-item{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer}
+.closed-item:last-child{border-bottom:none}
+/* modal */
+.mbg{display:none;position:fixed;inset:0;background:rgba(2,6,23,.7);z-index:100;padding:26px 14px;overflow-y:auto}
+.mbg.on{display:flex;align-items:flex-start;justify-content:center}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:880px;width:100%;padding:22px 24px;position:relative}
+.modal .x{position:absolute;top:13px;right:14px;border:none;background:var(--surface-2);color:var(--text-2);border-radius:8px;width:30px;height:30px;font-size:14px}
+.steps{display:flex;gap:3px;margin:14px 0;flex-wrap:wrap}
+.step{flex:1;min-width:68px;text-align:center;font-size:10.5px;padding:7px 3px;border-radius:7px;background:var(--bg);color:var(--text-3);font-weight:600;cursor:pointer;border:1px solid transparent}
+.step:hover{border-color:var(--accent)}
+.step.done{background:rgba(52,211,153,.13);color:var(--ok)}
+.step.now{background:var(--accent);color:#0f172a;font-weight:800}
+.subtabs{display:flex;gap:2px;margin:14px 0 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.subtabs button{border:none;background:none;padding:8px 13px;font-size:12.5px;font-weight:700;color:var(--text-3);border-bottom:2px solid transparent;margin-bottom:-1px}
+.subtabs button.on{color:var(--accent-strong);border-color:var(--accent)}
+.pane{display:none}.pane.on{display:block}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{color:var(--text-3);font-size:11px;font-weight:600;white-space:nowrap}
+td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
+.check{display:flex;gap:9px;align-items:center;padding:7px 2px;border-bottom:1px dashed var(--line);font-size:13px}
+.check.done span{color:var(--text-3);text-decoration:line-through}
+.check .del{margin-left:auto;border:none;background:none;color:var(--text-3);font-size:12px}
+.check .del:hover{color:var(--err)}
+.tl{border-left:2px solid var(--line);margin-left:5px;padding-left:14px;margin-top:8px}
+.tle{position:relative;padding:2px 0 9px;font-size:12.5px}
+.tle::before{content:"";position:absolute;left:-19.5px;top:8px;width:8px;height:8px;border-radius:99px;background:var(--accent)}
+.tle small{color:var(--text-3);display:block;font-size:11px}
+.frow{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center}
+.frow label{font-size:11.5px;color:var(--text-2);min-width:74px}
+.hint{font-size:11px;color:var(--text-3);margin-top:6px}
+.vendor-box{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.vendor-box.selected{border-color:var(--ok)}
+.vendor-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.vendor-head b{font-size:13.5px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface-2);border:1px solid var(--accent);color:var(--text);padding:9px 18px;border-radius:10px;font-size:12.5px;z-index:300;display:none}
+</style>
+</head>
+<body>
+<div class="page">
+  <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+    <div>
+      <h1>🚀 제품 파이프라인</h1>
+      <div class="sub">신제품·재발주 — 디자인 → 업체선정(견적비교) → 샘플 → 발주·대금 → 배송 → 입고 → 등록·출시</div>
+    </div>
+    <button class="btn primary" style="margin-left:auto" onclick="openNew()">＋ 새 프로젝트</button>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="board" id="board"></div>
+
+  <details class="closed-strip" id="closedStrip" style="display:none">
+    <summary>완료·보류·취소 프로젝트 <span id="closedCount"></span></summary>
+    <div id="closedList"></div>
+  </details>
+</div>
+
+<!-- 새 프로젝트 -->
+<div class="mbg" id="newModal" onclick="if(event.target===this)closeM('newModal')">
+  <div class="modal" style="max-width:520px">
+    <button class="x" onclick="closeM('newModal')">✕</button>
+    <h2 style="font-size:16px">＋ 새 프로젝트</h2>
+    <div class="frow" style="margin-top:14px"><label>유형</label>
+      <button class="chip on" id="typeNew" onclick="pickType('new')">✨ 신제품 (풀 파이프라인)</button>
+      <button class="chip" id="typeRe" onclick="pickType('reorder')">🔁 재발주 (단축)</button>
+    </div>
+    <div class="frow"><label>이모지</label><input id="npEmoji" style="width:64px" value="✨"></div>
+    <div class="frow"><label>제품명</label><input id="npName" style="flex:1" placeholder="예: 두낫띵 비닐봉투 LDPE 다이컷"></div>
+    <div class="frow"><label>목표 수량</label><input id="npQty" type="number" style="width:110px" placeholder="10000"></div>
+    <div class="frow"><label>목표 단가≤</label><input id="npCost" type="number" style="width:110px" placeholder="원"><span style="font-size:11px;color:var(--text-3)">원 (선택)</span></div>
+    <div class="frow"><label>발주 근거</label><input id="npBasis" style="flex:1" placeholder="예: 문구박람회 821결제건 → 권장 1만장"></div>
+    <div class="frow" id="npBarcodeRow" style="display:none"><label>기존 바코드</label><input id="npBarcode" style="flex:1" placeholder="재발주 제품의 바코드"></div>
+    <div style="margin-top:14px;text-align:right"><button class="btn primary" onclick="createProject()">생성</button></div>
+  </div>
+</div>
+
+<!-- 상세 -->
+<div class="mbg" id="detailModal" onclick="if(event.target===this)closeM('detailModal')">
+  <div class="modal" id="detailBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let META=null, PROJECTS=[], CUR=null, CURTAB='cl', NEWTYPE='new';
+
+const COLS=[
+  {t:'💡 기획·디자인·검토', stages:['plan','design','review']},
+  {t:'🏭 업체선정·단가', stages:['vendor','pricing']},
+  {t:'📦 샘플', stages:['sample']},
+  {t:'💳 발주·대금·생산', stages:['po','production']},
+  {t:'🚢 배송·입고', stages:['shipping','inbound']},
+  {t:'🚀 등록·출시', stages:['launch']}
+];
+const PAY_KINDS={deposit:'선금',balance:'잔금',sample:'샘플비',shipping:'운송비',etc:'기타'};
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2200)}
+async function api(path,opt={}){
+  const r=await fetch('/api/pipeline'+path,{headers:{'Content-Type':'application/json'},...opt,body:opt.body?JSON.stringify(opt.body):undefined});
+  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||('HTTP '+r.status))}
+  return r.json();
+}
+function stageLabel(k){const m=META.stage_meta[k];return m?m.emoji+' '+m.label:k}
+function fxKrw(amount,cur){
+  if(cur==='KRW')return amount;
+  const fx=META&&META.fx;const rate=fx&&fx[cur];
+  return rate?amount*rate:null;
+}
+function fmtKrw(n){return n==null?'—':'₩'+Math.round(n).toLocaleString()}
+function daysSince(iso){return Math.floor((Date.now()-new Date(iso).getTime())/86400000)}
+
+async function load(){
+  if(!META)META=await api('/meta');
+  const d=await api('/');
+  PROJECTS=d.projects;
+  render();
+}
+
+function render(){
+  const active=PROJECTS.filter(p=>p.status==='active');
+  const closed=PROJECTS.filter(p=>p.status!=='active');
+  // KPI
+  const stale=active.filter(p=>daysSince(p.updated_at)>=7);
+  let dueKrw=0;
+  active.forEach(p=>(p.payments||[]).forEach(pay=>{if(!pay.paid_at){const k=fxKrw(Number(pay.amount)||0,pay.cur||'KRW');if(k)dueKrw+=k}}));
+  $('kpis').innerHTML=
+    `<div class="kpi"><b>${active.length}</b>진행 중</div>`+
+    `<div class="kpi"><b class="${stale.length?'warn':''}">${stale.length}</b>7일+ 정체 ⚠️</div>`+
+    `<div class="kpi"><b>${dueKrw?('₩'+(dueKrw/1e6).toFixed(1)+'M'):'—'}</b>대금 예정(미지급)</div>`+
+    `<div class="kpi"><b>${PROJECTS.filter(p=>p.status==='done').length}</b>완료</div>`+
+    `<div class="filters">
+      <span class="chip ${FILTER==='all'?'on':''}" onclick="setFilter('all')">전체</span>
+      <span class="chip ${FILTER==='new'?'on':''}" onclick="setFilter('new')">✨ 신제품</span>
+      <span class="chip ${FILTER==='reorder'?'on':''}" onclick="setFilter('reorder')">🔁 재발주</span>
+    </div>`;
+  // board
+  const vis=active.filter(p=>FILTER==='all'||p.type===FILTER);
+  $('board').innerHTML=COLS.map(col=>{
+    const cards=vis.filter(p=>col.stages.includes(p.stage));
+    return `<div class="col"><h4>${col.t}<span>${cards.length}</span></h4>`+
+      (cards.length?cards.map(cardHtml).join(''):'<div class="empty-col">—</div>')+'</div>';
+  }).join('');
+  // closed
+  $('closedStrip').style.display=closed.length?'block':'none';
+  $('closedCount').textContent=closed.length?`(${closed.length})`:'';
+  $('closedList').innerHTML=closed.map(p=>
+    `<div class="closed-item" onclick="openDetail('${p.id}')"><span>${esc(p.emoji)}</span><b>${esc(p.name)}</b>
+     <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
+     <span class="tag ${p.status==='done'?'t-ok':p.status==='hold'?'t-warn':'t-err'}">${{done:'완료',hold:'보류',cancelled:'취소'}[p.status]}</span>
+     <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.updated_at.slice(0,10)}</span></div>`).join('');
+}
+
+let FILTER='all';
+function setFilter(f){FILTER=f;render()}
+
+function cardHtml(p){
+  const stale=daysSince(p.updated_at)>=7;
+  return `<div class="pcard" onclick="openDetail('${p.id}')">
+    <span class="em">${esc(p.emoji)}</span>
+    <b>${esc(p.name)}</b>
+    <div class="row">
+      <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
+      <span>${stageLabel(p.stage)}</span>
+      ${stale?`<span class="tag t-warn">⚠️ D+${daysSince(p.updated_at)} 정체</span>`:''}
+    </div>
+    <div class="bar"><i style="width:${p.progress}%"></i></div>
+  </div>`;
+}
+
+// ━━━ 새 프로젝트 ━━━
+function openNew(){$('newModal').classList.add('on');$('npName').focus()}
+function pickType(t){
+  NEWTYPE=t;
+  $('typeNew').classList.toggle('on',t==='new');
+  $('typeRe').classList.toggle('on',t==='reorder');
+  $('npBarcodeRow').style.display=t==='reorder'?'flex':'none';
+  if($('npEmoji').value==='✨'||$('npEmoji').value==='🔁')$('npEmoji').value=t==='reorder'?'🔁':'✨';
+}
+async function createProject(){
+  const name=$('npName').value.trim();
+  if(!name)return toast('제품명을 입력하세요');
+  try{
+    const p=await api('/',{method:'POST',body:{
+      type:NEWTYPE,name,emoji:$('npEmoji').value||'✨',
+      barcode:$('npBarcode').value.trim()||null,
+      target:{qty:Number($('npQty').value)||null,unit_cost_max:Number($('npCost').value)||null,basis:$('npBasis').value.trim()}
+    }});
+    closeM('newModal');
+    ['npName','npQty','npCost','npBasis','npBarcode'].forEach(i=>$(i).value='');
+    await load();openDetail(p.id);toast('프로젝트 생성됨');
+  }catch(e){toast('실패: '+e.message)}
+}
+
+// ━━━ 상세 ━━━
+async function openDetail(id,tab){
+  CUR=await api('/'+id);
+  CURTAB=tab||CURTAB||'cl';
+  renderDetail();
+  $('detailModal').classList.add('on');
+}
+function closeM(id){$(id).classList.remove('on')}
+async function refreshCur(patch){
+  try{CUR=await api('/'+CUR.id,{method:'PATCH',body:patch});renderDetail();load();}
+  catch(e){toast('저장 실패: '+e.message)}
+}
+
+function renderDetail(){
+  const p=CUR;
+  const curIdx=p.stages.indexOf(p.stage);
+  $('detailBody').innerHTML=`
+    <button class="x" onclick="closeM('detailModal')">✕</button>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:24px">${esc(p.emoji)}</span>
+      <b style="font-size:17px">${esc(p.name)}</b>
+      <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
+      <span class="tag ${p.status==='active'?'t-ok':p.status==='hold'?'t-warn':'t-gray'}">${{active:'진행 중',hold:'보류',done:'완료',cancelled:'취소'}[p.status]}</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 진행률 ${p.progress}%</span>
+    </div>
+    <div style="font-size:12px;color:var(--text-2);margin-top:4px">
+      목표 ${p.target.qty?p.target.qty.toLocaleString()+'개':'—'} · 목표단가 ${p.target.unit_cost_max?'≤₩'+p.target.unit_cost_max.toLocaleString():'—'}
+      ${p.barcode?' · 바코드 '+esc(p.barcode):''}
+      ${p.target.basis?' · 근거: '+esc(p.target.basis):''}
+    </div>
+    <div class="steps">${p.stages.map((s,i)=>
+      `<div class="step ${i<curIdx?'done':i===curIdx?'now':''}" onclick="moveStage('${s}')" title="이 단계로 이동">${stageLabel(s)}</div>`).join('')}
+    </div>
+    <div class="subtabs">
+      <button class="${CURTAB==='cl'?'on':''}" onclick="setTab('cl')">체크리스트</button>
+      <button class="${CURTAB==='vd'?'on':''}" onclick="setTab('vd')">업체·견적 (${(p.vendors||[]).length})</button>
+      <button class="${CURTAB==='sp'?'on':''}" onclick="setTab('sp')">샘플 (${(p.samples||[]).length})</button>
+      <button class="${CURTAB==='pay'?'on':''}" onclick="setTab('pay')">발주·대금</button>
+      <button class="${CURTAB==='tl'?'on':''}" onclick="setTab('tl')">타임라인·메모</button>
+    </div>
+    <div id="paneBox"></div>
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px">
+      ${p.status==='active'?`<button class="btn sm" onclick="setStatus('hold')">⏸ 보류</button>
+        <button class="btn sm" onclick="setStatus('done')">✅ 완료 처리</button>`:
+        `<button class="btn sm" onclick="setStatus('active')">▶ 재개</button>`}
+      ${p.type==='reorder'&&!p.stages.includes('sample')?`<button class="btn sm" onclick="insertSampleStage()">📦 샘플 단계 삽입</button>`:''}
+      <button class="btn sm danger" style="margin-left:auto" onclick="delProject()">🗑 삭제</button>
+    </div>`;
+  renderPane();
+}
+function setTab(t){CURTAB=t;renderDetail()}
+
+function renderPane(){
+  const p=CUR,box=$('paneBox');
+  if(CURTAB==='cl')return box.innerHTML=paneChecklist(p);
+  if(CURTAB==='vd')return box.innerHTML=paneVendors(p);
+  if(CURTAB==='sp')return box.innerHTML=paneSamples(p);
+  if(CURTAB==='pay')return box.innerHTML=panePay(p);
+  if(CURTAB==='tl')return box.innerHTML=paneTimeline(p);
+}
+
+// -- 체크리스트 (현재 단계)
+function paneChecklist(p){
+  const items=(p.checklist&&p.checklist[p.stage])||[];
+  return `<div style="font-size:12px;color:var(--text-2);margin-bottom:6px">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b></div>`+
+    items.map((c,i)=>`<div class="check ${c.done?'done':''}">
+      <input type="checkbox" ${c.done?'checked':''} onchange="toggleCheck(${i})"><span>${esc(c.t)}</span>
+      <button class="del" onclick="delCheck(${i})">✕</button></div>`).join('')+
+    `<div class="frow" style="margin-top:10px"><input id="newCheckT" style="flex:1" placeholder="항목 추가…" onkeydown="if(event.key==='Enter')addCheck()"><button class="btn sm" onclick="addCheck()">＋ 추가</button></div>`;
+}
+function toggleCheck(i){const cl={...CUR.checklist};cl[CUR.stage][i].done=!cl[CUR.stage][i].done;refreshCur({checklist:cl})}
+function delCheck(i){const cl={...CUR.checklist};cl[CUR.stage].splice(i,1);refreshCur({checklist:cl})}
+function addCheck(){const v=$('newCheckT').value.trim();if(!v)return;const cl={...CUR.checklist};(cl[CUR.stage]=cl[CUR.stage]||[]).push({t:v,done:false});refreshCur({checklist:cl})}
+
+// -- 업체·견적
+function paneVendors(p){
+  const vends=p.vendors||[];
+  let html=vends.map((v,vi)=>{
+    const quotes=v.quotes||[];
+    return `<div class="vendor-box ${v.status==='selected'?'selected':''}">
+      <div class="vendor-head">
+        <b>${esc(v.name)}</b>
+        ${v.status==='selected'?'<span class="tag t-ok">✅ 선정</span>':v.status==='dropped'?'<span class="tag t-gray">제외</span>':'<span class="tag t-warn">검토 중</span>'}
+        <span style="font-size:11px;color:var(--text-3)">${esc(v.contact||'')}</span>
+        <span style="margin-left:auto;display:flex;gap:5px">
+          ${v.status!=='selected'?`<button class="btn sm" onclick="vendStatus(${vi},'selected')">선정</button>`:''}
+          ${v.status!=='dropped'?`<button class="btn sm" onclick="vendStatus(${vi},'dropped')">제외</button>`:`<button class="btn sm" onclick="vendStatus(${vi},'quoted')">복원</button>`}
+          <button class="btn sm danger" onclick="delVendor(${vi})">✕</button>
+        </span>
+      </div>
+      ${v.memo?`<div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">${esc(v.memo)}</div>`:''}
+      <table><tr><th>수량</th><th>단가</th><th>통화</th><th>₩환산</th><th>리드타임</th><th>조건</th><th></th></tr>
+      ${quotes.map((q,qi)=>{
+        const krw=fxKrw(Number(q.unit)||0,q.cur||'USD');
+        return `<tr><td>${(Number(q.qty)||0).toLocaleString()}</td><td>${q.unit}</td><td>${esc(q.cur||'USD')}</td>
+        <td>${krw?('≈₩'+Math.round(krw).toLocaleString()):'—'}</td><td>${q.lead_days?q.lead_days+'일':'—'}</td><td>${esc(q.terms||'')}</td>
+        <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delQuote(${vi},${qi})">✕</button></td></tr>`}).join('')}
+      <tr>
+        <td><input id="q-qty-${vi}" type="number" placeholder="10000"></td>
+        <td><input id="q-unit-${vi}" type="number" step="0.001" placeholder="0.118"></td>
+        <td><select id="q-cur-${vi}"><option>USD</option><option>CNY</option><option>KRW</option><option>TWD</option><option>THB</option><option>JPY</option></select></td>
+        <td>—</td>
+        <td><input id="q-lead-${vi}" type="number" placeholder="일"></td>
+        <td><input id="q-terms-${vi}" placeholder="FOB …"></td>
+        <td><button class="btn sm" onclick="addQuote(${vi})">＋</button></td>
+      </tr></table>
+    </div>`;
+  }).join('');
+  html+=`<div class="frow" style="margin-top:12px">
+    <input id="nv-name" style="flex:1" placeholder="업체명 (예: KINSHUN Packaging)">
+    <input id="nv-contact" style="flex:1" placeholder="연락 채널 (알리바바·이메일 등)">
+    <button class="btn sm" onclick="addVendor()">＋ 업체 추가</button></div>
+    <div class="hint">₩환산은 goods 환율(수출입은행 API) 기준 참고치. 업체 선정 시 카드가 초록 테두리로 표시됩니다.</div>`;
+  return html;
+}
+function addVendor(){const n=$('nv-name').value.trim();if(!n)return toast('업체명을 입력하세요');
+  const vs=[...(CUR.vendors||[])];vs.push({name:n,contact:$('nv-contact').value.trim(),status:'contacted',memo:'',quotes:[]});refreshCur({vendors:vs})}
+function delVendor(vi){if(!confirm('이 업체와 견적 기록을 삭제할까요?'))return;const vs=[...CUR.vendors];vs.splice(vi,1);refreshCur({vendors:vs})}
+function vendStatus(vi,st){const vs=[...CUR.vendors];
+  if(st==='selected')vs.forEach((v,i)=>{if(i!==vi&&v.status==='selected')v.status='quoted'});
+  vs[vi].status=st;refreshCur({vendors:vs})}
+function addQuote(vi){
+  const qty=Number($(`q-qty-${vi}`).value),unit=Number($(`q-unit-${vi}`).value);
+  if(!qty||!unit)return toast('수량·단가를 입력하세요');
+  const vs=[...CUR.vendors];
+  (vs[vi].quotes=vs[vi].quotes||[]).push({qty,unit,cur:$(`q-cur-${vi}`).value,lead_days:Number($(`q-lead-${vi}`).value)||null,terms:$(`q-terms-${vi}`).value.trim()});
+  if(vs[vi].status==='contacted')vs[vi].status='quoted';
+  refreshCur({vendors:vs})}
+function delQuote(vi,qi){const vs=[...CUR.vendors];vs[vi].quotes.splice(qi,1);refreshCur({vendors:vs})}
+
+// -- 샘플
+function paneSamples(p){
+  const ss=p.samples||[];
+  return `<table><tr><th>차수</th><th>요청일</th><th>수령일</th><th>판정</th><th>메모</th><th></th></tr>
+    ${ss.map((s,i)=>`<tr>
+      <td>v${s.rev}</td>
+      <td><input type="date" value="${s.requested_at||''}" onchange="sampleField(${i},'requested_at',this.value)"></td>
+      <td><input type="date" value="${s.received_at||''}" onchange="sampleField(${i},'received_at',this.value)"></td>
+      <td><select onchange="sampleField(${i},'verdict',this.value)">
+        <option value="" ${!s.verdict?'selected':''}>대기</option>
+        <option value="approved" ${s.verdict==='approved'?'selected':''}>✅ 승인</option>
+        <option value="revision" ${s.verdict==='revision'?'selected':''}>🔁 리비전</option>
+        <option value="rejected" ${s.verdict==='rejected'?'selected':''}>❌ 불합격</option></select></td>
+      <td><input value="${esc(s.memo||'')}" onchange="sampleField(${i},'memo',this.value)" placeholder="검수 내용"></td>
+      <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delSample(${i})">✕</button></td></tr>`).join('')}
+  </table>
+  <div style="margin-top:10px"><button class="btn sm" onclick="addSample()">＋ 샘플 차수 추가</button></div>
+  <div class="hint">리비전이 나오면 새 차수를 추가해 루프를 기록하세요. 수령 지연은 요청일 기준으로 보드 정체 뱃지에 잡힙니다.</div>`;
+}
+function addSample(){const ss=[...(CUR.samples||[])];ss.push({rev:ss.length+1,requested_at:new Date().toISOString().slice(0,10),received_at:null,verdict:'',memo:''});refreshCur({samples:ss})}
+function sampleField(i,k,v){const ss=[...CUR.samples];ss[i][k]=v;refreshCur({samples:ss})}
+function delSample(i){const ss=[...CUR.samples];ss.splice(i,1);refreshCur({samples:ss})}
+
+// -- 발주·대금
+function panePay(p){
+  const po=p.po||{};const pays=p.payments||[];
+  const sel=(p.vendors||[]).find(v=>v.status==='selected');
+  return `<h3 style="font-size:13px;margin-bottom:8px">발주(PO)</h3>
+  <div class="frow"><label>업체</label><input id="po-vendor" value="${esc(po.vendor||sel?.name||'')}" placeholder="선정 업체" style="flex:1">
+    <label>수량</label><input id="po-qty" type="number" value="${po.qty||''}" style="width:100px"></div>
+  <div class="frow"><label>단가</label><input id="po-unit" type="number" step="0.001" value="${po.unit||''}" style="width:100px">
+    <select id="po-cur" style="width:80px">${['USD','CNY','KRW','TWD','THB','JPY'].map(c=>`<option ${po.cur===c?'selected':''}>${c}</option>`).join('')}</select>
+    <label>ETA</label><input id="po-eta" type="date" value="${po.eta||''}"></div>
+  <div class="frow"><label>메모</label><input id="po-memo" value="${esc(po.memo||'')}" style="flex:1" placeholder="인코텀즈·계좌·특이사항"></div>
+  <div style="text-align:right"><button class="btn sm" onclick="savePo()">PO 저장</button></div>
+
+  <h3 style="font-size:13px;margin:16px 0 8px">대금 기록 <span class="tag t-gray" style="font-weight:600">기록 전용 — 실제 입출금은 granter·Notion 체계</span></h3>
+  <table><tr><th>구분</th><th>금액</th><th>통화</th><th>₩환산</th><th>예정일</th><th>지급일</th><th>메모</th><th></th></tr>
+  ${pays.map((pa,i)=>{const krw=fxKrw(Number(pa.amount)||0,pa.cur||'KRW');
+    return `<tr>
+    <td>${PAY_KINDS[pa.kind]||pa.kind}</td>
+    <td>${(Number(pa.amount)||0).toLocaleString()}</td><td>${esc(pa.cur||'KRW')}</td>
+    <td>${krw?'≈'+fmtKrw(krw):'—'}</td>
+    <td>${pa.due||'—'}</td>
+    <td>${pa.paid_at?`<span class="tag t-ok">${pa.paid_at}</span>`:`<button class="btn sm" onclick="markPaid(${i})">지급 완료</button>`}</td>
+    <td style="font-size:11.5px;color:var(--text-2)">${esc(pa.memo||'')}</td>
+    <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delPay(${i})">✕</button></td></tr>`}).join('')}
+  <tr>
+    <td><select id="pay-kind">${Object.entries(PAY_KINDS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></td>
+    <td><input id="pay-amt" type="number" step="0.01" placeholder="금액"></td>
+    <td><select id="pay-cur">${['USD','CNY','KRW','TWD','THB','JPY'].map(c=>`<option>${c}</option>`).join('')}</select></td>
+    <td>—</td>
+    <td><input id="pay-due" type="date"></td><td>—</td>
+    <td><input id="pay-memo" placeholder="메모"></td>
+    <td><button class="btn sm" onclick="addPay()">＋</button></td>
+  </tr></table>`;
+}
+function savePo(){refreshCur({po:{vendor:$('po-vendor').value.trim()||null,qty:Number($('po-qty').value)||null,unit:Number($('po-unit').value)||null,cur:$('po-cur').value,eta:$('po-eta').value||null,memo:$('po-memo').value.trim()}});toast('PO 저장됨')}
+function addPay(){const amt=Number($('pay-amt').value);if(!amt)return toast('금액을 입력하세요');
+  const ps=[...(CUR.payments||[])];ps.push({kind:$('pay-kind').value,amount:amt,cur:$('pay-cur').value,due:$('pay-due').value||null,paid_at:null,memo:$('pay-memo').value.trim()});refreshCur({payments:ps})}
+function markPaid(i){const ps=[...CUR.payments];ps[i].paid_at=new Date().toISOString().slice(0,10);refreshCur({payments:ps})}
+function delPay(i){const ps=[...CUR.payments];ps.splice(i,1);refreshCur({payments:ps})}
+
+// -- 타임라인·메모
+function paneTimeline(p){
+  return `<div class="frow"><input id="tl-new" style="flex:1" placeholder="기록 추가 (예: 샘플 발송 통보 받음)" onkeydown="if(event.key==='Enter')addTlLog()"><button class="btn sm" onclick="addTlLog()">＋ 기록</button></div>
+  <div class="tl">${[...(p.history||[])].reverse().map(h=>
+    `<div class="tle">${esc(h.detail)}<small>${h.at.slice(0,16).replace('T',' ')} · ${esc(h.by)}${h.ev!=='note'?' · '+h.ev:''}</small></div>`).join('')}</div>
+  <h3 style="font-size:13px;margin:14px 0 6px">메모</h3>
+  <textarea id="tl-notes" style="width:100%;min-height:80px">${esc(p.notes||'')}</textarea>
+  <div style="text-align:right;margin-top:6px"><button class="btn sm" onclick="saveNotes()">메모 저장</button></div>`;
+}
+async function addTlLog(){const v=$('tl-new').value.trim();if(!v)return;
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:v}});openDetail(CUR.id,'tl')}
+function saveNotes(){refreshCur({notes:$('tl-notes').value});toast('메모 저장됨')}
+
+// -- 단계·상태 조작
+async function moveStage(s){
+  if(s===CUR.stage)return;
+  const back=CUR.stages.indexOf(s)<CUR.stages.indexOf(CUR.stage);
+  if(!confirm(`${stageLabel(CUR.stage)} → ${stageLabel(s)} 로 ${back?'되돌릴까요?':'넘길까요?'}`))return;
+  try{CUR=await api('/'+CUR.id+'/stage',{method:'POST',body:{stage:s}});renderDetail();load();toast('단계 이동됨')}
+  catch(e){toast('실패: '+e.message)}
+}
+function setStatus(st){
+  if(st==='done'&&!confirm('프로젝트를 완료 처리할까요?'))return;
+  refreshCur({status:st})
+}
+function insertSampleStage(){
+  const stages=[...CUR.stages];
+  const i=stages.indexOf('po');
+  stages.splice(i<0?stages.length:i,0,'sample');
+  refreshCur({stages});toast('샘플 단계가 삽입됐습니다')
+}
+async function delProject(){
+  if(!confirm(`"${CUR.name}" 프로젝트를 완전히 삭제할까요? (되돌릴 수 없음 — 보관하려면 보류/완료 사용)`))return;
+  await api('/'+CUR.id,{method:'DELETE'});
+  closeM('detailModal');load();toast('삭제됨');
+}
+
+load().catch(e=>{document.body.innerHTML='<div style="padding:40px;color:#f87171">로드 실패: '+esc(e.message)+' — 로그인 상태를 확인하세요 (<a href="/login.html" style="color:#60a5fa">로그인</a>)</div>'});
+</script>
+</body>
+</html>
