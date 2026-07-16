@@ -6878,7 +6878,9 @@ try {
 try {
   const pipelineRoutes = require('./lib/pipeline-routes');
   app.use('/api/pipeline', pipelineRoutes.router({
-    getFx: () => fxCache   // fxCache 는 refreshFx 가 재할당하므로 getter 로 전달
+    getFx: () => fxCache,   // fxCache 는 refreshFx 가 재할당하므로 getter 로 전달
+    INVENTORY_API_URL,      // ③ 입고 대사 PULL 용
+    INVENTORY_API_KEY
   }));
   console.log('[pipeline] /api/pipeline 라우터 등록 완료');
 } catch (err) {
@@ -6934,7 +6936,7 @@ try {
   driveBackup.scheduleDailyBackup({
     projectName: 'goods-calculator',
     extraJsonFiles: localJson,
-    imageDirs: [CATALOG_IMAGE_DIR],
+    imageDirs: [CATALOG_IMAGE_DIR, require('./lib/pipeline-routes').ATTACH_DIR],  // 파이프라인 첨부(바이너리) 주1회 백업
     notion: process.env.NOTION_TOKEN ? {
       token: process.env.NOTION_TOKEN,
       dbIds: [

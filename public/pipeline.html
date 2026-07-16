@@ -407,6 +407,8 @@ function renderDetail(){
       <button class="${CURTAB==='vd'?'on':''}" onclick="setTab('vd')">업체·견적 (${(p.vendors||[]).length})</button>
       <button class="${CURTAB==='sp'?'on':''}" onclick="setTab('sp')">샘플 (${(p.samples||[]).length})</button>
       <button class="${CURTAB==='pay'?'on':''}" onclick="setTab('pay')">발주·대금</button>
+      <button class="${CURTAB==='in'?'on':''}" onclick="setTab('in')">입고 대사${p.inbound?' ✓':''}</button>
+      <button class="${CURTAB==='at'?'on':''}" onclick="setTab('at')">📎 첨부 (${(p.attachments||[]).length})</button>
       <button class="${CURTAB==='tl'?'on':''}" onclick="setTab('tl')">타임라인·메모</button>
     </div>
     <div id="paneBox"></div>
@@ -427,6 +429,8 @@ function renderPane(){
   if(CURTAB==='vd')return box.innerHTML=paneVendors(p);
   if(CURTAB==='sp')return box.innerHTML=paneSamples(p);
   if(CURTAB==='pay')return box.innerHTML=panePay(p);
+  if(CURTAB==='in')return box.innerHTML=paneInbound(p);
+  if(CURTAB==='at')return box.innerHTML=paneAttach(p);
   if(CURTAB==='tl')return box.innerHTML=paneTimeline(p);
 }
 
@@ -480,9 +484,54 @@ function paneVendors(p){
   html+=`<div class="frow" style="margin-top:12px">
     <input id="nv-name" style="flex:1" placeholder="업체명 (예: KINSHUN Packaging)">
     <input id="nv-contact" style="flex:1" placeholder="연락 채널 (알리바바·이메일 등)">
-    <button class="btn sm" onclick="addVendor()">＋ 업체 추가</button></div>
-    <div class="hint">₩환산은 goods 환율(수출입은행 API) 기준 참고치. 업체 선정 시 카드가 초록 테두리로 표시됩니다.</div>`;
+    <button class="btn sm" onclick="addVendor()">＋ 업체 추가</button>
+    <button class="btn sm" onclick="openQuoteImport()">📥 받은 견적서에서 불러오기</button></div>
+    <div class="hint">₩환산은 goods 환율(수출입은행 API) 기준 참고치. 업체 선정 시 카드가 초록 테두리로 표시됩니다. "실제 생산 진행 = 선정 + 발주"한 업체만 나중에 business 거래처로 연결합니다.</div>`;
   return html;
+}
+// ① 받은 견적서(AI 파싱 인박스) → 업체·견적 불러오기
+async function openQuoteImport(){
+  $('detailModal').insertAdjacentHTML('beforeend','');
+  let list;
+  try{ list=await fetch('/api/parsed-quotes?status=all',{credentials:'same-origin'}).then(r=>r.json()); }
+  catch(e){ return toast('견적서 목록 로드 실패'); }
+  const items=(list&&list.items)||[];
+  const rows=items.length?items.map(it=>{
+    const nm=(it.manualOverrides&&it.manualOverrides['거래처'])||it.vendor||'(거래처 미상)';
+    const prods=(it.products||[]);
+    const cur=it.currency||(prods[0]&&prods[0].currency)||'';
+    const preview=prods.slice(0,2).map(pr=>`${pr.name||''} ${pr.unitPrice||''}${cur}`).join(', ')+(prods.length>2?` 외 ${prods.length-2}`:'');
+    return `<div class="ac-row" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" onclick='importQuote(${JSON.stringify(it.id)})'>
+      <b>${esc(nm)}</b>
+      <span class="tag ${it.reviewStatus==='approved'?'t-ok':it.reviewStatus==='rejected'?'t-err':'t-warn'}">${({approved:'검수완료',rejected:'반려',pending:'미검수'})[it.reviewStatus]||it.reviewStatus}</span>
+      <span style="font-size:11.5px;color:var(--text-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(preview)}</span>
+      <span style="font-size:11px;color:var(--accent-strong)">불러오기 →</span></div>`;
+  }).join(''):'<div style="padding:16px;color:var(--text-3);font-size:12.5px">받은 견적서가 없습니다. (goods 「받은 견적서」 인박스에 PDF를 넣으면 AI가 파싱합니다)</div>';
+  const html=`<div class="mbg on" id="qimport" onclick="if(event.target===this)document.getElementById('qimport').remove()">
+    <div class="modal" style="max-width:560px"><button class="x" onclick="document.getElementById('qimport').remove()">✕</button>
+    <h3 style="font-size:15px">📥 받은 견적서에서 불러오기</h3>
+    <div style="font-size:11.5px;color:var(--text-3);margin:4px 0 10px">선택하면 이 프로젝트에 <b>업체 + 견적(품목별)</b>으로 등록됩니다. 리드타임·연락처는 견적서에 없어 비어 있을 수 있어요.</div>
+    ${rows}</div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+async function importQuote(id){
+  let it;
+  try{ it=await fetch('/api/parsed-quotes/'+id,{credentials:'same-origin'}).then(r=>r.json()); }
+  catch(e){ return toast('견적서 로드 실패'); }
+  const nm=(it.manualOverrides&&it.manualOverrides['거래처'])||it.vendor||'(거래처 미상)';
+  const prods=(it.products||[]);
+  const quotes=prods.filter(pr=>pr.unitPrice||pr.qty).map(pr=>({
+    qty:Number(pr.qty)||null, unit:Number(pr.unitPrice)||null,
+    cur:pr.currency||it.currency||'USD', lead_days:null,
+    terms:(pr.name||'')+(pr.notes?(' · '+pr.notes):'')
+  }));
+  const vs=[...(CUR.vendors||[])];
+  vs.push({name:nm,contact:'',status:quotes.length?'quoted':'contacted',memo:`받은 견적서에서 가져옴 (${it.quoteDate||it.createdAt?.slice(0,10)||''})`,quotes});
+  const el=document.getElementById('qimport'); if(el)el.remove();
+  await refreshCur({vendors:vs});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`받은 견적서 "${nm}" → 업체·견적 ${quotes.length}건 등록`}});
+  openDetail(CUR.id,'vd');
+  toast(`${nm} 견적 ${quotes.length}건 등록됨`);
 }
 function addVendor(){const n=$('nv-name').value.trim();if(!n)return toast('업체명을 입력하세요');
   const vs=[...(CUR.vendors||[])];vs.push({name:n,contact:$('nv-contact').value.trim(),status:'contacted',memo:'',quotes:[]});refreshCur({vendors:vs})}
@@ -561,6 +610,83 @@ function addPay(){const amt=Number($('pay-amt').value);if(!amt)return toast('금
   const ps=[...(CUR.payments||[])];ps.push({kind:$('pay-kind').value,amount:amt,cur:$('pay-cur').value,due:$('pay-due').value||null,paid_at:null,memo:$('pay-memo').value.trim()});refreshCur({payments:ps})}
 function markPaid(i){const ps=[...CUR.payments];ps[i].paid_at=new Date().toISOString().slice(0,10);refreshCur({payments:ps})}
 function delPay(i){const ps=[...CUR.payments];ps.splice(i,1);refreshCur({payments:ps})}
+
+// -- ③ 입고 대사 (발주 vs 실입고)
+function paneInbound(p){
+  const poQty=(p.po&&p.po.qty)||(p.target&&p.target.qty)||null;
+  const inb=p.inbound;
+  let head=`<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">발주 수량 <b style="color:var(--text)">${poQty?poQty.toLocaleString():'미정'}</b> 대비 실입고를 대사합니다. 바코드: <b>${p.barcode?esc(p.barcode):'<span style=\"color:var(--warn)\">미등록 — 등록·출시 단계에서 입력</span>'}</b></div>`;
+  let btns=`<div class="frow" style="margin:6px 0 12px">
+    <button class="btn sm" ${!p.barcode||!META.inventory_linked?'disabled title="바코드+inventory 연동 필요"':''} onclick="pullInbound()">🔄 inventory 현재고로 대사</button>
+    <span style="font-size:11px;color:var(--text-3)">또는 실입고 수량 직접 입력 →</span>
+    <input id="in-recv" type="number" placeholder="실입고" style="width:100px" value="${inb?inb.received:''}">
+    <button class="btn sm" onclick="manualInbound()">기록</button></div>
+    ${!META.inventory_linked?'<div class="hint">⚠️ inventory 연동(INVENTORY_API_URL/KEY) 미설정 — 수동 입력만 가능합니다.</div>':''}`;
+  let body='';
+  if(inb){
+    const diff=inb.diff;
+    const diffTag=diff==null?'':diff===0?`<span class="tag t-ok">정확 일치</span>`:diff>0?`<span class="tag t-warn">+${diff} 초과 입고</span>`:`<span class="tag t-err">${diff} 부족</span>`;
+    body=`<div class="vendor-box"><div class="vendor-head">
+      <b>대사 결과</b> ${diffTag}
+      <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${inb.at.slice(0,16).replace('T',' ')} · ${inb.source==='webhook'?'입고 웹훅':inb.source==='pull'?'inventory 조회':'수동'}</span></div>
+      <table><tr><th>발주(PO)</th><th>실입고</th><th>오차</th></tr>
+      <tr><td>${inb.po_qty!=null?inb.po_qty.toLocaleString():'—'}</td><td><b>${inb.received.toLocaleString()}</b></td>
+      <td class="${diff>0?'':diff<0?'':''}" style="color:${diff===0?'var(--ok)':diff>0?'var(--warn)':'var(--err)'};font-weight:700">${diff==null?'—':(diff>0?'+':'')+diff}</td></tr></table>
+      ${inb.warehouses&&inb.warehouses.length?`<div style="margin-top:8px;font-size:12px;color:var(--text-2)">창고별: ${inb.warehouses.map(w=>`${esc(w.code)} ${w.qty.toLocaleString()}`).join(' · ')}</div>`:''}
+      ${inb.note?`<div style="font-size:11px;color:var(--text-3);margin-top:6px">${esc(inb.note)}</div>`:''}
+      ${inb.movements&&inb.movements.length?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">movement: ${inb.movements.map(esc).join(', ')}</div>`:''}
+    </div>`;
+  } else {
+    body='<div style="color:var(--text-3);font-size:12.5px;padding:8px 0">아직 대사 기록이 없습니다. 입고가 완료되면 위 버튼으로 발주 대비 실입고를 확인하세요.</div>';
+  }
+  return head+btns+body+`<div class="hint" style="margin-top:10px">※ inventory 현재고는 "지금 창고에 있는 수량"이라, 신제품 첫 입고는 실입고와 거의 같지만 재발주는 (기존 잔량+신규)일 수 있어요. 필요하면 실입고 수량을 직접 입력해 바로잡으세요. 입고 완료 시 단계가 자동으로 '입고·검수'로 넘어갑니다.</div>`;
+}
+async function pullInbound(){
+  try{ CUR=await api('/'+CUR.id+'/reconcile-inbound',{method:'POST',body:{}}); renderDetail(); load(); toast('inventory 현재고로 대사했습니다'); }
+  catch(e){ toast('대사 실패: '+e.message); }
+}
+async function manualInbound(){
+  const raw=$('in-recv').value; if(raw===''||raw==null)return toast('실입고 수량을 입력하세요');
+  try{ CUR=await api('/'+CUR.id+'/inbound-manual',{method:'POST',body:{received:Number(raw)}}); renderDetail(); load(); toast('실입고 기록됨'); }
+  catch(e){ toast('기록 실패: '+e.message); }
+}
+
+// -- ⑦ 첨부 (견적서 PDF·샘플 사진·시안)
+function paneAttach(p){
+  const atts=p.attachments||[];
+  const isImg=a=>/^image\//.test(a.mime||'');
+  return `<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">견적서 PDF · 샘플 검수 사진 · 시안 등을 첨부합니다 (이미지·PDF, 20MB 이하).</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+  ${atts.map(a=>`<div class="vendor-box" style="padding:8px;text-align:center">
+    <a href="/api/pipeline/${p.id}/attachment/${a.id}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+    ${isImg(a)?`<img src="/api/pipeline/${p.id}/attachment/${a.id}" style="width:100%;height:80px;object-fit:cover;border-radius:6px">`:`<div style="height:80px;display:flex;align-items:center;justify-content:center;font-size:30px">📄</div>`}
+    <div style="font-size:11px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div></a>
+    <div style="font-size:10px;color:var(--text-3);margin-top:2px">${stageLabel(a.stage)} · ${(a.size/1024).toFixed(0)}KB</div>
+    <button class="btn sm danger" style="margin-top:5px;padding:2px 8px" onclick="delAttach('${a.id}')">삭제</button>
+  </div>`).join('')||'<div style="color:var(--text-3);font-size:12.5px;grid-column:1/-1;padding:8px 0">첨부가 없습니다.</div>'}
+  </div>
+  <div class="frow" style="margin-top:14px">
+    <input type="file" id="att-file" accept="image/*,application/pdf" style="font-size:12px">
+    <button class="btn sm" onclick="uploadAttach()">⬆ 업로드</button>
+    <span style="font-size:11px;color:var(--text-3)">현재 단계(${stageLabel(p.stage)})로 태그됩니다</span>
+  </div>`;
+}
+function uploadAttach(){
+  const f=$('att-file').files[0]; if(!f)return toast('파일을 선택하세요');
+  if(f.size>20*1024*1024)return toast('20MB 이하만 가능합니다');
+  const rd=new FileReader();
+  rd.onload=async()=>{
+    try{ CUR=await api('/'+CUR.id+'/attachment',{method:'POST',body:{dataUrl:rd.result,filename:f.name,stage:CUR.stage}});
+      renderDetail(); load(); toast('첨부 업로드됨'); }
+    catch(e){ toast('업로드 실패: '+e.message); }
+  };
+  rd.readAsDataURL(f);
+}
+async function delAttach(attId){
+  if(!confirm('첨부를 삭제할까요?'))return;
+  try{ CUR=await api('/'+CUR.id+'/attachment/'+attId,{method:'DELETE'}); renderDetail(); load(); toast('삭제됨'); }
+  catch(e){ toast('삭제 실패: '+e.message); }
+}
 
 // -- 타임라인·메모
 function paneTimeline(p){
