@@ -53,6 +53,35 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
 .closed-strip summary{cursor:pointer;font-size:12.5px;color:var(--text-2);font-weight:600}
 .closed-item{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer}
 .closed-item:last-child{border-bottom:none}
+/* view toggle */
+.vtoggle{display:flex;gap:0;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.vtoggle button{background:var(--surface);border:none;color:var(--text-2);padding:6px 13px;font-size:12px;font-weight:700}
+.vtoggle button.on{background:var(--accent);color:#0f172a}
+/* table view */
+.tblwrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{background:#16213a;color:var(--text-3);font-size:11px;padding:9px 10px;text-align:left;cursor:pointer;white-space:nowrap;border-bottom:1px solid var(--line);user-select:none}
+.tbl th:hover{color:var(--accent-strong)}
+.tbl td{padding:8px 10px;border-bottom:1px solid rgba(51,65,85,.5);vertical-align:middle}
+.tbl tbody tr:hover td{background:rgba(96,165,250,.06);cursor:pointer}
+.mini-steps{display:flex;gap:2px}
+.mini-steps i{width:13px;height:5px;border-radius:2px;background:var(--surface-2)}
+.mini-steps i.d{background:var(--ok)}.mini-steps i.c{background:var(--accent)}
+.nextact{font-size:11.5px;color:var(--text-2);max-width:260px}
+.dday-soon{color:var(--warn);font-weight:700}.dday-late{color:var(--err);font-weight:700}
+/* timeline (gantt) view */
+.gt{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto}
+.gt-grid{position:relative;min-width:880px}
+.gt-months{position:relative;height:22px;border-bottom:1px solid var(--line);margin-left:210px;font-size:10.5px;color:var(--text-3)}
+.gt-months span{position:absolute;top:3px;border-left:1px dashed rgba(51,65,85,.7);padding-left:5px}
+.gt-row{display:flex;align-items:center;height:34px;border-bottom:1px solid rgba(51,65,85,.35)}
+.gt-row:hover{background:rgba(96,165,250,.05);cursor:pointer}
+.gt-label{width:210px;flex-shrink:0;font-size:12px;font-weight:600;display:flex;gap:6px;align-items:center;overflow:hidden;white-space:nowrap}
+.gt-track{flex:1;position:relative;height:100%}
+.gt-bar{position:absolute;top:8px;height:16px;border-radius:99px;font-size:9.5px;font-weight:700;color:#0f172a;display:flex;align-items:center;padding:0 8px;white-space:nowrap;overflow:hidden}
+.gt-today{position:absolute;top:0;bottom:0;width:2px;background:var(--err);opacity:.7}
+.gt-marker{position:absolute;top:5px;font-size:11px}
+.gt-legend{font-size:11px;color:var(--text-3);margin-top:10px}
 /* modal */
 .mbg{display:none;position:fixed;inset:0;background:rgba(2,6,23,.7);z-index:100;padding:26px 14px;overflow-y:auto}
 .mbg.on{display:flex;align-items:flex-start;justify-content:center}
@@ -101,7 +130,10 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
 
   <div class="kpis" id="kpis"></div>
 
-  <div class="board" id="board"></div>
+  <div class="tblwrap" id="tableWrap" style="display:none"><table class="tbl" id="tbl"></table></div>
+  <div class="gt" id="ganttWrap" style="display:none"><div class="gt-grid" id="gantt"></div>
+    <div class="gt-legend">막대 색 = 현재 단계 · 🔻 대금 예정일(미지급) · 📦 입고 ETA · 빨간 세로선 = 오늘 · 막대 끝 = ETA(없으면 추정)</div></div>
+  <div class="board" id="board" style="display:none"></div>
 
   <details class="closed-strip" id="closedStrip" style="display:none">
     <summary>완료·보류·취소 프로젝트 <span id="closedCount"></span></summary>
@@ -172,13 +204,29 @@ async function load(){
   render();
 }
 
+// ── 파생값 헬퍼 (실데이터 기반) ──
+function nextAction(p){
+  const cl=(p.checklist&&p.checklist[p.stage])||[];
+  const first=cl.find(c=>!c.done);
+  return first?first.t:stageLabel(p.stage)+' 마무리';
+}
+function payDue(p){ // 미지급 대금 중 가장 이른 예정일
+  const dues=(p.payments||[]).filter(x=>!x.paid_at&&x.due).map(x=>x.due).sort();
+  return dues[0]||null;
+}
+function unpaidKrw(p){
+  let s=0;(p.payments||[]).forEach(x=>{if(!x.paid_at){const k=fxKrw(Number(x.amount)||0,x.cur||'KRW');if(k)s+=k}});
+  return s;
+}
+const todayStr=()=>new Date().toISOString().slice(0,10);
+function ddayClass(d){if(!d)return '';const t=todayStr();if(d<t)return 'dday-late';const diff=(new Date(d)-new Date(t))/86400000;return diff<=3?'dday-soon':''}
+
 function render(){
   const active=PROJECTS.filter(p=>p.status==='active');
   const closed=PROJECTS.filter(p=>p.status!=='active');
   // KPI
   const stale=active.filter(p=>daysSince(p.updated_at)>=7);
-  let dueKrw=0;
-  active.forEach(p=>(p.payments||[]).forEach(pay=>{if(!pay.paid_at){const k=fxKrw(Number(pay.amount)||0,pay.cur||'KRW');if(k)dueKrw+=k}}));
+  let dueKrw=0;active.forEach(p=>dueKrw+=unpaidKrw(p));
   $('kpis').innerHTML=
     `<div class="kpi"><b>${active.length}</b>진행 중</div>`+
     `<div class="kpi"><b class="${stale.length?'warn':''}">${stale.length}</b>7일+ 정체 ⚠️</div>`+
@@ -188,14 +236,19 @@ function render(){
       <span class="chip ${FILTER==='all'?'on':''}" onclick="setFilter('all')">전체</span>
       <span class="chip ${FILTER==='new'?'on':''}" onclick="setFilter('new')">✨ 신제품</span>
       <span class="chip ${FILTER==='reorder'?'on':''}" onclick="setFilter('reorder')">🔁 재발주</span>
+      <span class="vtoggle">
+        <button class="${VIEW==='table'?'on':''}" onclick="setView('table')">📋 테이블</button>
+        <button class="${VIEW==='gantt'?'on':''}" onclick="setView('gantt')">🗓 타임라인</button>
+        <button class="${VIEW==='board'?'on':''}" onclick="setView('board')">🗂 칸반</button>
+      </span>
     </div>`;
-  // board
   const vis=active.filter(p=>FILTER==='all'||p.type===FILTER);
-  $('board').innerHTML=COLS.map(col=>{
-    const cards=vis.filter(p=>col.stages.includes(p.stage));
-    return `<div class="col"><h4>${col.t}<span>${cards.length}</span></h4>`+
-      (cards.length?cards.map(cardHtml).join(''):'<div class="empty-col">—</div>')+'</div>';
-  }).join('');
+  $('tableWrap').style.display=VIEW==='table'?'block':'none';
+  $('ganttWrap').style.display=VIEW==='gantt'?'block':'none';
+  $('board').style.display=VIEW==='board'?'flex':'none';
+  if(VIEW==='table')renderTable(vis);
+  else if(VIEW==='gantt')renderGantt(vis);
+  else renderBoard(vis);
   // closed
   $('closedStrip').style.display=closed.length?'block':'none';
   $('closedCount').textContent=closed.length?`(${closed.length})`:'';
@@ -206,8 +259,77 @@ function render(){
      <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.updated_at.slice(0,10)}</span></div>`).join('');
 }
 
+// ── 📋 테이블 뷰 (기본) ──
+function renderTable(vis){
+  const val=p=>({name:p.name,type:p.type,stage:p.stages.indexOf(p.stage)/p.stages.length,
+    due:payDue(p)||'9999',eta:(p.po&&p.po.eta)||'9999',amt:unpaidKrw(p),stale:daysSince(p.updated_at)})[SORTK];
+  const rows=[...vis].sort((a,b)=>{const x=val(a),y=val(b);return (x<y?-1:x>y?1:0)*(SORTD?-1:1)});
+  const arrow=k=>SORTK===k?(SORTD?' ▾':' ▴'):'';
+  $('tbl').innerHTML=
+  `<thead><tr><th onclick="sortT('name')">제품${arrow('name')}</th><th onclick="sortT('type')">유형${arrow('type')}</th><th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th><th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th><th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th></tr></thead><tbody>`+
+  rows.map(p=>{
+    const due=payDue(p),eta=(p.po&&p.po.eta)||null,amt=unpaidKrw(p),st=daysSince(p.updated_at);
+    return `<tr onclick="openDetail('${p.id}')">
+    <td><b>${esc(p.emoji)} ${esc(p.name)}</b></td>
+    <td><span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span></td>
+    <td><div class="mini-steps">${p.stages.map((s,i)=>{const c=p.stages.indexOf(p.stage);return `<i class="${i<c?'d':i===c?'c':''}" title="${stageLabel(s)}"></i>`}).join('')}</div>
+        <span style="font-size:10.5px;color:var(--text-3)">${stageLabel(p.stage)}</span></td>
+    <td class="nextact">${esc(nextAction(p))}</td>
+    <td class="${ddayClass(due)}">${due?'~'+due.slice(5):'—'}</td>
+    <td style="color:var(--text-2)">${eta?'📦 '+eta.slice(5):'—'}</td>
+    <td>${amt?'₩'+Math.round(amt).toLocaleString():'—'}</td>
+    <td>${st>=7?`<span class="tag t-warn">D+${st} ⚠️</span>`:'<span style="color:var(--text-3)">—</span>'}</td>
+    </tr>`}).join('')+'</tbody>';
+  if(!rows.length)$('tbl').innerHTML='<tbody><tr><td style="padding:24px;text-align:center;color:var(--text-3)">진행 중인 프로젝트가 없습니다</td></tr></tbody>';
+}
+function sortT(k){if(SORTK===k)SORTD=!SORTD;else{SORTK=k;SORTD=true}
+  try{localStorage.setItem('pl_sortk',SORTK);localStorage.setItem('pl_sortd',SORTD?'1':'0')}catch(e){}
+  render()}
+
+// ── 🗓 타임라인 뷰 ──
+const GT_COLOR={plan:'#93c5fd',design:'#93c5fd',review:'#93c5fd',vendor:'#c4b5fd',pricing:'#c4b5fd',sample:'#fbbf24',po:'#f9a8d4',production:'#f9a8d4',shipping:'#67e8f9',inbound:'#86efac',launch:'#34d399'};
+function renderGantt(vis){
+  const DAY=86400000,now=Date.now();
+  const t0=now-35*DAY,t1=now+60*DAY;
+  const x=iso=>Math.max(0,Math.min(100,(new Date(iso).getTime()-t0)/(t1-t0)*100));
+  // 월 라벨 (창 안의 매월 1일)
+  let months='';
+  const d=new Date(t0);d.setDate(1);
+  for(let m=new Date(d);m.getTime()<t1;m.setMonth(m.getMonth()+1)){
+    if(m.getTime()>=t0)months+=`<span style="left:${x(m.toISOString())}%">${m.getMonth()+1}월</span>`;
+  }
+  const rows=[...vis].sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
+  $('gantt').innerHTML=`<div class="gt-months">${months}</div>`+
+  rows.map(p=>{
+    const start=p.created_at||new Date(now).toISOString();
+    const eta=(p.po&&p.po.eta)||null;
+    const endMs=eta?new Date(eta).getTime():Math.min(new Date(start).getTime()+45*DAY,now+14*DAY);
+    const s=x(start),e=Math.max(x(new Date(endMs).toISOString()),s+6);
+    const due=payDue(p);
+    return `<div class="gt-row" onclick="openDetail('${p.id}')">
+    <div class="gt-label">${esc(p.emoji)} ${esc(p.name)} <span class="tag ${p.type==='new'?'t-new':'t-re'}" style="font-size:9px">${p.type==='new'?'신':'재'}</span></div>
+    <div class="gt-track"><div class="gt-today" style="left:${x(new Date(now).toISOString())}%"></div>
+      <div class="gt-bar" style="left:${s}%;width:${e-s}%;background:${GT_COLOR[p.stage]||'#94a3b8'}">${stageLabel(p.stage)}</div>
+      ${due?`<span class="gt-marker" title="대금 예정 ${due}" style="left:${x(due)}%">🔻</span>`:''}
+      ${eta?`<span class="gt-marker" title="입고 ETA ${eta}" style="left:${x(eta)}%">📦</span>`:''}
+    </div></div>`}).join('')||'<div style="padding:20px;color:var(--text-3);font-size:12.5px">진행 중인 프로젝트가 없습니다</div>';
+}
+
+// ── 🗂 칸반 뷰 (기존) ──
+function renderBoard(vis){
+  $('board').innerHTML=COLS.map(col=>{
+    const cards=vis.filter(p=>col.stages.includes(p.stage));
+    return `<div class="col"><h4>${col.t}<span>${cards.length}</span></h4>`+
+      (cards.length?cards.map(cardHtml).join(''):'<div class="empty-col">—</div>')+'</div>';
+  }).join('');
+}
+
 let FILTER='all';
+let VIEW=(function(){try{return localStorage.getItem('pl_view')||'table'}catch(e){return 'table'}})();
+let SORTK=(function(){try{return localStorage.getItem('pl_sortk')||'stale'}catch(e){return 'stale'}})();
+let SORTD=(function(){try{return (localStorage.getItem('pl_sortd')??'1')==='1'}catch(e){return true}})();
 function setFilter(f){FILTER=f;render()}
+function setView(v){VIEW=v;try{localStorage.setItem('pl_view',v)}catch(e){};render()}
 
 function cardHtml(p){
   const stale=daysSince(p.updated_at)>=7;
