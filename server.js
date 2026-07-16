@@ -6927,7 +6927,9 @@ try {
   const localJson = [
     CACHE_PATH,                 // 영속 볼륨 (/data) — goods-cache.json
     PARSED_DB_PATH,             // 영속 볼륨 (/data) — parsed-quotes.json (AI 검수 인박스, Drive 백업으로 3중 보호)
-    path.join(__dirname, 'data', 'quote-adoption.json')
+    path.join(__dirname, 'data', 'quote-adoption.json'),
+    require('./lib/orders-store').ORDERS_FILE,      // 수출주문 (/data/orders.json)
+    require('./lib/pipeline-store').PIPELINE_FILE   // 제품 파이프라인 (/data/pipeline.json)
   ];
   driveBackup.scheduleDailyBackup({
     projectName: 'goods-calculator',
