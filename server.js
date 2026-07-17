@@ -6887,6 +6887,17 @@ try {
   console.error('[pipeline] 라우터 등록 실패:', err.message);
 }
 
+// ━━━ 🤖 Claude 잡 데몬 읽기전용 피드 (2026-07-17) ━━━
+// 맥미니 claude-jobs 데몬이 폴링 — 파이프라인 단계전환 이벤트를 잡 데이터 소스로 사용
+// 가드: X-Claude-Feed-Key === CLAUDE_FEED_KEY (env 미설정 시 403 fail-closed), 읽기 전용
+try {
+  const claudeFeedRoutes = require('./lib/claude-feed-routes');
+  app.use('/api/claude-feed', claudeFeedRoutes.router());
+  console.log('[claude-feed] /api/claude-feed 라우터 등록 완료');
+} catch (err) {
+  console.error('[claude-feed] 라우터 등록 실패:', err.message);
+}
+
 // SPA 폴백
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
