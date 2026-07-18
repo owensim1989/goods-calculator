@@ -6525,6 +6525,10 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
     const categoryName = pr.Category?.select?.name || null;
     const imageUrl = pr.Image_URL?.url || null;
     const packaging = getText('1박스당_갯수') || null;   // 2026-05-31: 포장단위(박스당 갯수) inventory 전달
+    // 2026-07-19: 원가도 함께 전달 — inventory 는 products.cost_price 컬럼이 이미 있는데 값이 비어 있었음.
+    // 채우면 재고 화면에서 원가 확인 + 재고자산 평가(재고수량 × 원가)가 가능해짐.
+    // ⚠️ inventory 는 사내 전용. 원가는 바이어 엑셀·쇼핑몰 API 로는 절대 나가지 않는다(2026-07-19 감사).
+    const costPrice = (typeof pr['원가_KRW']?.number === 'number') ? pr['원가_KRW'].number : null;
 
     const url = INVENTORY_API_URL.replace(/\/$/, '') + '/api/hooks/catalog-sync-from-goods';
     const ctrl = new AbortController();
@@ -6537,6 +6541,7 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
         body: JSON.stringify({
           barcode, name,
           sale_price: salePrice,
+          cost_price: costPrice,
           image_url: imageUrl,
           category_name: categoryName,
           packaging,

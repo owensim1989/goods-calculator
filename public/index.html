@@ -1473,6 +1473,33 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
   </div>
 
+  <!-- 📋 SKU 원가 리스트 (2026-07-19) — 내부 전용. 바이어 엑셀에는 원가가 들어가지 않음 -->
+  <div class="cp-section" style="margin-top:16px;border:1px solid #6b2f2f;">
+    <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      📋 SKU 원가 리스트
+      <span style="font-size:11px;color:#fca5a5;border:1px solid #6b2f2f;border-radius:99px;padding:1px 9px;font-weight:600;">🔒 내부 전용 — 외부 공유 금지</span>
+      <span style="font-size:11px;color:var(--text-muted);font-weight:400;margin-left:auto;" id="cost-list-count"></span>
+    </h3>
+    <div style="font-size:11.5px;color:var(--text-muted);margin:-4px 0 10px;">
+      제품 카탈로그의 확정 원가입니다. 위 「제품 리스트」 바이어 엑셀에는 <b>원가가 포함되지 않습니다</b>(소비자가·FOB·CIF만).
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+      <input type="text" id="cost-list-q" placeholder="제품명·바코드 검색" oninput="renderCostList()" style="flex:1;min-width:180px;padding:6px 10px;">
+      <select id="cost-list-cat" onchange="renderCostList()" style="padding:6px 10px;"><option value="">전체 카테고리</option></select>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+        <input type="checkbox" id="cost-list-issue" onchange="renderCostList()"> ⚠️ 이상치만
+      </label>
+      <button class="cp-btn" onclick="loadCostList(true)">🔄 새로고침</button>
+      <button class="cp-btn" onclick="exportCostListCsv()" title="내부 검토용 CSV. 외부 공유 금지">⬇️ CSV</button>
+    </div>
+    <div class="table-wrap" style="max-height:520px;overflow:auto;">
+      <table><thead><tr>
+        <th>바코드</th><th>제품명</th><th>카테고리</th><th style="text-align:right">원가</th>
+        <th style="text-align:right">소비자가(KR)</th><th style="text-align:right">원가율</th><th>판매상태</th>
+      </tr></thead><tbody id="cost-list-tbody"></tbody></table>
+    </div>
+  </div>
+
   <!-- 인라인 편집 섹션 (2026-04-30 신규) -->
   <div class="cp-section" style="margin-top:16px;">
     <!-- 옵션 C — 제목 좌 / 액션 3종 우측 정렬. flex-wrap 으로 좁아질 때 액션 줄바뀜 (2026-05-22) -->
@@ -2701,6 +2728,8 @@ function switchPage(item){
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebarOverlay').classList.remove('show');
   }
+  // catalog 진입 시 SKU 원가 리스트 로드 (2026-07-19) — 내부 전용
+  if(item.dataset.page==='catalog' && typeof loadCostList==='function') loadCostList();
   // consumer 첫 진입 초기화
   if(item.dataset.page==='consumer' && !window._cpInited){window._cpInited=true; if(typeof cpInit==='function') cpInit();}
   if(item.dataset.page==='consumer'){ const _s=document.getElementById('cp-list-section'); if(_s){ try{ _s.classList.toggle('cp-collapsed', localStorage.getItem('goods_cpListCollapsed')==='1'); }catch(e){} } }
@@ -6271,6 +6300,71 @@ async function cpFetchCatalogCached(force){
     CP_CATALOG_CACHE_AT = now;
   }catch(e){ /* keep stale cache */ }
   return CP_CATALOG_CACHE;
+}
+
+// ━━ 📋 SKU 원가 리스트 (2026-07-19) — 내부 전용 ━━
+// 노션을 열지 않고도 SKU별 확정 원가를 확인하기 위한 화면.
+// ⚠️ 원가는 절대 외부로 나가면 안 됨 — 바이어 엑셀(/catalog/export)·쇼핑몰 API(/api/shop-catalog) 는
+//    원가 필드를 아예 반환하지 않는다(2026-07-19 감사 확인). 이 목록은 인증된 사내 화면에서만 렌더링.
+let COST_LIST = [];
+async function loadCostList(force){
+  const rows = await cpFetchCatalogCached(force);
+  COST_LIST = (rows||[]).slice();
+  const sel = document.getElementById('cost-list-cat');
+  if (sel && sel.options.length <= 1) {
+    [...new Set(COST_LIST.map(r=>r.category).filter(Boolean))].sort()
+      .forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+  }
+  renderCostList();
+}
+// 원가율 이상 판정 — 미입력이거나 40% 초과면 검토 대상 (정상대는 7~35%)
+function _costIssue(r){
+  if (r.costKRW==null || !(r.costKRW>0)) return '원가 미입력';
+  if (!r.retailKR) return null;
+  const rate = r.costKRW / r.retailKR;
+  if (rate > 0.40) return '원가율 40% 초과';
+  return null;
+}
+function renderCostList(){
+  const q=(document.getElementById('cost-list-q').value||'').toLowerCase().trim();
+  const cat=document.getElementById('cost-list-cat').value;
+  const onlyIssue=document.getElementById('cost-list-issue').checked;
+  let rows=COST_LIST.filter(r=>{
+    if(cat && r.category!==cat) return false;
+    if(onlyIssue && !_costIssue(r)) return false;
+    if(q && !((r.productName||'')+' '+(r.barcode||'')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  rows.sort((a,b)=>(a.category||'').localeCompare(b.category||'')||(a.productName||'').localeCompare(b.productName||''));
+  const withCost=COST_LIST.filter(r=>r.costKRW>0).length;
+  document.getElementById('cost-list-count').textContent =
+    `${rows.length}건 표시 · 전체 ${COST_LIST.length} SKU 중 원가 입력 ${withCost}건`;
+  const fm=n=>n==null?'—':Number(n).toLocaleString();
+  document.getElementById('cost-list-tbody').innerHTML = rows.map(r=>{
+    const issue=_costIssue(r);
+    const rate=(r.costKRW>0&&r.retailKR)?(r.costKRW/r.retailKR*100):null;
+    return `<tr${issue?' style="background:rgba(248,113,113,.10)"':''}>
+      <td style="font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted)">${r.barcode||'—'}</td>
+      <td>${(r.productName||'').replace(/</g,'&lt;')}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${r.category||'—'}</td>
+      <td style="text-align:right;font-weight:700">${fm(r.costKRW)}</td>
+      <td style="text-align:right;color:var(--text-muted)">${fm(r.retailKR)}</td>
+      <td style="text-align:right">${rate!=null?rate.toFixed(1)+'%':'—'}${issue?` <span title="${issue}">⚠️</span>`:''}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${r.판매상태||'—'}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" style="padding:14px;color:var(--text-muted)">해당 조건의 제품이 없습니다</td></tr>';
+}
+function exportCostListCsv(){
+  const head=['바코드','제품명','카테고리','원가_KRW','소비자가_KR','원가율','판매상태'];
+  const body=COST_LIST.map(r=>{
+    const rate=(r.costKRW>0&&r.retailKR)?(r.costKRW/r.retailKR*100).toFixed(1)+'%':'';
+    return [r.barcode||'',(r.productName||'').replace(/"/g,'""'),r.category||'',r.costKRW??'',r.retailKR??'',rate,r.판매상태||''];
+  });
+  const csv='﻿'+[head,...body].map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`SKU원가리스트_내부전용_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  if(typeof showToast==='function') showToast('🔒 내부 전용 파일입니다 — 외부 공유 금지');
 }
 
 // 제품군 키 — 등급/사이즈/노이즈 마커를 제거해 "같은 품목"끼리 묶는 정규화 키 (2026-06-02)
