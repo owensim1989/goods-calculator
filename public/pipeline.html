@@ -464,6 +464,7 @@ function paneVendors(p){
         </span>
       </div>
       ${v.memo?`<div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">${esc(v.memo)}</div>`:''}
+      ${partnerLinkBlock(p,v,vi)}
       <table><tr><th>수량</th><th>단가</th><th>통화</th><th>₩환산</th><th>리드타임</th><th>조건</th><th></th></tr>
       ${quotes.map((q,qi)=>{
         const krw=fxKrw(Number(q.unit)||0,q.cur||'USD');
@@ -547,6 +548,61 @@ function addQuote(vi){
   if(vs[vi].status==='contacted')vs[vi].status='quoted';
   refreshCur({vendors:vs})}
 function delQuote(vi,qi){const vs=[...CUR.vendors];vs[vi].quotes.splice(qi,1);refreshCur({vendors:vs})}
+
+// ⑤ business 거래처 연결 — 선정 + 발주(PO) 업체만 (실제 생산 진행)
+function hasPO(p){return !!(p.po&&(p.po.qty||p.po.vendor))}
+function partnerLinkBlock(p,v,vi){
+  if(v.status!=='selected')return '';
+  if(v.partner_ref){
+    return `<div style="display:flex;gap:8px;align-items:center;background:var(--ok-soft,rgba(52,211,153,.1));border:1px solid rgba(52,211,153,.35);border-radius:8px;padding:6px 10px;margin-bottom:8px;font-size:12px">
+      🔗 business 거래처 연결됨: <b>${esc(v.partner_ref.name||'')}</b>
+      <span style="color:var(--text-3)">(id ${esc(String(v.partner_ref.id))}${v.partner_ref.linked_at?' · '+v.partner_ref.linked_at.slice(0,10):''})</span>
+      <button class="btn sm" style="margin-left:auto;padding:2px 8px" onclick="unlinkPartner(${vi})">연결 해제</button></div>`;
+  }
+  if(!hasPO(p)){
+    return `<div class="hint" style="margin-bottom:8px">🔗 business 거래처 연결은 <b>발주(PO) 확정 후</b> 활성화됩니다 — 실제 생산 진행 업체만 연결합니다. (발주·대금 탭에서 PO 저장)</div>`;
+  }
+  if(META.business_linked===false){
+    return `<div class="hint" style="margin-bottom:8px">🔗 business 거래처 연결: 연동 미설정(GOODS_TO_BUSINESS_API_KEY) — Railway 환경변수 설정 후 사용 가능</div>`;
+  }
+  return `<div style="margin-bottom:8px"><button class="btn sm" onclick="linkPartner(${vi})">🔗 business 거래처 연결</button>
+    <span class="hint" style="margin-left:6px">선정+발주된 이 업체를 business 거래처 마스터에 연결</span></div>`;
+}
+async function linkPartner(vi){
+  const v=CUR.vendors[vi];
+  let data;
+  try{ data=await api('/partner-search?name='+encodeURIComponent(v.name)); }
+  catch(e){ return toast('거래처 조회 실패: '+e.message); }
+  const match=data.match, cands=data.candidates||[];
+  const opt=(pt,label)=>`<div class="ac-row" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" onclick='doLinkPartner(${vi},${JSON.stringify(pt).replace(/'/g,"&#39;")})'>
+    <b>${esc(pt.name)}</b><span style="font-size:11px;color:var(--text-3)">${esc(pt.country||'')}${pt.tax_id?' · '+esc(pt.tax_id):''}</span>
+    ${label?`<span class="tag t-ok" style="margin-left:auto">${label}</span>`:'<span style="margin-left:auto;font-size:11px;color:var(--accent-strong)">연결 →</span>'}</div>`;
+  let rows='';
+  if(match)rows+=opt(match, data.matched_by==='tax_id'?'사업자번호 일치':data.matched_by==='email'?'이메일 일치':data.matched_by==='name_exact'?'상호 일치':'매칭');
+  cands.forEach(c=>{ if(!match||c.id!==match.id) rows+=opt(c,''); });
+  if(!rows)rows=`<div style="padding:14px;color:var(--text-3);font-size:12.5px">business 거래처 마스터에 "<b>${esc(v.name)}</b>"와 일치하는 곳이 없습니다.<br>business(business.jeisha.kr) 거래처에 먼저 등록한 뒤 다시 연결하세요.</div>`;
+  const html=`<div class="mbg on" id="plink" onclick="if(event.target===this)document.getElementById('plink').remove()">
+    <div class="modal" style="max-width:520px"><button class="x" onclick="document.getElementById('plink').remove()">✕</button>
+    <h3 style="font-size:15px">🔗 business 거래처 연결 — ${esc(v.name)}</h3>
+    <div style="font-size:11.5px;color:var(--text-3);margin:4px 0 10px">선정+발주된 이 업체를 business 거래처와 연결합니다. 연결하면 발주·대금이 거래처 360 타임라인에 잡힙니다.</div>
+    ${rows}</div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+async function doLinkPartner(vi,pt){
+  const el=document.getElementById('plink'); if(el)el.remove();
+  const vs=CUR.vendors.map(x=>({...x}));
+  vs[vi].partner_ref={id:pt.id,name:pt.name,linked_at:new Date().toISOString()};
+  const links={...(CUR.links||{}),business_partner_ref:pt.id};
+  await refreshCur({vendors:vs,links});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`business 거래처 연결: ${vs[vi].name} → #${pt.id} ${pt.name}`}});
+  openDetail(CUR.id,'vd'); toast('거래처 연결됨');
+}
+async function unlinkPartner(vi){
+  if(!confirm('business 거래처 연결을 해제할까요?'))return;
+  const vs=CUR.vendors.map(x=>({...x})); const was=vs[vi].partner_ref; delete vs[vi].partner_ref;
+  const links={...(CUR.links||{})}; if(links.business_partner_ref===(was&&was.id))links.business_partner_ref=null;
+  await refreshCur({vendors:vs,links}); openDetail(CUR.id,'vd'); toast('연결 해제됨');
+}
 
 // -- 샘플
 function paneSamples(p){
