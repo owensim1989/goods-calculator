@@ -2826,7 +2826,7 @@ function showComparePanel(){
       <div class="cc-row"><span class="cc-label">①제작단가</span><span class="cc-val">${fmtP(i.개당단가_KRW)} ${origUnit}</span></div>
       <div class="cc-row"><span class="cc-label">②부대비용</span><span class="cc-val">${i.부대비용설명==='없음'?'-':fmtP(i.개당부대비용||0)}${sTag}</span></div>
       <div class="cc-row"><span class="cc-label">③최종단가</span><span class="cc-val${isBest?' best':isWorst?' worst':''}">${fmtP(i.개당단가_부대비용포함)} ${fxFinal}</span></div>
-      <div class="cc-row"><span class="cc-label">총 제작비</span><span class="cc-val">${제작비텍스트}</span></div>
+      <div class="cc-row"><span class="cc-label" title="제작비에는 몰드비·샘플링비를 반드시 포함해야 합니다. 누락 시 원가가 과소계상됩니다 (2026-07-19 실제 사고: 블랭킷 몰드비 1,146만 누락 → 원가 11,027원이 6,324원으로 표시)">총 제작비 <span style="color:var(--warning);font-size:9px;">ⓘ몰드·샘플 포함</span></span><span class="cc-val">${제작비텍스트}</span></div>
       <div class="cc-row"><span class="cc-label">스펙</span><span class="cc-val">${(i.스펙태그||[]).join(', ')||'-'}</span></div>
       <div class="cc-row"><span class="cc-label">제작기간</span><span class="cc-val">${i.제작일수?i.제작일수+'일':'-'}</span></div>
       <div class="cc-row"><span class="cc-label">상세스펙</span><span class="cc-val" style="font-size:11px;max-width:140px;word-break:break-all;">${i.상세스펙||'-'}</span></div>
