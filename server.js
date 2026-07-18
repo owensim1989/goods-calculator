@@ -477,6 +477,21 @@ function extractProp(page, name, type) {
 }
 
 function parsePage(page) {
+  // ━━ 총제작비 = 제작비 + 몰드비 + 샘플링비 (2026-07-19 신설) ━━
+  // 배경: 워크북(원가계산_수익률.xlsx)은 제작비를 공정1 / 공정2(몰드비) / 샘플링 3칸으로 나눠 적는데
+  //       통합DB엔 `제작비` 한 칸뿐이라, 임포트 때 몰드비·샘플링이 통째로 빠진 행이 6건 있었음
+  //       (총 3,033만원 누락 → 블랭킷 원가가 11,027 대신 6,324 로 표시되던 사고).
+  // 노션 `개당단가` formula 는 제작비÷수량 이라 새 두 칸을 못 봄 → 여기서 총제작비 기준으로 덮어씀.
+  const _몰드비 = extractProp(page, '몰드비', 'number');
+  const _샘플링비 = extractProp(page, '샘플링비', 'number');
+  const _제작비 = extractProp(page, '제작비', 'number');
+  const _수량 = extractProp(page, '수량', 'number');
+  const _추가제작비 = (_몰드비 || 0) + (_샘플링비 || 0);
+  const _총제작비 = (_제작비 || 0) + _추가제작비;
+  const _개당단가F = extractProp(page, '개당단가', 'formula');
+  // 몰드비·샘플링비가 실제로 입력된 행만 재계산 (미입력 행은 formula 그대로 — 회귀 방지)
+  const _개당단가 = (_추가제작비 > 0 && _수량 > 0) ? _총제작비 / _수량 : _개당단가F;
+
   return {
     id: page.id,
     프로젝트명: extractProp(page, '프로젝트명', 'title'),
@@ -484,11 +499,14 @@ function parsePage(page) {
     품명: extractProp(page, '품명', 'multi_select'),
     거래처: extractProp(page, '거래처', 'select'),
     국가: extractProp(page, '국가', 'select'),
-    수량: extractProp(page, '수량', 'number'),
+    수량: _수량,
     디자인종수: extractProp(page, '디자인종수', 'number'),
-    제작비: extractProp(page, '제작비', 'number'),
+    제작비: _제작비,
+    몰드비: _몰드비,
+    샘플링비: _샘플링비,
+    총제작비: _총제작비 || null,
     견적가: extractProp(page, '견적가', 'number'),
-    개당단가: extractProp(page, '개당단가', 'formula'),
+    개당단가: _개당단가,
     마진: extractProp(page, '마진', 'formula'),
     마진율: extractProp(page, '마진율', 'formula'),
     유효수량: extractProp(page, '유효수량', 'formula'),
@@ -759,7 +777,9 @@ app.get('/api/products', (req, res) => {
     const 개당단가_KRW = 원본단가 != null ? Math.round(원본단가 * fxRate) : null;
 
     // 제작비도 KRW 환산 (Notion 제작비는 원래 통화 기준)
-    const 제작비_KRW = it.제작비 != null ? Math.round(it.제작비 * fxRate) : null;
+    // 2026-07-19: 몰드비·샘플링비 포함한 총제작비 기준 (parsePage 에서 합산)
+    const 제작비원본 = it.총제작비 != null ? it.총제작비 : it.제작비;
+    const 제작비_KRW = 제작비원본 != null ? Math.round(제작비원본 * fxRate) : null;
 
     // ② 부대비용(개당): 확정이면 실제 금액, 아니면 % 추정
     const 부대비용합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
@@ -958,6 +978,9 @@ app.post('/api/items', async (req, res) => {
     if (d.수량 != null) properties['수량'] = { number: d.수량 };
     if (d.디자인종수 != null) properties['디자인종수'] = { number: d.디자인종수 };
     if (d.제작비 != null) properties['제작비'] = { number: d.제작비 };
+    // 2026-07-19: 몰드비·샘플링비 분리 입력 (제작비에 합쳐 넣다 누락되던 사고 방지)
+    if (d.몰드비 != null) properties['몰드비'] = { number: d.몰드비 };
+    if (d.샘플링비 != null) properties['샘플링비'] = { number: d.샘플링비 };
     if (d.견적가 != null) properties['견적가'] = { number: d.견적가 };
     if (d.상세스펙) properties['상세스펙'] = { rich_text: [{ text: { content: d.상세스펙 } }] };
     if (d.스펙태그?.length) properties['스펙태그'] = { multi_select: d.스펙태그.map(n => ({ name: n })) };

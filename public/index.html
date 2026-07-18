@@ -1262,7 +1262,16 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <div class="cp-tier-list" id="cp-tier-list"></div>
     </div>
     <div class="cp-grid" style="grid-template-columns:repeat(3,1fr);gap:12px;">
-      <div class="cp-field"><label>생산 단가 *</label><input type="number" id="cp-cost-price" step="0.01" placeholder="0" oninput="cpRecalc()"></div>
+      <div class="cp-field" style="position:relative;">
+        <label>생산 단가 * <span style="font-size:10px;color:var(--warning);">부대비용 포함 단가</span>
+          <button type="button" onclick="cpOpenCostPicker()" style="float:right;font-size:10.5px;padding:1px 8px;border-radius:99px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;">📥 원가 불러오기</button>
+        </label>
+        <input type="number" id="cp-cost-price" step="0.01" placeholder="0" oninput="cpRecalc()">
+        <div id="cp-cost-picker" style="display:none;position:absolute;z-index:60;top:100%;left:0;right:0;background:var(--bg-card,#1b1f27);border:1px solid var(--border,#2a2f3a);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);max-height:340px;overflow:auto;padding:8px;">
+          <input type="text" id="cp-cost-search" placeholder="제품명·거래처 검색" oninput="cpRenderCostPicker()" style="width:100%;margin-bottom:6px;padding:6px 8px;">
+          <div id="cp-cost-list" style="font-size:12px;"></div>
+        </div>
+      </div>
       <div class="cp-field"><label>통화</label><select id="cp-cost-currency" onchange="cpRecalc()">
         <option value="KRW">KRW (원)</option><option value="USD">USD ($)</option><option value="CNY">CNY (¥)</option><option value="JPY">JPY (¥)</option><option value="TWD">TWD (NT$)</option><option value="HKD">HKD (HK$)</option><option value="THB">THB (฿)</option>
       </select></div>
@@ -2826,7 +2835,8 @@ function showComparePanel(){
       <div class="cc-row"><span class="cc-label">①제작단가</span><span class="cc-val">${fmtP(i.개당단가_KRW)} ${origUnit}</span></div>
       <div class="cc-row"><span class="cc-label">②부대비용</span><span class="cc-val">${i.부대비용설명==='없음'?'-':fmtP(i.개당부대비용||0)}${sTag}</span></div>
       <div class="cc-row"><span class="cc-label">③최종단가</span><span class="cc-val${isBest?' best':isWorst?' worst':''}">${fmtP(i.개당단가_부대비용포함)} ${fxFinal}</span></div>
-      <div class="cc-row"><span class="cc-label" title="제작비에는 몰드비·샘플링비를 반드시 포함해야 합니다. 누락 시 원가가 과소계상됩니다 (2026-07-19 실제 사고: 블랭킷 몰드비 1,146만 누락 → 원가 11,027원이 6,324원으로 표시)">총 제작비 <span style="color:var(--warning);font-size:9px;">ⓘ몰드·샘플 포함</span></span><span class="cc-val">${제작비텍스트}</span></div>
+      <div class="cc-row"><span class="cc-label" title="제작비 = 공정비 + 몰드비 + 샘플링비. 몰드비를 빼면 원가가 과소계상됩니다 (2026-07-19 사고: 블랭킷 몰드비 1,146만 누락 → 11,027원이 6,324원으로 표시)">총 제작비 <span style="color:var(--warning);font-size:9px;">ⓘ몰드·샘플 포함</span></span><span class="cc-val">${제작비텍스트}</span></div>
+      ${((i.몰드비||0)+(i.샘플링비||0))>0?`<div class="cc-row"><span class="cc-label" style="padding-left:8px;font-size:11px;">└ 몰드·샘플링</span><span class="cc-val" style="font-size:11px;color:var(--text-muted)">${fmtP(i.몰드비||0)} + ${fmtP(i.샘플링비||0)}</span></div>`:''}
       <div class="cc-row"><span class="cc-label">스펙</span><span class="cc-val">${(i.스펙태그||[]).join(', ')||'-'}</span></div>
       <div class="cc-row"><span class="cc-label">제작기간</span><span class="cc-val">${i.제작일수?i.제작일수+'일':'-'}</span></div>
       <div class="cc-row"><span class="cc-label">상세스펙</span><span class="cc-val" style="font-size:11px;max-width:140px;word-break:break-all;">${i.상세스펙||'-'}</span></div>
@@ -5193,6 +5203,48 @@ async function cpEstimateShipping(auto){
 function cpScheduleShippingEstimate(){
   if(_cpShipDebounce) clearTimeout(_cpShipDebounce);
   _cpShipDebounce = setTimeout(()=>cpEstimateShipping(true), 1200);
+}
+
+// ━━ 원가 불러오기 (2026-07-19) ━━
+// 제품원가 통합DB(DATA)에서 부대비용 포함 개당단가를 골라 '생산 단가' 에 바로 채운다.
+// 배경: 통합DB → 소비자가 산정 이 수동이라 (a) 제작비만 보고 부대비용 빼먹거나
+//       (b) 옛 발주 단가를 인용하는 실수가 있었음. 최신 발주 우선 정렬 + 부대비용 포함값만 노출.
+function cpOpenCostPicker(){
+  const box=document.getElementById('cp-cost-picker');
+  if(box.style.display==='block'){box.style.display='none';return;}
+  box.style.display='block';
+  const q=document.getElementById('cp-cost-search');
+  q.value=(document.getElementById('cp-name')?.value||'').trim();
+  cpRenderCostPicker(); q.focus();
+}
+function cpRenderCostPicker(){
+  const kw=(document.getElementById('cp-cost-search').value||'').toLowerCase().trim();
+  let rows=(typeof DATA!=='undefined'&&Array.isArray(DATA)?DATA:[])
+    .filter(i=>i.개당단가_부대비용포함!=null&&i.개당단가_부대비용포함>0);
+  if(kw) rows=rows.filter(i=>((i.프로젝트명||'')+' '+(i.거래처||'')+' '+(i.품명||[]).join(' ')).toLowerCase().includes(kw));
+  // 발주일 최신 우선(견적만 있는 건 뒤로), 그다음 수량 큰 순(대량발주가 실단가에 가까움)
+  rows.sort((a,b)=>(String(b.발주일||'')).localeCompare(String(a.발주일||''))||((b.수량||0)-(a.수량||0)));
+  const el=document.getElementById('cp-cost-list');
+  if(!rows.length){el.innerHTML='<div style="padding:10px;color:var(--text-muted)">일치하는 원가 데이터가 없습니다</div>';return;}
+  el.innerHTML=rows.slice(0,40).map(i=>{
+    const conf=i.부대비용상태==='확정';
+    const mold=(i.몰드비||0)+(i.샘플링비||0);
+    return `<div onclick='cpPickCost(${JSON.stringify(i.개당단가_부대비용포함)})' style="padding:7px 8px;border-bottom:1px solid var(--border,#2a2f3a);cursor:pointer;display:flex;justify-content:space-between;gap:8px;">
+      <div style="min-width:0;">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(i.프로젝트명||'-')}</div>
+        <div style="font-size:10.5px;color:var(--text-muted)">${i.거래처||'미지정'} · ${i.발주일||'견적'} · ${(i.수량||0).toLocaleString()}개${mold?' · 몰드/샘플 포함':''}</div>
+      </div>
+      <div style="text-align:right;white-space:nowrap;">
+        <div style="font-weight:700;">₩${Math.round(i.개당단가_부대비용포함).toLocaleString()}</div>
+        <div style="font-size:10px;color:${conf?'var(--success,#4ade80)':'var(--warning,#fbbf24)'}">${conf?'부대비용 확정':'부대비용 추정'}</div>
+      </div></div>`;
+  }).join('');
+}
+function cpPickCost(v){
+  document.getElementById('cp-cost-price').value=Math.round(v);
+  const cur=document.getElementById('cp-cost-currency'); if(cur) cur.value='KRW';   // 불러온 값은 KRW 환산 완료분
+  document.getElementById('cp-cost-picker').style.display='none';
+  cpRecalc();
 }
 
 function cpRecalc(){
