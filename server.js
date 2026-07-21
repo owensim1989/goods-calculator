@@ -6971,7 +6971,9 @@ try {
     path.join(__dirname, 'data', 'quote-adoption.json'),
     require('./lib/orders-store').ORDERS_FILE,      // 수출주문 (/data/orders.json)
     require('./lib/pipeline-store').PIPELINE_FILE,  // 제품 파이프라인 (/data/pipeline.json)
-    require('./lib/pipeline-store').REFS_FILE       // 제조 레퍼런스 라이브러리 (/data/pipeline-refs.json)
+    require('./lib/pipeline-store').REFS_FILE,      // 제조 레퍼런스 라이브러리 (/data/pipeline-refs.json)
+    require('./lib/pipeline-store').MFR_FILE,       // 제조사 소싱 후보 (/data/pipeline-manufacturers.json)
+    require('./lib/pipeline-store').OUTREACH_FILE   // 소싱 문의 기록 (/data/pipeline-outreach.json)
   ];
   driveBackup.scheduleDailyBackup({
     projectName: 'goods-calculator',

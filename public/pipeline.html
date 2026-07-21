@@ -136,6 +136,12 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
     <div class="gt-legend">막대 색 = 현재 단계 · 🔻 대금 예정일(미지급) · 📦 입고 ETA · 빨간 세로선 = 오늘 · 막대 끝 = ETA(없으면 추정)</div></div>
   <div class="board" id="board" style="display:none"></div>
 
+  <div id="selBar" style="display:none;position:sticky;bottom:12px;z-index:40;margin-top:12px;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:11px 16px;box-shadow:0 6px 20px rgba(0,0,0,.4);align-items:center;gap:12px">
+    <b id="selBarCount"></b><span id="selBarNames" style="font-size:11.5px;color:var(--text-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button class="btn sm" onclick="clearSel()">선택 해제</button>
+    <button class="btn primary sm" onclick="openInquiry()">🏭 선택 제품으로 제조사 문의 →</button>
+  </div>
+
   <details class="closed-strip" id="closedStrip" style="display:none">
     <summary>완료·보류·취소 프로젝트 <span id="closedCount"></span></summary>
     <div id="closedList"></div>
@@ -169,7 +175,8 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
 <div class="toast" id="toast"></div>
 
 <script>
-let META=null, PROJECTS=[], REFS=[], CUR=null, CURTAB='cl', NEWTYPE='new';
+let META=null, PROJECTS=[], REFS=[], MFRS=[], OUTREACH=[], OHMETA={}, CUR=null, CURTAB='cl', NEWTYPE='new';
+let SEL=new Set();   // 다중선택된 프로젝트 id (소싱 문의용)
 
 const COLS=[
   {t:'💡 기획·디자인·검토', stages:['plan','design','review']},
@@ -203,6 +210,8 @@ async function load(){
   const d=await api('/');
   PROJECTS=d.projects;
   try{ REFS=(await api('/refs')).refs||[]; }catch(e){ REFS=[]; }
+  try{ MFRS=(await api('/manufacturers')).manufacturers||[]; }catch(e){ MFRS=[]; }
+  try{ const od=await api('/outreach'); OUTREACH=od.outreach||[]; OHMETA={status_label:od.status_label||{},kinds:od.kinds||[]}; }catch(e){ OUTREACH=[]; }
   render();
 }
 
@@ -242,15 +251,18 @@ function render(){
         <button class="${VIEW==='table'?'on':''}" onclick="setView('table')">📋 테이블</button>
         <button class="${VIEW==='gantt'?'on':''}" onclick="setView('gantt')">🗓 타임라인</button>
         <button class="${VIEW==='board'?'on':''}" onclick="setView('board')">🗂 칸반</button>
+        <button class="${VIEW==='sourcing'?'on':''}" onclick="setView('sourcing')">🏭 소싱 문의${OUTREACH.length?' ('+OUTREACH.length+')':''}</button>
       </span>
     </div>`;
   const vis=active.filter(p=>FILTER==='all'||p.type===FILTER);
-  $('tableWrap').style.display=VIEW==='table'?'block':'none';
+  $('tableWrap').style.display=(VIEW==='table'||VIEW==='sourcing')?'block':'none';
   $('ganttWrap').style.display=VIEW==='gantt'?'block':'none';
   $('board').style.display=VIEW==='board'?'flex':'none';
-  if(VIEW==='table')renderTable(vis);
+  if(VIEW==='sourcing')renderSourcing();
+  else if(VIEW==='table')renderTable(vis);
   else if(VIEW==='gantt')renderGantt(vis);
   else renderBoard(vis);
+  renderSelBar();
   // closed
   $('closedStrip').style.display=closed.length?'block':'none';
   $('closedCount').textContent=closed.length?`(${closed.length})`:'';
@@ -268,10 +280,11 @@ function renderTable(vis){
   const rows=[...vis].sort((a,b)=>{const x=val(a),y=val(b);return (x<y?-1:x>y?1:0)*(SORTD?-1:1)});
   const arrow=k=>SORTK===k?(SORTD?' ▾':' ▴'):'';
   $('tbl').innerHTML=
-  `<thead><tr><th onclick="sortT('name')">제품${arrow('name')}</th><th onclick="sortT('type')">유형${arrow('type')}</th><th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th><th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th><th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th></tr></thead><tbody>`+
+  `<thead><tr><th style="width:26px"><input type="checkbox" class="chk" title="전체 선택" ${rows.length&&rows.every(p=>SEL.has(p.id))?'checked':''} onclick="event.stopPropagation();toggleSelAll(${JSON.stringify(rows.map(p=>p.id))})"></th><th onclick="sortT('name')">제품${arrow('name')}</th><th onclick="sortT('type')">유형${arrow('type')}</th><th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th><th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th><th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th></tr></thead><tbody>`+
   rows.map(p=>{
     const due=payDue(p),eta=(p.po&&p.po.eta)||null,amt=unpaidKrw(p),st=daysSince(p.updated_at);
     return `<tr onclick="openDetail('${p.id}')">
+    <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${SEL.has(p.id)?'checked':''} onclick="toggleSel('${p.id}')"></td>
     <td><b>${esc(p.emoji)} ${esc(p.name)}</b></td>
     <td><span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span></td>
     <td><div class="mini-steps">${p.stages.map((s,i)=>{const c=p.stages.indexOf(p.stage);return `<i class="${i<c?'d':i===c?'c':''}" title="${stageLabel(s)}"></i>`}).join('')}</div>
@@ -287,6 +300,182 @@ function renderTable(vis){
 function sortT(k){if(SORTK===k)SORTD=!SORTD;else{SORTK=k;SORTD=true}
   try{localStorage.setItem('pl_sortk',SORTK);localStorage.setItem('pl_sortd',SORTD?'1':'0')}catch(e){}
   render()}
+
+// ══════════ 🏭 소싱: 다중선택 + 제조사 문의 ══════════
+function toggleSel(id){SEL.has(id)?SEL.delete(id):SEL.add(id);render();}
+function toggleSelAll(ids){const all=ids.every(i=>SEL.has(i)); ids.forEach(i=>all?SEL.delete(i):SEL.add(i)); render();}
+function clearSel(){SEL.clear();render();}
+function renderSelBar(){
+  const bar=$('selBar');
+  if(SEL.size&&VIEW!=='sourcing'){
+    bar.style.display='flex';
+    $('selBarCount').textContent=SEL.size+'개 선택';
+    $('selBarNames').textContent=[...SEL].map(id=>{const p=PROJECTS.find(x=>x.id===id);return p?p.emoji+p.name:'';}).join(', ');
+  } else bar.style.display='none';
+}
+const CHANNELS=['WeChat','알리바바','이메일','QQ','전화','기타'];
+const OKINDS=['문의','견적요청','샘플요청','발주협의'];
+// 선택 제품에서 보낼 파일 자동 수집 (드라이브 첨부 + 연결된 3D 레퍼런스)
+function gatherFiles(ids){
+  const files=[]; const seenRef=new Set();
+  ids.forEach(id=>{
+    const p=PROJECTS.find(x=>x.id===id); if(!p)return;
+    (p.attachments||[]).filter(a=>a.kind==='drive').forEach(a=>files.push({name:`[${p.name}] ${a.name}`,url:a.url,kind:'drive'}));
+    (p.ref_links||[]).forEach(rid=>{if(seenRef.has(rid))return;seenRef.add(rid);const r=REFS.find(x=>x.id===rid);if(r)files.push({name:`📚 ${r.name}`,url:r.url,kind:'ref'});});
+  });
+  return files;
+}
+function openInquiry(){
+  const ids=[...SEL]; if(!ids.length)return toast('제품을 먼저 선택하세요');
+  const prods=ids.map(id=>PROJECTS.find(x=>x.id===id)).filter(Boolean);
+  const files=gatherFiles(ids);
+  const mfrOpts=MFRS.map(m=>`<option value="${m.id}">${esc(m.name)}${m.country?' ('+esc(m.country)+')':''}</option>`).join('');
+  const html=`<div class="mbg on" id="inqM" onclick="if(event.target===this)closeInq()">
+   <div class="modal" style="max-width:600px"><button class="x" onclick="closeInq()">✕</button>
+   <h3 style="font-size:15px">🏭 제조사 문의 만들기</h3>
+   <div class="frow"><label>포함 제품</label><div style="flex:1;display:flex;gap:4px;flex-wrap:wrap">${prods.map(p=>`<span class="tag t-gray">${esc(p.emoji)} ${esc(p.name)}</span>`).join('')}</div></div>
+   <div class="frow"><label>제조사</label>
+     <select id="iq-mfr" style="flex:1" onchange="document.getElementById('iq-newmfr').style.display=this.value==='__new'?'block':'none'">
+       ${mfrOpts}<option value="__new">＋ 새 제조사 등록…</option></select></div>
+   <div id="iq-newmfr" style="display:${MFRS.length?'none':'block'}">
+     <div class="frow"><label>새 제조사</label><input id="iq-nm-name" placeholder="상호 (예: 东莞晨阳玩具)" style="flex:1">
+       <input id="iq-nm-country" placeholder="국가" style="width:80px"></div>
+     <div class="frow"><label></label><input id="iq-nm-handle" placeholder="연락처 (WeChat id·알리바바 링크·이메일)" style="flex:1">
+       <input id="iq-nm-spec" placeholder="전문분야 (피규어·봉제…)" style="width:150px"></div>
+   </div>
+   <div class="frow"><label>유형</label><select id="iq-kind">${OKINDS.map(k=>`<option ${k==='견적요청'?'selected':''}>${k}</option>`).join('')}</select>
+     <label style="min-width:auto">채널</label><select id="iq-ch">${CHANNELS.map(c=>`<option>${c}</option>`).join('')}</select>
+     <label style="min-width:auto">상태</label><select id="iq-st"><option value="sent" selected>발송함</option><option value="draft">초안(아직 안보냄)</option></select></div>
+   <div class="frow" style="align-items:flex-start"><label>보낼 파일</label><div style="flex:1;font-size:12px">
+     ${files.length?files.map((f,i)=>`<div style="padding:3px 0"><input type="checkbox" class="chk" id="iq-f-${i}" checked> ${esc(f.name)} <span class="tag ${f.kind==='ref'?'t-ok':'t-gray'}" style="font-size:9px">${f.kind==='ref'?'레퍼런스':'드라이브'}</span></div>`).join(''):'<span class="hint">선택 제품에 드라이브 링크·레퍼런스가 없습니다. 제품 상세 📎첨부에서 먼저 추가하세요.</span>'}
+     <div style="margin-top:5px"><input type="checkbox" class="chk" id="iq-direct"> <span class="hint">중국 등 구글드라이브 안 열림 → "파일 직접 전달"로 표기 (링크는 참고용으로만 기록)</span></div>
+   </div></div>
+   <div class="frow"><label>팔로업</label><input type="date" id="iq-fu"><label style="min-width:auto">메모</label><input id="iq-note" style="flex:1" placeholder="예: MOQ·단가 위주 문의"></div>
+   <div style="text-align:right;margin-top:12px"><button class="btn primary" onclick="createOutreach(${JSON.stringify(ids)})">문의 기록 생성</button></div>
+   </div></div>`;
+  const old=$('inqM'); if(old)old.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+  window._iqFiles=files;
+}
+function closeInq(){const el=$('inqM');if(el)el.remove();}
+async function createOutreach(ids){
+  let mfrId=$('iq-mfr').value, mfrName='';
+  try{
+    if(mfrId==='__new'){
+      const nm=$('iq-nm-name').value.trim(); if(!nm)return toast('제조사 상호를 입력하세요');
+      const m=await api('/manufacturers',{method:'POST',body:{name:nm,country:$('iq-nm-country').value.trim(),handle:$('iq-nm-handle').value.trim(),channel:$('iq-ch').value,specialties:$('iq-nm-spec').value.trim()?[$('iq-nm-spec').value.trim()]:[]}});
+      mfrId=m.id; mfrName=m.name;
+    } else { const m=MFRS.find(x=>x.id===mfrId); mfrName=m?m.name:''; }
+    const files=(window._iqFiles||[]).filter((f,i)=>{const c=$('iq-f-'+i);return c&&c.checked;});
+    const direct=$('iq-direct').checked;
+    await api('/outreach',{method:'POST',body:{
+      manufacturer_id:mfrId, manufacturer_name:mfrName, product_ids:ids,
+      kind:$('iq-kind').value, channel:$('iq-ch').value, status:$('iq-st').value,
+      files, follow_up_at:$('iq-fu').value||null,
+      note:($('iq-note').value.trim()+(direct?' · 파일 직접 전달(드라이브 링크 미사용)':'')).trim()
+    }});
+    closeInq(); SEL.clear(); await load(); setView('sourcing'); toast('문의 기록 생성됨');
+  }catch(e){ toast('실패: '+e.message); }
+}
+
+// ── 🏭 소싱 문의 뷰 (테이블 영역 재사용) ──
+let OFILTER='all';
+function renderSourcing(){
+  const rows=OUTREACH.filter(o=>OFILTER==='all'||o.status===OFILTER);
+  const cnt=s=>OUTREACH.filter(o=>o.status===s).length;
+  const chip=(k,l)=>`<button class="chip ${OFILTER===k?'on':''}" onclick="OFILTER='${k}';render()">${l}</button>`;
+  const label=s=>({draft:'초안',sent:'발송·회신대기',replied:'회신옴',closed:'종료',cancelled:'취소'})[s]||s;
+  const stag=s=>`<span class="tag ${s==='replied'?'t-ok':s==='sent'?'t-warn':s==='closed'?'t-gray':s==='cancelled'?'t-err':'t-gray'}">${label(s)}</span>`;
+  const overdue=o=>o.follow_up_at&&o.status==='sent'&&o.follow_up_at<=todayStr();
+  let html=`<thead><tr><th colspan="7" style="background:var(--surface);padding:10px 12px">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      ${chip('all','전체 '+OUTREACH.length)}${chip('sent','회신대기 '+cnt('sent'))}${chip('replied','회신옴 '+cnt('replied'))}${chip('closed','종료 '+cnt('closed'))}
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn sm" onclick="openMfrLib()">🏭 제조사 목록 (${MFRS.length})</button>
+        <span class="hint">제품 여러 개 선택 → 문의는 📋테이블 뷰에서</span></span>
+    </div></th></tr>
+    <tr><th>제조사</th><th>포함 제품</th><th>유형</th><th>채널</th><th>상태</th><th>발송</th><th>팔로업</th></tr></thead><tbody>`;
+  html+=rows.map(o=>{
+    const prods=(o.product_ids||[]).map(id=>{const p=PROJECTS.find(x=>x.id===id);return p?`<span class="pill">${esc(p.emoji)} ${esc(p.name)}</span>`:'<span class="pill" style="opacity:.5">삭제된 제품</span>';}).join(' ');
+    return `<tr onclick="openOutreach('${o.id}')">
+      <td><b>${esc(o.manufacturer_name||'—')}</b></td>
+      <td><div class="pills">${prods||'—'}</div></td>
+      <td>${esc(o.kind)}</td><td>${esc(o.channel||'—')}</td>
+      <td>${stag(o.status)}</td><td style="color:var(--text-3)">${o.sent_at||'—'}</td>
+      <td>${o.follow_up_at?(overdue(o)?`<span class="tag t-err">${o.follow_up_at.slice(5)} ⚠️</span>`:o.follow_up_at.slice(5)):'—'}</td></tr>`;
+  }).join('')||`<tr><td colspan="7" style="padding:22px;text-align:center;color:var(--text-3)">문의 기록이 없습니다. 📋테이블 뷰에서 제품을 선택해 "제조사 문의"를 만드세요.</td></tr>`;
+  $('tbl').innerHTML=html+'</tbody>';
+}
+// pill 스타일 주입
+(function(){const s=document.createElement('style');s.textContent='.pills{display:flex;gap:4px;flex-wrap:wrap}.pill{background:var(--surface-2);border-radius:6px;padding:1px 7px;font-size:10.5px;white-space:nowrap}';document.head.appendChild(s);})();
+
+// ── 문의 상세 ──
+async function openOutreach(oid){
+  let o; try{ o=await api('/outreach/'+oid); }catch(e){ return toast('로드 실패'); }
+  const STEPS=[['draft','초안'],['sent','발송·회신대기'],['replied','회신옴'],['closed','종료']];
+  const ci=STEPS.findIndex(s=>s[0]===o.status);
+  const prods=(o.product_ids||[]).map(id=>PROJECTS.find(x=>x.id===id)).filter(Boolean);
+  const html=`<div class="mbg on" id="ohM" onclick="if(event.target===this)closeOh()">
+   <div class="modal" style="max-width:640px"><button class="x" onclick="closeOh()">✕</button>
+   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+     <b style="font-size:16px">🏭 ${esc(o.manufacturer_name||'제조사')}</b>
+     <span class="tag t-gray">${esc(o.kind)}</span><span class="tag t-gray">${esc(o.channel||'')}</span></div>
+   <div class="steps" style="margin:12px 0">${STEPS.map((s,i)=>`<div class="step ${i<ci?'done':i===ci?'now':''}">${s[1]}</div>`).join('')}</div>
+   <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+     <div><h4 style="font-size:12.5px;color:var(--text-2);margin-bottom:5px">포함 제품 ${prods.length}</h4>
+       ${prods.map(p=>`<div style="font-size:12.5px;padding:3px 0;cursor:pointer" onclick="closeOh();openDetail('${p.id}','vd')">${esc(p.emoji)} <b>${esc(p.name)}</b></div>`).join('')||'<span class="hint">—</span>'}</div>
+     <div><h4 style="font-size:12.5px;color:var(--text-2);margin-bottom:5px">보낸 파일 ${(o.files||[]).length}</h4>
+       ${(o.files||[]).map(f=>f.url?`<div style="font-size:12px;padding:3px 0"><a href="${esc(f.url)}" target="_blank" rel="noopener" style="color:var(--accent-strong);text-decoration:none">🔗 ${esc(f.name)}</a></div>`:`<div style="font-size:12px;padding:3px 0">${esc(f.name)}</div>`).join('')||'<span class="hint">—</span>'}</div>
+   </div>
+   ${o.note?`<div style="font-size:12px;color:var(--text-2);margin-top:10px;background:var(--bg);border-radius:8px;padding:8px 10px">${esc(o.note)}</div>`:''}
+   ${o.response?`<div style="font-size:12.5px;margin-top:8px"><b>회신 요약:</b> ${esc(o.response)}</div>`:''}
+   <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+     ${o.status==='sent'?`<button class="btn sm" onclick="ohStatus('${o.id}','replied')">✅ 회신옴</button>`:''}
+     <button class="btn sm" onclick="ohApply('${o.id}')">💰 회신 견적을 제품 업체에 등록</button>
+     ${o.status!=='closed'?`<button class="btn sm" onclick="ohStatus('${o.id}','closed')">종료</button>`:''}
+     <input type="date" id="oh-fu" value="${o.follow_up_at||''}" style="padding:4px 8px"><button class="btn sm" onclick="ohFollow('${o.id}')">팔로업 저장</button>
+     <button class="btn sm danger" style="margin-left:auto" onclick="ohDelete('${o.id}')">🗑 삭제</button>
+   </div>
+   <div style="margin-top:12px"><input id="oh-log" placeholder="기록 추가 (예: 샘플 요청함, 단가 회신 2.4위안)" style="width:78%" onkeydown="if(event.key==='Enter')ohLog('${o.id}')"><button class="btn sm" onclick="ohLog('${o.id}')">＋ 기록</button></div>
+   <div class="tl" style="border-left:2px solid var(--line);margin:8px 0 0 5px;padding-left:14px">
+     ${[...(o.history||[])].reverse().map(h=>`<div style="position:relative;padding:2px 0 8px;font-size:12px">${esc(h.detail)}<small style="display:block;color:var(--text-3);font-size:11px">${h.at.slice(0,16).replace('T',' ')} · ${esc(h.by)}</small></div>`).join('')}</div>
+   </div></div>`;
+  const old=$('ohM'); if(old)old.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+function closeOh(){const el=$('ohM');if(el)el.remove();}
+async function ohStatus(oid,st){ try{ await api('/outreach/'+oid+'/status',{method:'POST',body:{status:st}}); await load(); openOutreach(oid); toast('상태 변경됨'); }catch(e){toast('실패: '+e.message);} }
+async function ohApply(oid){ try{ const r=await api('/outreach/'+oid+'/apply-to-products',{method:'POST',body:{}}); await load(); openOutreach(oid); toast(`${r.applied.length}개 제품 업체에 등록됨`); }catch(e){toast('실패: '+e.message);} }
+async function ohFollow(oid){ try{ await api('/outreach/'+oid,{method:'PATCH',body:{follow_up_at:$('oh-fu').value||null}}); await load(); toast('팔로업 저장'); }catch(e){toast('실패');} }
+async function ohLog(oid){ const v=$('oh-log').value.trim(); if(!v)return; try{ await api('/outreach/'+oid+'/log',{method:'POST',body:{detail:v}}); openOutreach(oid); }catch(e){toast('실패');} }
+async function ohDelete(oid){ if(!confirm('이 문의 기록을 삭제할까요?'))return; try{ await api('/outreach/'+oid,{method:'DELETE'}); closeOh(); await load(); toast('삭제됨'); }catch(e){toast('실패');} }
+
+// ── 🏭 제조사 목록 관리 ──
+async function openMfrLib(){
+  try{ MFRS=(await api('/manufacturers')).manufacturers||[]; }catch(e){}
+  const rows=MFRS.length?MFRS.map(m=>`<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+    <b>${esc(m.name)}</b>${m.country?`<span class="tag t-gray">${esc(m.country)}</span>`:''}
+    ${(m.specialties||[]).map(s=>`<span class="tag t-brand" style="font-size:9px">${esc(s)}</span>`).join('')}
+    ${m.channel?`<span class="hint">${esc(m.channel)}${m.handle?' · '+esc(m.handle):''}</span>`:''}
+    ${m.partner_ref?'<span class="tag t-ok">거래처 연결</span>':''}
+    <button class="btn sm danger" style="margin-left:auto" onclick="delMfr('${m.id}')">삭제</button></div>`).join(''):'<div class="hint" style="padding:10px 0">등록된 제조사가 없습니다.</div>';
+  const html=`<div class="mbg on" id="mfrM" onclick="if(event.target===this)closeMfr()">
+   <div class="modal" style="max-width:560px"><button class="x" onclick="closeMfr()">✕</button>
+   <h3 style="font-size:15px">🏭 제조사 소싱 후보 목록</h3>
+   <div class="hint" style="margin:4px 0 10px">소싱 중 접촉하는 공장 목록입니다. 선정+발주되면 각 제품에서 business 거래처로 연결(승격)합니다.</div>
+   ${rows}
+   <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
+     <div class="frow"><input id="mf-name" placeholder="상호" style="flex:1"><input id="mf-country" placeholder="국가" style="width:80px">
+       <select id="mf-ch">${CHANNELS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+     <div class="frow"><input id="mf-handle" placeholder="연락처(WeChat·알리바바·이메일)" style="flex:1"><input id="mf-spec" placeholder="전문분야" style="width:150px"><button class="btn sm" onclick="addMfr()">＋ 추가</button></div>
+   </div></div></div>`;
+  const old=$('mfrM'); if(old)old.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+function closeMfr(){const el=$('mfrM');if(el)el.remove();}
+async function addMfr(){ const n=$('mf-name').value.trim(); if(!n)return toast('상호를 입력하세요');
+  try{ await api('/manufacturers',{method:'POST',body:{name:n,country:$('mf-country').value.trim(),channel:$('mf-ch').value,handle:$('mf-handle').value.trim(),specialties:$('mf-spec').value.trim()?[$('mf-spec').value.trim()]:[]}}); MFRS=(await api('/manufacturers')).manufacturers||[]; openMfrLib(); toast('추가됨'); }catch(e){toast('실패: '+e.message);} }
+async function delMfr(mid){ if(!confirm('제조사를 삭제할까요? (기존 문의 기록은 유지)'))return; try{ await api('/manufacturers/'+mid,{method:'DELETE'}); MFRS=(await api('/manufacturers')).manufacturers||[]; openMfrLib(); }catch(e){toast('실패');} }
 
 // ── 🗓 타임라인 뷰 ──
 const GT_COLOR={plan:'#93c5fd',design:'#93c5fd',review:'#93c5fd',vendor:'#c4b5fd',pricing:'#c4b5fd',sample:'#fbbf24',po:'#f9a8d4',production:'#f9a8d4',shipping:'#67e8f9',inbound:'#86efac',launch:'#34d399'};
@@ -452,7 +641,19 @@ function addCheck(){const v=$('newCheckT').value.trim();if(!v)return;const cl={.
 // -- 업체·견적
 function paneVendors(p){
   const vends=p.vendors||[];
-  let html=vends.map((v,vi)=>{
+  // 이 제품이 포함된 소싱 문의 (역참조)
+  const related=OUTREACH.filter(o=>(o.product_ids||[]).includes(p.id));
+  let relHtml='';
+  if(related.length){
+    const label=s=>({draft:'초안',sent:'회신대기',replied:'회신옴',closed:'종료',cancelled:'취소'})[s]||s;
+    relHtml=`<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">📨 이 제품이 포함된 소싱 문의 ${related.length}</div>
+      ${related.map(o=>`<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:3px 0;cursor:pointer" onclick="closeM('detailModal');openOutreach('${o.id}')">
+        <b>${esc(o.manufacturer_name||'제조사')}</b><span class="tag t-gray">${esc(o.kind)}</span>
+        <span class="tag ${o.status==='replied'?'t-ok':o.status==='sent'?'t-warn':'t-gray'}">${label(o.status)}</span>
+        <span class="hint" style="margin-left:auto">${o.sent_at||''} →</span></div>`).join('')}</div>`;
+  }
+  let html=relHtml+vends.map((v,vi)=>{
     const quotes=v.quotes||[];
     return `<div class="vendor-box ${v.status==='selected'?'selected':''}">
       <div class="vendor-head">
