@@ -125,7 +125,8 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
       <h1>🚀 제품 파이프라인</h1>
       <div class="sub">신제품·재발주 — 디자인 → 업체선정(견적비교) → 샘플 → 발주·대금 → 배송 → 입고 → 등록·출시</div>
     </div>
-    <button class="btn primary" style="margin-left:auto" onclick="openNew()">＋ 새 프로젝트</button>
+    <button class="btn" style="margin-left:auto" onclick="openRefsLib(null)">📚 제조 레퍼런스</button>
+    <button class="btn primary" onclick="openNew()">＋ 새 프로젝트</button>
   </div>
 
   <div class="kpis" id="kpis"></div>
@@ -168,7 +169,7 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
 <div class="toast" id="toast"></div>
 
 <script>
-let META=null, PROJECTS=[], CUR=null, CURTAB='cl', NEWTYPE='new';
+let META=null, PROJECTS=[], REFS=[], CUR=null, CURTAB='cl', NEWTYPE='new';
 
 const COLS=[
   {t:'💡 기획·디자인·검토', stages:['plan','design','review']},
@@ -201,6 +202,7 @@ async function load(){
   if(!META)META=await api('/meta');
   const d=await api('/');
   PROJECTS=d.projects;
+  try{ REFS=(await api('/refs')).refs||[]; }catch(e){ REFS=[]; }
   render();
 }
 
@@ -711,22 +713,108 @@ async function manualInbound(){
 function paneAttach(p){
   const atts=p.attachments||[];
   const isImg=a=>/^image\//.test(a.mime||'');
-  return `<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">견적서 PDF · 샘플 검수 사진 · 시안 등을 첨부합니다 (이미지·PDF, 20MB 이하).</div>
+  const isDrive=a=>a.kind==='drive';
+  const card=a=>isDrive(a)
+    ? `<div class="vendor-box" style="padding:8px;text-align:center">
+        <a href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div style="height:80px;display:flex;align-items:center;justify-content:center;font-size:30px">🔗</div>
+        <div style="font-size:11px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div></a>
+        <div style="font-size:10px;color:var(--text-3);margin-top:2px">드라이브 · ${stageLabel(a.stage)}</div>
+        ${a.note?`<div style="font-size:10px;color:var(--text-2);margin-top:2px">${esc(a.note)}</div>`:''}
+        <button class="btn sm danger" style="margin-top:5px;padding:2px 8px" onclick="delAttach('${a.id}')">삭제</button>
+      </div>`
+    : `<div class="vendor-box" style="padding:8px;text-align:center">
+        <a href="/api/pipeline/${p.id}/attachment/${a.id}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        ${isImg(a)?`<img src="/api/pipeline/${p.id}/attachment/${a.id}" style="width:100%;height:80px;object-fit:cover;border-radius:6px">`:`<div style="height:80px;display:flex;align-items:center;justify-content:center;font-size:30px">📄</div>`}
+        <div style="font-size:11px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div></a>
+        <div style="font-size:10px;color:var(--text-3);margin-top:2px">${stageLabel(a.stage)} · ${(a.size/1024).toFixed(0)}KB</div>
+        <button class="btn sm danger" style="margin-top:5px;padding:2px 8px" onclick="delAttach('${a.id}')">삭제</button>
+      </div>`;
+  const refs=(p.ref_links||[]).map(id=>(REFS||[]).find(r=>r.id===id)).filter(Boolean);
+  return `<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">견적서·사양서·시안 등을 첨부합니다. <b>대용량 파일(3D·영상 등)은 구글드라이브에 올리고 링크로 첨부</b>하세요 — 저장소 비용이 들지 않습니다. (직접 업로드는 이미지·PDF 20MB 이하)</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
-  ${atts.map(a=>`<div class="vendor-box" style="padding:8px;text-align:center">
-    <a href="/api/pipeline/${p.id}/attachment/${a.id}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-    ${isImg(a)?`<img src="/api/pipeline/${p.id}/attachment/${a.id}" style="width:100%;height:80px;object-fit:cover;border-radius:6px">`:`<div style="height:80px;display:flex;align-items:center;justify-content:center;font-size:30px">📄</div>`}
-    <div style="font-size:11px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</div></a>
-    <div style="font-size:10px;color:var(--text-3);margin-top:2px">${stageLabel(a.stage)} · ${(a.size/1024).toFixed(0)}KB</div>
-    <button class="btn sm danger" style="margin-top:5px;padding:2px 8px" onclick="delAttach('${a.id}')">삭제</button>
-  </div>`).join('')||'<div style="color:var(--text-3);font-size:12.5px;grid-column:1/-1;padding:8px 0">첨부가 없습니다.</div>'}
+  ${atts.map(card).join('')||'<div style="color:var(--text-3);font-size:12.5px;grid-column:1/-1;padding:8px 0">첨부가 없습니다.</div>'}
   </div>
   <div class="frow" style="margin-top:14px">
+    <input id="att-url" placeholder="구글드라이브 링크 https://…" style="flex:1">
+    <input id="att-url-name" placeholder="이름(선택)" style="width:150px">
+    <button class="btn sm" onclick="addDriveLink()">🔗 드라이브 링크 추가</button>
+  </div>
+  <div class="frow" style="margin-top:6px">
     <input type="file" id="att-file" accept="image/*,application/pdf" style="font-size:12px">
-    <button class="btn sm" onclick="uploadAttach()">⬆ 업로드</button>
+    <button class="btn sm" onclick="uploadAttach()">⬆ 직접 업로드</button>
     <span style="font-size:11px;color:var(--text-3)">현재 단계(${stageLabel(p.stage)})로 태그됩니다</span>
+  </div>
+  <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:12px">
+    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:13px">📚 적용 제조 레퍼런스</b>
+      <span class="hint">3D 제품이면 제조사에 함께 전달할 공용 레퍼런스를 연결하세요</span>
+      <button class="btn sm" style="margin-left:auto" onclick="openRefsLib(${JSON.stringify(p.id)})">라이브러리 관리</button></div>
+    ${refs.length?refs.map(r=>`<div style="display:flex;gap:8px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-top:6px;font-size:12.5px">
+      <span class="tag ${r.category==='3D'?'t-new':'t-gray'}">${esc(r.category)}</span>
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--accent-strong);text-decoration:none"><b>${esc(r.name)}</b></a>
+      ${r.for_manufacturer?'<span class="tag t-ok">제조사 전달용</span>':''}
+      <button class="btn sm" style="margin-left:auto;padding:2px 8px" onclick="detachRef('${r.id}')">연결 해제</button></div>`).join(''):'<div class="hint" style="margin-top:6px">연결된 레퍼런스 없음</div>'}
+    <div style="margin-top:8px"><button class="btn sm" onclick="pickRefForProject()">＋ 레퍼런스 연결</button></div>
   </div>`;
 }
+function addDriveLink(){
+  const url=$('att-url').value.trim(); if(!url)return toast('드라이브 링크를 입력하세요');
+  if(!/^https?:\/\//i.test(url))return toast('https:// 로 시작하는 링크여야 합니다');
+  api('/'+CUR.id+'/attachment-link',{method:'POST',body:{url,name:$('att-url-name').value.trim()||url,stage:CUR.stage}})
+    .then(r=>{CUR=r;renderDetail();load();toast('드라이브 링크 첨부됨');})
+    .catch(e=>toast('실패: '+e.message));
+}
+
+// ── 📚 전역 제조 레퍼런스 라이브러리 ──
+// projectId 가 있으면 "이 프로젝트에 연결" 버튼도 노출 (3D 제품 등 제조사 전달용 재사용 자료)
+async function openRefsLib(projectId){
+  try{ REFS=(await api('/refs')).refs||[]; }catch(e){}
+  const linked=projectId&&CUR?(CUR.ref_links||[]):[];
+  const rows=REFS.length?REFS.map(r=>`<div style="display:flex;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+    <span class="tag ${r.category==='3D'?'t-new':'t-gray'}">${esc(r.category)}</span>
+    <a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--accent-strong);text-decoration:none"><b>${esc(r.name)}</b></a>
+    ${r.for_manufacturer?'<span class="tag t-ok">제조사 전달용</span>':''}
+    ${r.note?`<span style="font-size:11px;color:var(--text-3)">${esc(r.note)}</span>`:''}
+    <span style="margin-left:auto;display:flex;gap:5px">
+      ${projectId?(linked.includes(r.id)?'<span class="tag t-ok">연결됨</span>':`<button class="btn sm" onclick="attachRefToProject('${r.id}')">이 제품에 연결</button>`):''}
+      <button class="btn sm danger" onclick="delRef('${r.id}')">삭제</button></span>
+  </div>`).join(''):'<div style="padding:12px;color:var(--text-3);font-size:12.5px">등록된 레퍼런스가 없습니다.</div>';
+  const html=`<div class="mbg on" id="refslib" onclick="if(event.target===this)document.getElementById('refslib').remove()">
+    <div class="modal" style="max-width:620px"><button class="x" onclick="document.getElementById('refslib').remove()">✕</button>
+    <h3 style="font-size:15px">📚 제조 레퍼런스 라이브러리</h3>
+    <div style="font-size:11.5px;color:var(--text-3);margin:4px 0 10px">여러 제품에서 재사용하는 공용 자료입니다. 예: 3D 베이스메시(ZBrush/STL) — 3D 제품 발주 시 제조사에 함께 전달. 대용량이라 파일은 <b>구글드라이브에 두고 링크만</b> 등록합니다.</div>
+    ${rows}
+    <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
+      <div class="frow"><input id="rf-name" placeholder="이름 (예: 3D 베이스메시 세트)" style="flex:1"><select id="rf-cat" style="width:90px"><option>3D</option><option>사양서</option><option>가이드</option><option>기타</option></select></div>
+      <div class="frow"><input id="rf-url" placeholder="구글드라이브 링크 https://…" style="flex:1"></div>
+      <div class="frow"><input id="rf-note" placeholder="메모 (선택)" style="flex:1">
+        <label style="font-size:12px;color:var(--text-2);display:flex;gap:4px;align-items:center"><input type="checkbox" id="rf-mfr" checked> 제조사 전달용</label>
+        <button class="btn sm" onclick="createRef(${JSON.stringify(projectId)})">＋ 추가</button></div>
+    </div></div></div>`;
+  const old=document.getElementById('refslib'); if(old)old.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+async function createRef(projectId){
+  const name=$('rf-name').value.trim(), url=$('rf-url').value.trim();
+  if(!name&&!url)return toast('이름 또는 링크를 입력하세요');
+  if(url&&!/^https?:\/\//i.test(url))return toast('링크는 https:// 로 시작해야 합니다');
+  try{ await api('/refs',{method:'POST',body:{name,url,category:$('rf-cat').value,note:$('rf-note').value.trim(),for_manufacturer:$('rf-mfr').checked}});
+    toast('레퍼런스 추가됨'); openRefsLib(projectId); }
+  catch(e){ toast('실패: '+e.message); }
+}
+async function delRef(refId){
+  if(!confirm('이 레퍼런스를 삭제할까요? (연결된 프로젝트에서도 사라집니다)'))return;
+  try{ await api('/refs/'+refId,{method:'DELETE'}); REFS=(await api('/refs')).refs||[]; openRefsLib(CUR?CUR.id:null); if(CUR)renderDetail(); }
+  catch(e){ toast('실패: '+e.message); }
+}
+async function attachRefToProject(refId){
+  if(!CUR)return; const links=[...(CUR.ref_links||[])]; if(!links.includes(refId))links.push(refId);
+  await refreshCur({ref_links:links}); const el=document.getElementById('refslib'); if(el)el.remove(); setTab('at'); toast('레퍼런스 연결됨');
+}
+async function detachRef(refId){
+  const links=(CUR.ref_links||[]).filter(x=>x!==refId); await refreshCur({ref_links:links}); toast('연결 해제됨');
+}
+function pickRefForProject(){ openRefsLib(CUR?CUR.id:null); }
 function uploadAttach(){
   const f=$('att-file').files[0]; if(!f)return toast('파일을 선택하세요');
   if(f.size>20*1024*1024)return toast('20MB 이하만 가능합니다');

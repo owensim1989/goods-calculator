@@ -6970,7 +6970,8 @@ try {
     PARSED_DB_PATH,             // 영속 볼륨 (/data) — parsed-quotes.json (AI 검수 인박스, Drive 백업으로 3중 보호)
     path.join(__dirname, 'data', 'quote-adoption.json'),
     require('./lib/orders-store').ORDERS_FILE,      // 수출주문 (/data/orders.json)
-    require('./lib/pipeline-store').PIPELINE_FILE   // 제품 파이프라인 (/data/pipeline.json)
+    require('./lib/pipeline-store').PIPELINE_FILE,  // 제품 파이프라인 (/data/pipeline.json)
+    require('./lib/pipeline-store').REFS_FILE       // 제조 레퍼런스 라이브러리 (/data/pipeline-refs.json)
   ];
   driveBackup.scheduleDailyBackup({
     projectName: 'goods-calculator',
