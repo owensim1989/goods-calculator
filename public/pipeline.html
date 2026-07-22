@@ -157,6 +157,11 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
       <button class="chip on" id="typeNew" onclick="pickType('new')">✨ 신제품 (풀 파이프라인)</button>
       <button class="chip" id="typeRe" onclick="pickType('reorder')">🔁 재발주 (단축)</button>
     </div>
+    <div class="frow"><label>생산 구분</label>
+      <button class="chip on" id="brandOwn" onclick="pickBrand('own')">🏷️ 자체브랜드 (미스터두낫띵)</button>
+      <button class="chip" id="brandOem" onclick="pickBrand('oem')">🤝 외주 (고객사 발주)</button>
+    </div>
+    <div class="frow" id="npClientRow" style="display:none"><label>발주처</label><input id="npClient" style="flex:1" placeholder="외주 고객사 (예: 수성문화재단)"></div>
     <div class="frow"><label>이모지</label><input id="npEmoji" style="width:64px" value="✨"></div>
     <div class="frow"><label>제품명</label><input id="npName" style="flex:1" placeholder="예: 두낫띵 비닐봉투 LDPE 다이컷"></div>
     <div class="frow"><label>목표 수량</label><input id="npQty" type="number" style="width:110px" placeholder="10000"></div>
@@ -247,6 +252,9 @@ function render(){
       <span class="chip ${FILTER==='all'?'on':''}" onclick="setFilter('all')">전체</span>
       <span class="chip ${FILTER==='new'?'on':''}" onclick="setFilter('new')">✨ 신제품</span>
       <span class="chip ${FILTER==='reorder'?'on':''}" onclick="setFilter('reorder')">🔁 재발주</span>
+      <span style="width:1px;height:18px;background:var(--line);margin:0 2px"></span>
+      <span class="chip ${BFILTER==='own'?'on':''}" onclick="setBFilter('own')">🏷️ 자체</span>
+      <span class="chip ${BFILTER==='oem'?'on':''}" onclick="setBFilter('oem')">🤝 외주</span>
       <span class="vtoggle">
         <button class="${VIEW==='table'?'on':''}" onclick="setView('table')">📋 테이블</button>
         <button class="${VIEW==='gantt'?'on':''}" onclick="setView('gantt')">🗓 타임라인</button>
@@ -254,7 +262,7 @@ function render(){
         <button class="${VIEW==='sourcing'?'on':''}" onclick="setView('sourcing')">🏭 소싱 문의${OUTREACH.length?' ('+OUTREACH.length+')':''}</button>
       </span>
     </div>`;
-  const vis=active.filter(p=>FILTER==='all'||p.type===FILTER);
+  const vis=active.filter(p=>(FILTER==='all'||p.type===FILTER)&&(BFILTER==='all'||brandOf(p)===BFILTER));
   $('tableWrap').style.display=(VIEW==='table'||VIEW==='sourcing')?'block':'none';
   $('ganttWrap').style.display=VIEW==='gantt'?'block':'none';
   $('board').style.display=VIEW==='board'?'flex':'none';
@@ -275,17 +283,18 @@ function render(){
 
 // ── 📋 테이블 뷰 (기본) ──
 function renderTable(vis){
-  const val=p=>({name:p.name,type:p.type,stage:p.stages.indexOf(p.stage)/p.stages.length,
+  const val=p=>({name:p.name,type:p.type,brand:brandOf(p)+(p.client||''),stage:p.stages.indexOf(p.stage)/p.stages.length,
     due:payDue(p)||'9999',eta:(p.po&&p.po.eta)||'9999',amt:unpaidKrw(p),stale:daysSince(p.updated_at)})[SORTK];
   const rows=[...vis].sort((a,b)=>{const x=val(a),y=val(b);return (x<y?-1:x>y?1:0)*(SORTD?-1:1)});
   const arrow=k=>SORTK===k?(SORTD?' ▾':' ▴'):'';
   $('tbl').innerHTML=
-  `<thead><tr><th style="width:26px"><input type="checkbox" class="chk" title="전체 선택" ${rows.length&&rows.every(p=>SEL.has(p.id))?'checked':''} onclick="event.stopPropagation();toggleSelAll(${JSON.stringify(rows.map(p=>p.id))})"></th><th onclick="sortT('name')">제품${arrow('name')}</th><th onclick="sortT('type')">유형${arrow('type')}</th><th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th><th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th><th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th></tr></thead><tbody>`+
+  `<thead><tr><th style="width:26px"><input type="checkbox" class="chk" title="전체 선택" ${rows.length&&rows.every(p=>SEL.has(p.id))?'checked':''} onclick="event.stopPropagation();toggleSelAll(${JSON.stringify(rows.map(p=>p.id))})"></th><th onclick="sortT('name')">제품${arrow('name')}</th><th onclick="sortT('brand')">구분${arrow('brand')}</th><th onclick="sortT('type')">유형${arrow('type')}</th><th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th><th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th><th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th></tr></thead><tbody>`+
   rows.map(p=>{
     const due=payDue(p),eta=(p.po&&p.po.eta)||null,amt=unpaidKrw(p),st=daysSince(p.updated_at);
     return `<tr onclick="openDetail('${p.id}')">
     <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${SEL.has(p.id)?'checked':''} onclick="toggleSel('${p.id}')"></td>
     <td><b>${esc(p.emoji)} ${esc(p.name)}</b></td>
+    <td>${brandBadge(p)}</td>
     <td><span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span></td>
     <td><div class="mini-steps">${p.stages.map((s,i)=>{const c=p.stages.indexOf(p.stage);return `<i class="${i<c?'d':i===c?'c':''}" title="${stageLabel(s)}"></i>`}).join('')}</div>
         <span style="font-size:10.5px;color:var(--text-3)">${stageLabel(p.stage)}</span></td>
@@ -515,7 +524,12 @@ function renderBoard(vis){
   }).join('');
 }
 
-let FILTER='all';
+let FILTER='all', BFILTER='all';
+function brandOf(p){return p.brand==='oem'?'oem':'own';}
+function brandBadge(p){return brandOf(p)==='oem'
+  ?`<span class="tag" style="background:rgba(251,191,36,.14);color:var(--warn)" title="외주${p.client?' · '+esc(p.client):''}">🤝 외주${p.client?' '+esc(p.client):''}</span>`
+  :`<span class="tag" style="background:var(--accent-bg);color:var(--accent-strong)" title="자체브랜드(미스터두낫띵)">🏷️ 자체</span>`;}
+function setBFilter(b){BFILTER=(BFILTER===b?'all':b);render();}
 let VIEW=(function(){try{return localStorage.getItem('pl_view')||'table'}catch(e){return 'table'}})();
 let SORTK=(function(){try{return localStorage.getItem('pl_sortk')||'stale'}catch(e){return 'stale'}})();
 let SORTD=(function(){try{return (localStorage.getItem('pl_sortd')??'1')==='1'}catch(e){return true}})();
@@ -528,6 +542,7 @@ function cardHtml(p){
     <span class="em">${esc(p.emoji)}</span>
     <b>${esc(p.name)}</b>
     <div class="row">
+      ${brandBadge(p)}
       <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
       <span>${stageLabel(p.stage)}</span>
       ${stale?`<span class="tag t-warn">⚠️ D+${daysSince(p.updated_at)} 정체</span>`:''}
@@ -537,6 +552,7 @@ function cardHtml(p){
 }
 
 // ━━━ 새 프로젝트 ━━━
+let NEWBRAND='own';
 function openNew(){$('newModal').classList.add('on');$('npName').focus()}
 function pickType(t){
   NEWTYPE=t;
@@ -545,17 +561,25 @@ function pickType(t){
   $('npBarcodeRow').style.display=t==='reorder'?'flex':'none';
   if($('npEmoji').value==='✨'||$('npEmoji').value==='🔁')$('npEmoji').value=t==='reorder'?'🔁':'✨';
 }
+function pickBrand(b){
+  NEWBRAND=b;
+  $('brandOwn').classList.toggle('on',b==='own');
+  $('brandOem').classList.toggle('on',b==='oem');
+  $('npClientRow').style.display=b==='oem'?'flex':'none';
+}
 async function createProject(){
   const name=$('npName').value.trim();
   if(!name)return toast('제품명을 입력하세요');
   try{
     const p=await api('/',{method:'POST',body:{
       type:NEWTYPE,name,emoji:$('npEmoji').value||'✨',
+      brand:NEWBRAND, client:NEWBRAND==='oem'?$('npClient').value.trim():'',
       barcode:$('npBarcode').value.trim()||null,
       target:{qty:Number($('npQty').value)||null,unit_cost_max:Number($('npCost').value)||null,basis:$('npBasis').value.trim()}
     }});
     closeM('newModal');
-    ['npName','npQty','npCost','npBasis','npBarcode'].forEach(i=>$(i).value='');
+    ['npName','npQty','npCost','npBasis','npBarcode','npClient'].forEach(i=>$(i).value='');
+    NEWBRAND='own';pickBrand('own');
     await load();openDetail(p.id);toast('프로젝트 생성됨');
   }catch(e){toast('실패: '+e.message)}
 }
@@ -581,6 +605,7 @@ function renderDetail(){
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <span style="font-size:24px">${esc(p.emoji)}</span>
       <b style="font-size:17px">${esc(p.name)}</b>
+      <span style="cursor:pointer" onclick="toggleBrand()" title="클릭해 자체/외주 전환">${brandBadge(p)}</span>
       <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
       <span class="tag ${p.status==='active'?'t-ok':p.status==='hold'?'t-warn':'t-gray'}">${{active:'진행 중',hold:'보류',done:'완료',cancelled:'취소'}[p.status]}</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 진행률 ${p.progress}%</span>
@@ -1057,6 +1082,14 @@ async function moveStage(s){
 function setStatus(st){
   if(st==='done'&&!confirm('프로젝트를 완료 처리할까요?'))return;
   refreshCur({status:st})
+}
+function toggleBrand(){
+  const next=brandOf(CUR)==='oem'?'own':'oem';
+  if(next==='oem'){
+    const c=prompt('외주(고객사 발주)로 전환합니다. 발주처(고객사)를 입력하세요:',CUR.client||'');
+    if(c===null)return;
+    refreshCur({brand:'oem',client:c.trim()});
+  } else refreshCur({brand:'own',client:''});
 }
 function insertSampleStage(){
   const stages=[...CUR.stages];
