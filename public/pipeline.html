@@ -100,6 +100,9 @@ input[type=checkbox]:checked::after{content:'✓';position:absolute;left:0;right
 .step:hover{border-color:var(--accent)}
 .step.done{background:rgba(52,211,153,.13);color:var(--ok)}
 .step.now{background:var(--accent);color:#0f172a;font-weight:800}
+.step.lit{background:rgba(52,211,153,.18);color:var(--ok);font-weight:800;box-shadow:0 0 10px rgba(52,211,153,.25)}
+.step.view{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent) inset}
+.step.lit.view{box-shadow:0 0 0 1.5px var(--accent) inset,0 0 10px rgba(52,211,153,.25)}
 .subtabs{display:flex;gap:2px;margin:14px 0 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .subtabs button{border:none;background:none;padding:8px 13px;font-size:12.5px;font-weight:700;color:var(--text-3);border-bottom:2px solid transparent;margin-bottom:-1px}
 .subtabs button.on{color:var(--accent-strong);border-color:var(--accent)}
@@ -210,6 +213,29 @@ async function api(path,opt={}){
   return r.json();
 }
 function stageLabel(k){const m=META.stage_meta[k];return m?m.emoji+' '+m.label:k}
+// ── 단계 완료 자동 판정 (데이터 기반 — 순서 무관, 조건 충족 시 불 켜짐) ──
+function stageComplete(p,s){
+  const cl=(p.checklist&&p.checklist[s])||[];
+  const allChecked=cl.length>0&&cl.every(c=>c.done);
+  switch(s){
+    case 'plan':       return allChecked || !!(p.consumerPricingId) || !!(p.target&&(p.target.sell_price||p.target.unit_cost_max));
+    case 'design':     return !!(p.design&&p.design.confirmed_at) || (p.attachments||[]).some(a=>a.stage==='design') || (p.design&&(p.design.files||[]).length>0) || allChecked;
+    case 'vendor':     return (p.vendors||[]).some(v=>v.status==='selected') || allChecked;
+    case 'pricing':    return (p.vendors||[]).some(v=>(v.quotes||[]).length>0) || allChecked;
+    case 'review':     return allChecked;
+    case 'sample':     return (p.samples||[]).some(x=>x.verdict==='approved') || allChecked;
+    case 'po':         return !!(p.po&&(p.po.vendor||p.po.qty)) || allChecked;
+    case 'production': return allChecked;
+    case 'shipping':   return !!(p.po&&p.po.eta) || allChecked;
+    case 'inbound':    return !!p.inbound || allChecked;
+    case 'launch':     return !!((p.links&&p.links.catalog_id)||p.barcode) || allChecked;
+    default:           return allChecked;
+  }
+}
+// 완료 조건 설명 (툴팁)
+const STAGE_DONE_HINT={plan:'사업성 검토 연동 / 목표가 설정 / 체크리스트 완료 시',design:'디자인 파일 첨부(디자인 단계) 또는 시안 확정 시',vendor:'업체 선정 시',pricing:'단가(견적) 확인 시',sample:'샘플 승인 시',po:'발주(PO) 등록 시',production:'생산 체크리스트 완료 시',shipping:'ETA 등록 시',inbound:'입고 대사 기록 시',launch:'바코드·카탈로그 등록 시',review:'발주 검토 완료 시'};
+function completedCount(p){return p.stages.filter(s=>stageComplete(p,s)).length;}
+function clientProgress(p){return p.status==='done'?100:Math.round(completedCount(p)/p.stages.length*100);}
 function fxKrw(amount,cur){
   if(cur==='KRW')return amount;
   const fx=META&&META.fx;const rate=fx&&fx[cur];
@@ -578,7 +604,7 @@ function cardHtml(p){
       <span>${stageLabel(p.stage)}</span>
       ${stale?`<span class="tag t-warn">⚠️ D+${daysSince(p.updated_at)} 정체</span>`:''}
     </div>
-    <div class="bar"><i style="width:${p.progress}%"></i></div>
+    <div class="bar"><i style="width:${clientProgress(p)}%"></i></div>
   </div>`;
 }
 
@@ -619,8 +645,14 @@ async function createProject(){
 async function openDetail(id,tab){
   CUR=await api('/'+id);
   CURTAB=tab||CURTAB||'cl';
+  CUR._cp=undefined;
   renderDetail();
   $('detailModal').classList.add('on');
+  // 사업성 검토 연동 데이터 비동기 로드 (같은 오리진 세션)
+  if(CUR.consumerPricingId){
+    fetch('/api/consumer-pricing/'+CUR.consumerPricingId,{credentials:'same-origin'})
+      .then(r=>r.ok?r.json():null).then(cp=>{ if(CUR&&CUR.id===id){CUR._cp=cp; if(CURTAB==='cl')renderPane();} }).catch(()=>{});
+  }
 }
 function closeM(id){$(id).classList.remove('on')}
 async function refreshCur(patch){
@@ -640,15 +672,18 @@ function renderDetail(){
       ${brandOf(p)==='oem'&&p.client?`<span class="tag t-gray">발주처 ${esc(p.client)}</span>`:''}
       <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
       <span class="tag ${p.status==='active'?'t-ok':p.status==='hold'?'t-warn':'t-gray'}">${{active:'진행 중',hold:'보류',done:'완료',cancelled:'취소'}[p.status]}</span>
-      <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 진행률 ${p.progress}%</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 완료 ${completedCount(p)}/${p.stages.length}단계 · ${clientProgress(p)}%</span>
     </div>
     <div style="font-size:12px;color:var(--text-2);margin-top:4px">
       목표 ${p.target.qty?p.target.qty.toLocaleString()+'개':'—'} · 목표단가 ${p.target.unit_cost_max?'≤₩'+p.target.unit_cost_max.toLocaleString():'—'}
       ${p.barcode?' · 바코드 '+esc(p.barcode):''}
       ${p.target.basis?' · 근거: '+esc(p.target.basis):''}
     </div>
-    <div class="steps">${p.stages.map((s,i)=>
-      `<div class="step ${i<curIdx?'done':i===curIdx?'now':''}" onclick="moveStage('${s}')" title="이 단계로 이동">${stageLabel(s)}</div>`).join('')}
+    <div style="font-size:11px;color:var(--text-3);margin:10px 0 4px">단계는 <b style="color:var(--ok)">완료 조건이 충족되면 자동으로 불이 켜집니다</b> (순서 무관). 클릭하면 그 단계 체크리스트를 봅니다.</div>
+    <div class="steps">${p.stages.map((s)=>{
+      const done=stageComplete(p,s);
+      return `<div class="step ${done?'lit':''} ${s===p.stage?'view':''}" onclick="moveStage('${s}')" title="${done?'✅ 완료':'미완료'} · ${STAGE_DONE_HINT[s]||''}">${done?'✓ ':''}${stageLabel(s)}</div>`;
+    }).join('')}
     </div>
     <div class="subtabs">
       <button class="${CURTAB==='cl'?'on':''}" onclick="setTab('cl')">체크리스트</button>
@@ -685,12 +720,74 @@ function renderPane(){
 // -- 체크리스트 (현재 단계)
 function paneChecklist(p){
   const items=(p.checklist&&p.checklist[p.stage])||[];
-  return `<div style="font-size:12px;color:var(--text-2);margin-bottom:6px">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b></div>`+
+  const cpPanel=(p.stage==='plan'||p.stage==='review')?cpFeasibilityPanel(p):'';
+  return cpPanel+`<div style="font-size:12px;color:var(--text-2);margin-bottom:6px">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b></div>`+
     items.map((c,i)=>`<div class="check ${c.done?'done':''}">
       <input type="checkbox" ${c.done?'checked':''} onchange="toggleCheck(${i})"><span>${esc(c.t)}</span>
       <button class="del" onclick="delCheck(${i})">✕</button></div>`).join('')+
     `<div class="frow" style="margin-top:10px"><input id="newCheckT" style="flex:1" placeholder="항목 추가…" onkeydown="if(event.key==='Enter')addCheck()"><button class="btn sm" onclick="addCheck()">＋ 추가</button></div>`;
 }
+// 🧪 신제품 사업성 검토 연동 패널 (기획 단계)
+const won0=n=>(n==null||n==='')?'—':'₩'+Math.round(Number(n)).toLocaleString();
+function cpFeasibilityPanel(p){
+  if(!p.consumerPricingId){
+    return `<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px"><b style="font-size:12.5px">🧪 신제품 사업성 검토 연동</b>
+        <span class="hint">컨셉·목표판매가·경쟁 평균 시장가를 가져옵니다</span>
+        <button class="btn sm" style="margin-left:auto" onclick="openCpLink()">🔗 사업성 검토 연결</button></div></div>`;
+  }
+  const cp=p._cp;
+  if(cp===undefined) return `<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px;color:var(--text-3);font-size:12px">🧪 사업성 검토 불러오는 중…</div>`;
+  if(cp===null) return `<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px;font-size:12px">🧪 연결된 사업성 검토를 불러오지 못했습니다. <button class="btn sm" onclick="unlinkCp()">연결 해제</button></div>`;
+  const tp=cp['타겟_소비자가_KRW'], avg=cp['시장조사_평균_KRW'], lo=cp['시장조사_최저_KRW'], hi=cp['시장조사_최고_KRW'], cost=cp['총원가_KRW'], mr=cp['마진율'];
+  const nComp=(cp.competitors||[]).length;
+  return `<div style="background:linear-gradient(135deg,var(--bg),rgba(96,165,250,.06));border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <b style="font-size:12.5px;color:var(--accent-strong)">🧪 사업성 검토 연동</b>
+      <span class="tag t-gray">${esc(cp['프로젝트명']||'')}</span>${cp['상태']?`<span class="tag t-brand">${esc(cp['상태'])}</span>`:''}
+      <span style="margin-left:auto;display:flex;gap:5px">
+        <a href="/#" class="btn sm" onclick="event.preventDefault();window.open('/','_blank')" title="사업성 검토 페이지">↗ 열기</a>
+        <button class="btn sm" onclick="unlinkCp()">해제</button></span></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+        <div class="hint">🎯 목표 판매가</div><div style="font-size:15px;font-weight:800">${won0(tp)}</div></div>
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+        <div class="hint">📊 경쟁 평균 시장가</div><div style="font-size:15px;font-weight:800">${won0(avg)}</div>
+        <div class="hint">${lo||hi?`${won0(lo)}~${won0(hi)} · 경쟁사 ${nComp}`:''}</div></div>
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+        <div class="hint">💰 총원가 · 마진율</div><div style="font-size:15px;font-weight:800">${won0(cost)}${mr!=null?` · ${Math.round(mr*100)}%`:''}</div></div>
+    </div>
+    ${(tp&&avg)?`<div class="hint" style="margin-top:7px">목표가 vs 시장평균: <b style="color:${tp<=avg?'var(--ok)':'var(--warn)'}">${tp<=avg?'평균 이하(가격경쟁력 ○)':'평균 초과(+'+Math.round((tp/avg-1)*100)+'%)'}</b></div>`:''}</div>`;
+}
+async function openCpLink(){
+  let list;
+  try{ list=await fetch('/api/consumer-pricing',{credentials:'same-origin'}).then(r=>r.json()); }
+  catch(e){ return toast('사업성 검토 목록 로드 실패 (권한 확인)'); }
+  const items=(list&&list.items)||[];
+  // 이름 유사 우선 정렬
+  const nm=(CUR.name||'').replace(/\s|\(.*?\)/g,'');
+  items.sort((a,b)=>{const an=(a['프로젝트명']||'').includes(nm.slice(0,3))?0:1,bn=(b['프로젝트명']||'').includes(nm.slice(0,3))?0:1;return an-bn;});
+  const rows=items.length?items.map(it=>`<div class="ac-row" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" onclick='linkCp(${JSON.stringify(it.id)})'>
+    <b>${esc(it['프로젝트명']||'(제목없음)')}</b>${it['품목']?`<span class="tag t-gray">${esc(it['품목'])}</span>`:''}
+    <span class="hint">🎯${won0(it['타겟_소비자가_KRW'])} · 📊${won0(it['시장조사_평균_KRW'])}</span>
+    <span style="margin-left:auto;font-size:11px;color:var(--accent-strong)">연결 →</span></div>`).join('')
+    :'<div style="padding:14px;color:var(--text-3);font-size:12.5px">사업성 검토 기록이 없습니다. (신제품 사업성 검토 페이지에서 먼저 작성)</div>';
+  const html=`<div class="mbg on" id="cpM" onclick="if(event.target===this)document.getElementById('cpM').remove()">
+    <div class="modal" style="max-width:560px"><button class="x" onclick="document.getElementById('cpM').remove()">✕</button>
+    <h3 style="font-size:15px">🧪 신제품 사업성 검토 연결</h3>
+    <div class="hint" style="margin:4px 0 10px">이 제품과 연결할 사업성 검토를 고르세요. 목표 판매가·경쟁 평균 시장가가 기획 단계로 들어오고, 연결되면 기획 단계에 불이 켜집니다.</div>
+    ${rows}</div></div>`;
+  const old=$('cpM'); if(old)old.remove();
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+async function linkCp(cpId){
+  const el=$('cpM'); if(el)el.remove();
+  await refreshCur({consumerPricingId:cpId});
+  CUR._cp=undefined; renderPane();
+  fetch('/api/consumer-pricing/'+cpId,{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(cp=>{CUR._cp=cp;if(CURTAB==='cl')renderPane();}).catch(()=>{});
+  toast('사업성 검토 연결됨 — 기획 단계 완료');
+}
+async function unlinkCp(){ await refreshCur({consumerPricingId:null}); CUR._cp=undefined; renderPane(); toast('연결 해제됨'); }
 function toggleCheck(i){const cl={...CUR.checklist};cl[CUR.stage][i].done=!cl[CUR.stage][i].done;refreshCur({checklist:cl})}
 function delCheck(i){const cl={...CUR.checklist};cl[CUR.stage].splice(i,1);refreshCur({checklist:cl})}
 function addCheck(){const v=$('newCheckT').value.trim();if(!v)return;const cl={...CUR.checklist};(cl[CUR.stage]=cl[CUR.stage]||[]).push({t:v,done:false});refreshCur({checklist:cl})}
@@ -1104,11 +1201,10 @@ async function addTlLog(){const v=$('tl-new').value.trim();if(!v)return;
 function saveNotes(){refreshCur({notes:$('tl-notes').value});toast('메모 저장됨')}
 
 // -- 단계·상태 조작
+// 클릭 = 그 단계 체크리스트로 이동(보기). 완료 불은 데이터 기반 자동이라 확인창 불필요.
 async function moveStage(s){
-  if(s===CUR.stage)return;
-  const back=CUR.stages.indexOf(s)<CUR.stages.indexOf(CUR.stage);
-  if(!confirm(`${stageLabel(CUR.stage)} → ${stageLabel(s)} 로 ${back?'되돌릴까요?':'넘길까요?'}`))return;
-  try{CUR=await api('/'+CUR.id+'/stage',{method:'POST',body:{stage:s}});renderDetail();load();toast('단계 이동됨')}
+  if(s===CUR.stage){setTab('cl');return;}
+  try{CUR=await api('/'+CUR.id+'/stage',{method:'POST',body:{stage:s}});CURTAB='cl';renderDetail();load();}
   catch(e){toast('실패: '+e.message)}
 }
 function setStatus(st){
