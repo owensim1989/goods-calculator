@@ -281,6 +281,8 @@ function render(){
     `<div class="kpi"><b>${active.length}</b>진행 중</div>`+
     `<div class="kpi"><b class="${stale.length?'warn':''}">${stale.length}</b>7일+ 정체 ⚠️</div>`+
     `<div class="kpi"><b>${dueKrw?('₩'+(dueKrw/1e6).toFixed(1)+'M'):'—'}</b>대금 예정(미지급)</div>`+
+    (function(){const wait=OUTREACH.filter(o=>o.status==='sent');const late=wait.filter(o=>o.follow_up_at&&o.follow_up_at<=todayStr());
+      return `<div class="kpi" style="cursor:pointer" onclick="setView('sourcing')" title="소싱 문의 보기"><b class="${late.length?'warn':''}">${wait.length}${late.length?` <span style="font-size:12px;color:var(--err)">(지연 ${late.length}⚠️)</span>`:''}</b>문의 회신대기</div>`;})()+
     `<div class="kpi"><b>${PROJECTS.filter(p=>p.status==='done').length}</b>완료</div>`+
     `<div class="filters">
       <span class="chip ${FILTER==='all'?'on':''}" onclick="setFilter('all')">전체</span>
@@ -651,12 +653,12 @@ async function openDetail(id,tab){
   // 사업성 검토 연동 데이터 비동기 로드 (같은 오리진 세션)
   if(CUR.consumerPricingId){
     fetch('/api/consumer-pricing/'+CUR.consumerPricingId,{credentials:'same-origin'})
-      .then(r=>r.ok?r.json():null).then(cp=>{ if(CUR&&CUR.id===id){CUR._cp=cp; if(CURTAB==='cl')renderPane();} }).catch(()=>{});
+      .then(r=>r.ok?r.json():null).then(cp=>{ if(CUR&&CUR.id===id){CUR._cp=cp; renderPane();} }).catch(()=>{});
   }
 }
 function closeM(id){$(id).classList.remove('on')}
 async function refreshCur(patch){
-  try{CUR=await api('/'+CUR.id,{method:'PATCH',body:patch});renderDetail();load();}
+  try{const cp=CUR._cp;CUR=await api('/'+CUR.id,{method:'PATCH',body:patch});if(CUR.consumerPricingId)CUR._cp=cp;renderDetail();load();}
   catch(e){toast('저장 실패: '+e.message)}
 }
 
@@ -720,13 +722,46 @@ function renderPane(){
 // -- 체크리스트 (현재 단계)
 function paneChecklist(p){
   const items=(p.checklist&&p.checklist[p.stage])||[];
-  const cpPanel=(p.stage==='plan'||p.stage==='review')?cpFeasibilityPanel(p):'';
-  return cpPanel+`<div style="font-size:12px;color:var(--text-2);margin-bottom:6px">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b></div>`+
+  let topPanel='';
+  if(p.stage==='plan'||p.stage==='review')topPanel=cpFeasibilityPanel(p);
+  else if(p.stage==='design')topPanel=designPanel(p);
+  else if(p.stage==='launch')topPanel=launchPanel(p);
+  return topPanel+`<div style="font-size:12px;color:var(--text-2);margin-bottom:6px">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b></div>`+
     items.map((c,i)=>`<div class="check ${c.done?'done':''}">
       <input type="checkbox" ${c.done?'checked':''} onchange="toggleCheck(${i})"><span>${esc(c.t)}</span>
       <button class="del" onclick="delCheck(${i})">✕</button></div>`).join('')+
     `<div class="frow" style="margin-top:10px"><input id="newCheckT" style="flex:1" placeholder="항목 추가…" onkeydown="if(event.key==='Enter')addCheck()"><button class="btn sm" onclick="addCheck()">＋ 추가</button></div>`;
 }
+// 🎨 디자인 패널 (디자인 단계) — 사양 메모 + 시안 확정
+function designPanel(p){
+  const d=p.design||{files:[],spec:'',confirmed_at:null};
+  const designAtts=(p.attachments||[]).filter(a=>a.stage==='design');
+  return `<div style="background:var(--bg);border:1px solid ${d.confirmed_at?'rgba(52,211,153,.4)':'var(--line)'};border-radius:10px;padding:11px 13px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:12.5px">🎨 디자인 시안</b>
+      ${d.confirmed_at?`<span class="tag t-ok">✅ 시안 확정 (${String(d.confirmed_at).slice(0,10)})</span><button class="btn sm" style="margin-left:auto" onclick="unconfirmDesign()">확정 취소</button>`
+        :`<span class="hint">시안 파일은 📎첨부(디자인 단계에서 올리면 자동 태그) · 확정 시 단계 불이 켜집니다</span><button class="btn sm" style="margin-left:auto" onclick="confirmDesign()">✅ 시안 확정</button>`}
+    </div>
+    ${designAtts.length?`<div class="hint" style="margin-top:6px">디자인 첨부 ${designAtts.length}건: ${designAtts.map(a=>esc(a.name)).join(', ')}</div>`:''}
+    <div class="frow" style="margin-top:8px"><input id="dz-spec" value="${esc(d.spec||'')}" placeholder="사양 메모 (크기·재질·인쇄 도수 등)" style="flex:1"><button class="btn sm" onclick="saveDesignSpec()">사양 저장</button></div>
+  </div>`;
+}
+function confirmDesign(){const d={...(CUR.design||{files:[],spec:''})};d.confirmed_at=new Date().toISOString();refreshCur({design:d});api('/'+CUR.id+'/log',{method:'POST',body:{detail:'디자인 시안 확정'}});}
+function unconfirmDesign(){if(!confirm('시안 확정을 취소할까요?'))return;const d={...(CUR.design||{})};d.confirmed_at=null;refreshCur({design:d});}
+function saveDesignSpec(){const d={...(CUR.design||{files:[],confirmed_at:null})};d.spec=$('dz-spec').value.trim();refreshCur({design:d});toast('사양 저장됨');}
+
+// 🚀 출시 패널 (등록·출시 단계) — 바코드 입력 (전 시스템 조인 키)
+function launchPanel(p){
+  return `<div style="background:var(--bg);border:1px solid ${p.barcode?'rgba(52,211,153,.4)':'var(--line)'};border-radius:10px;padding:11px 13px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="font-size:12.5px">🏷️ 바코드 (전 시스템 조인 키)</b>
+      ${p.barcode?`<span class="tag t-ok">${esc(p.barcode)}</span>`:'<span class="hint">카탈로그 등록 시 발급된 바코드를 입력하면 출시 불이 켜지고 입고 대사도 가능해집니다</span>'}
+    </div>
+    <div class="frow" style="margin-top:8px"><input id="lc-barcode" value="${esc(p.barcode||'')}" placeholder="바코드 (예: 8809XXXXXXXXX)" style="flex:1"><button class="btn sm" onclick="saveBarcode('lc-barcode')">저장</button></div>
+  </div>`;
+}
+function saveBarcode(inputId){const v=$(inputId).value.trim();refreshCur({barcode:v||null});toast(v?'바코드 저장됨':'바코드 삭제됨');}
+
 // 🧪 신제품 사업성 검토 연동 패널 (기획 단계)
 const won0=n=>(n==null||n==='')?'—':'₩'+Math.round(Number(n)).toLocaleString();
 function cpFeasibilityPanel(p){
@@ -822,20 +857,24 @@ function paneVendors(p){
       </div>
       ${v.memo?`<div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">${esc(v.memo)}</div>`:''}
       ${partnerLinkBlock(p,v,vi)}
-      <table><tr><th>수량</th><th>단가</th><th>통화</th><th>₩환산</th><th>리드타임</th><th>조건</th><th></th></tr>
+      <table><tr><th>수량</th><th>단가</th><th>통화</th><th>₩환산</th><th>원가율</th><th>리드타임</th><th>조건</th><th></th><th></th></tr>
       ${quotes.map((q,qi)=>{
         const krw=fxKrw(Number(q.unit)||0,q.cur||'USD');
+        const overCap=krw&&p.target&&p.target.unit_cost_max&&krw>p.target.unit_cost_max;
         return `<tr><td>${(Number(q.qty)||0).toLocaleString()}</td><td>${q.unit}</td><td>${esc(q.cur||'USD')}</td>
-        <td>${krw?('≈₩'+Math.round(krw).toLocaleString()):'—'}</td><td>${q.lead_days?q.lead_days+'일':'—'}</td><td>${esc(q.terms||'')}</td>
+        <td class="${overCap?'dday-late':''}" title="${overCap?'목표단가 ≤₩'+p.target.unit_cost_max.toLocaleString()+' 초과':''}">${krw?('≈₩'+Math.round(krw).toLocaleString()):'—'}${overCap?' ⚠️':''}</td>
+        <td>${costRateCell(p,krw)}</td>
+        <td>${q.lead_days?q.lead_days+'일':'—'}</td><td>${esc(q.terms||'')}</td>
+        <td><button class="btn sm" style="padding:1px 7px" title="이 견적으로 발주(PO) 채우기" onclick="poFromQuote(${vi},${qi})">발주→</button></td>
         <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delQuote(${vi},${qi})">✕</button></td></tr>`}).join('')}
       <tr>
         <td><input id="q-qty-${vi}" type="number" placeholder="10000"></td>
         <td><input id="q-unit-${vi}" type="number" step="0.001" placeholder="0.118"></td>
         <td><select id="q-cur-${vi}"><option>USD</option><option>CNY</option><option>KRW</option><option>TWD</option><option>THB</option><option>JPY</option></select></td>
-        <td>—</td>
+        <td>—</td><td>—</td>
         <td><input id="q-lead-${vi}" type="number" placeholder="일"></td>
         <td><input id="q-terms-${vi}" placeholder="FOB …"></td>
-        <td><button class="btn sm" onclick="addQuote(${vi})">＋</button></td>
+        <td colspan="2"><button class="btn sm" onclick="addQuote(${vi})">＋</button></td>
       </tr></table>
     </div>`;
   }).join('');
@@ -905,6 +944,33 @@ function addQuote(vi){
   if(vs[vi].status==='contacted')vs[vi].status='quoted';
   refreshCur({vendors:vs})}
 function delQuote(vi,qi){const vs=[...CUR.vendors];vs[vi].quotes.splice(qi,1);refreshCur({vendors:vs})}
+
+// 원가율 = 견적단가(₩환산) ÷ 목표판매가 — 목표판매가는 사업성 검토(타겟_소비자가) 우선, 없으면 target.sell_price
+function sellPriceOf(p){
+  if(p._cp&&p._cp['타겟_소비자가_KRW'])return Number(p._cp['타겟_소비자가_KRW']);
+  if(p.target&&p.target.sell_price)return Number(p.target.sell_price);
+  return null;
+}
+function costRateCell(p,krw){
+  const sp=sellPriceOf(p);
+  if(!krw)return '—';
+  if(!sp)return `<span class="hint" title="사업성 검토 연결 또는 목표 판매가 설정 시 자동 계산">판매가?</span>`;
+  const r=krw/sp*100;
+  const col=r<=35?'var(--ok)':r<=50?'var(--warn)':'var(--err)';
+  return `<b style="color:${col}" title="견적단가 ≈₩${Math.round(krw).toLocaleString()} ÷ 목표판매가 ₩${sp.toLocaleString()}">${r.toFixed(1)}%</b>`;
+}
+// 이 견적으로 발주(PO) 채우기 — 선정 안 된 업체면 선정까지 제안
+async function poFromQuote(vi,qi){
+  const v=CUR.vendors[vi],q=v.quotes[qi];
+  if(v.status!=='selected'){
+    if(!confirm(`"${v.name}"은(는) 아직 선정 전입니다. 선정하고 이 견적으로 발주를 채울까요?`))return;
+    const vs=CUR.vendors.map((x,i)=>({...x,status:i===vi?'selected':(x.status==='selected'?'quoted':x.status)}));
+    await refreshCur({vendors:vs});
+  }
+  await refreshCur({po:{...(CUR.po||{}),vendor:v.name,qty:Number(q.qty)||CUR.po&&CUR.po.qty||null,unit:Number(q.unit)||null,cur:q.cur||'USD'}});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`견적→발주 채움: ${v.name} · ${q.qty?Number(q.qty).toLocaleString()+'개':''} × ${q.unit}${q.cur||''}`}});
+  setTab('pay'); toast('발주(PO)에 견적이 채워졌습니다 — ETA·메모 확인 후 저장');
+}
 
 // ⑤ business 거래처 연결 — 선정 + 발주(PO) 업체만 (실제 생산 진행)
 function hasPO(p){return !!(p.po&&(p.po.qty||p.po.vendor))}
@@ -985,6 +1051,20 @@ function sampleField(i,k,v){const ss=[...CUR.samples];ss[i][k]=v;refreshCur({sam
 function delSample(i){const ss=[...CUR.samples];ss.splice(i,1);refreshCur({samples:ss})}
 
 // -- 발주·대금
+// PO 총액(수량×단가) + 대금 기록 합계 대사
+function poSummaryLine(p){
+  const po=p.po||{};
+  if(!(po.qty&&po.unit))return '';
+  const total=Number(po.qty)*Number(po.unit);
+  const totalKrw=fxKrw(total,po.cur||'USD');
+  let paidSum=0,allSum=0;
+  (p.payments||[]).forEach(pa=>{const k=fxKrw(Number(pa.amount)||0,pa.cur||'KRW')||0;allSum+=k;if(pa.paid_at)paidSum+=k;});
+  const cover=totalKrw?Math.round(allSum/totalKrw*100):null;
+  return `<div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:4px 0 8px;font-size:12.5px;display:flex;gap:14px;flex-wrap:wrap">
+    <span>발주 총액: <b>${Number(total.toFixed(2)).toLocaleString()} ${esc(po.cur||'USD')}</b>${totalKrw?` <span class="hint">(≈${fmtKrw(totalKrw)})</span>`:''}</span>
+    <span>대금 기록 합계: <b>${fmtKrw(allSum)||'—'}</b>${cover!=null?` <span class="tag ${cover>=100?'t-ok':cover>0?'t-warn':'t-gray'}" title="대금 기록 합계 ÷ 발주 총액">${cover}%</span>`:''}</span>
+    <span class="hint">지급완료 ${fmtKrw(paidSum)}</span></div>`;
+}
 function panePay(p){
   const po=p.po||{};const pays=p.payments||[];
   const sel=(p.vendors||[]).find(v=>v.status==='selected');
@@ -995,6 +1075,7 @@ function panePay(p){
     <select id="po-cur" style="width:80px">${['USD','CNY','KRW','TWD','THB','JPY'].map(c=>`<option ${po.cur===c?'selected':''}>${c}</option>`).join('')}</select>
     <label>ETA</label><input id="po-eta" type="date" value="${po.eta||''}"></div>
   <div class="frow"><label>메모</label><input id="po-memo" value="${esc(po.memo||'')}" style="flex:1" placeholder="인코텀즈·계좌·특이사항"></div>
+  ${poSummaryLine(p)}
   <div style="text-align:right"><button class="btn sm" onclick="savePo()">PO 저장</button></div>
 
   <h3 style="font-size:13px;margin:16px 0 8px">대금 기록 <span class="tag t-gray" style="font-weight:600">기록 전용 — 실제 입출금은 granter·Notion 체계</span></h3>
@@ -1028,7 +1109,8 @@ function delPay(i){const ps=[...CUR.payments];ps.splice(i,1);refreshCur({payment
 function paneInbound(p){
   const poQty=(p.po&&p.po.qty)||(p.target&&p.target.qty)||null;
   const inb=p.inbound;
-  let head=`<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">발주 수량 <b style="color:var(--text)">${poQty?poQty.toLocaleString():'미정'}</b> 대비 실입고를 대사합니다. 바코드: <b>${p.barcode?esc(p.barcode):'<span style=\"color:var(--warn)\">미등록 — 등록·출시 단계에서 입력</span>'}</b></div>`;
+  let head=`<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">발주 수량 <b style="color:var(--text)">${poQty?poQty.toLocaleString():'미정'}</b> 대비 실입고를 대사합니다. 바코드: <b>${p.barcode?esc(p.barcode):'<span style="color:var(--warn)">미등록</span>'}</b></div>`
+    +(!p.barcode?`<div class="frow" style="margin:0 0 10px"><input id="in-barcode" placeholder="바코드 입력 (inventory 조회용)" style="width:220px"><button class="btn sm" onclick="saveBarcode('in-barcode')">저장</button></div>`:'');
   let btns=`<div class="frow" style="margin:6px 0 12px">
     <button class="btn sm" ${!p.barcode||!META.inventory_linked?'disabled title="바코드+inventory 연동 필요"':''} onclick="pullInbound()">🔄 inventory 현재고로 대사</button>
     <span style="font-size:11px;color:var(--text-3)">또는 실입고 수량 직접 입력 →</span>
