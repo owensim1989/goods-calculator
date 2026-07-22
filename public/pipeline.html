@@ -234,6 +234,17 @@ function stageComplete(p,s){
 }
 // 완료 조건 설명 (툴팁)
 const STAGE_DONE_HINT={plan:'사업성 검토 연동 / 목표가 설정 / 체크리스트 완료 시',design:'디자인 파일 첨부(디자인 단계) 또는 시안 확정 시',vendor:'업체 선정 시',pricing:'단가(견적) 확인 시',sample:'샘플 승인 시',po:'발주(PO) 등록 시',production:'생산 체크리스트 완료 시',shipping:'ETA 등록 시',inbound:'입고 대사 기록 시',launch:'바코드·카탈로그 등록 시',review:'발주 검토 완료 시'};
+// 단계별 기본 담당 팀 — 프로젝트별 오버라이드는 p.stage_owners[stage]
+const STAGE_TEAM={plan:'Owen·기획',design:'디자인팀',vendor:'사업화팀',pricing:'사업화팀',review:'사업화팀',sample:'사업화팀',po:'사업화팀',production:'사업화팀',shipping:'사업화팀',inbound:'사업화팀(창고)',launch:'사업화팀·마케팅'};
+function stageOwner(p,s){return (p.stage_owners&&p.stage_owners[s])||STAGE_TEAM[s]||'—';}
+async function editStageOwner(){
+  const cur=stageOwner(CUR,CUR.stage);
+  const v=prompt(`「${stageLabel(CUR.stage)}」 단계 담당 (이 제품에만 적용):`,cur);
+  if(v===null)return;
+  const so={...(CUR.stage_owners||{})};
+  if(v.trim()&&v.trim()!==STAGE_TEAM[CUR.stage])so[CUR.stage]=v.trim(); else delete so[CUR.stage];
+  await refreshCur({stage_owners:so}); toast('담당 변경됨');
+}
 function completedCount(p){return p.stages.filter(s=>stageComplete(p,s)).length;}
 function clientProgress(p){return p.status==='done'?100:Math.round(completedCount(p)/p.stages.length*100);}
 function fxKrw(amount,cur){
@@ -684,7 +695,7 @@ function renderDetail(){
     <div style="font-size:11px;color:var(--text-3);margin:10px 0 4px">단계는 <b style="color:var(--ok)">완료 조건이 충족되면 자동으로 불이 켜집니다</b> (순서 무관). 클릭하면 그 단계 체크리스트를 봅니다.</div>
     <div class="steps">${p.stages.map((s)=>{
       const done=stageComplete(p,s);
-      return `<div class="step ${done?'lit':''} ${s===p.stage?'view':''}" onclick="moveStage('${s}')" title="${done?'✅ 완료':'미완료'} · ${STAGE_DONE_HINT[s]||''}">${done?'✓ ':''}${stageLabel(s)}</div>`;
+      return `<div class="step ${done?'lit':''} ${s===p.stage?'view':''}" onclick="moveStage('${s}')" title="${done?'✅ 완료':'미완료'} · ${STAGE_DONE_HINT[s]||''} · 담당 ${stageOwner(p,s)}">${done?'✓ ':''}${stageLabel(s)}</div>`;
     }).join('')}
     </div>
     <div class="subtabs">
@@ -726,7 +737,8 @@ function paneChecklist(p){
   if(p.stage==='plan'||p.stage==='review')topPanel=cpFeasibilityPanel(p);
   else if(p.stage==='design')topPanel=designPanel(p);
   else if(p.stage==='launch')topPanel=launchPanel(p);
-  return topPanel+`<div style="font-size:12px;color:var(--text-2);margin-bottom:6px">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b></div>`+
+  return topPanel+`<div style="font-size:12px;color:var(--text-2);margin-bottom:6px;display:flex;gap:8px;align-items:center">현재 단계: <b style="color:var(--text)">${stageLabel(p.stage)}</b>
+    <span class="tag t-gray" style="cursor:pointer" title="클릭해 이 제품의 단계 담당 변경" onclick="editStageOwner()">👤 담당 ${esc(stageOwner(p,p.stage))}${p.stage_owners&&p.stage_owners[p.stage]?' ✎':''}</span></div>`+
     items.map((c,i)=>`<div class="check ${c.done?'done':''}">
       <input type="checkbox" ${c.done?'checked':''} onchange="toggleCheck(${i})"><span>${esc(c.t)}</span>
       <button class="del" onclick="delCheck(${i})">✕</button></div>`).join('')+
@@ -828,7 +840,45 @@ function delCheck(i){const cl={...CUR.checklist};cl[CUR.stage].splice(i,1);refre
 function addCheck(){const v=$('newCheckT').value.trim();if(!v)return;const cl={...CUR.checklist};(cl[CUR.stage]=cl[CUR.stage]||[]).push({t:v,done:false});refreshCur({checklist:cl})}
 
 // -- 업체·견적
+let VDMODE='list';   // list | compare
+function toggleVdMode(){VDMODE=VDMODE==='list'?'compare':'list';renderPane();}
+// 📊 비교 모드 — 업체 × 수량구간 매트릭스 (최저가·최단납기 하이라이트)
+function paneVendorsCompare(p){
+  const vends=(p.vendors||[]).filter(v=>v.status!=='dropped');
+  const dropped=(p.vendors||[]).length-vends.length;
+  if(!vends.length)return `<div class="frow"><button class="btn sm" onclick="toggleVdMode()">← 목록으로</button></div><div style="padding:16px;color:var(--text-3)">비교할 업체가 없습니다.</div>`;
+  // 수량 구간 수집 (null 은 '수량 미정' 열)
+  const qtys=[...new Set(vends.flatMap(v=>(v.quotes||[]).map(q=>Number(q.qty)||0)))].sort((a,b)=>a-b);
+  // 열별 최저 ₩ 계산
+  const bestByQty={};
+  qtys.forEach(t=>{let best=null;vends.forEach(v=>(v.quotes||[]).forEach(q=>{if((Number(q.qty)||0)!==t)return;const k=fxKrw(Number(q.unit)||0,q.cur||'USD');if(k&&(best==null||k<best))best=k;}));bestByQty[t]=best;});
+  const minLead=Math.min(...vends.map(v=>Math.min(...(v.quotes||[]).map(q=>q.lead_days||Infinity))));
+  let t=`<div class="frow" style="margin-bottom:10px"><button class="btn sm" onclick="toggleVdMode()">← 목록으로</button>
+    <span class="hint">업체 × 수량구간 단가 비교 — <b style="color:var(--ok)">초록 배경 = 그 수량의 최저가</b>, 🚀 = 최단 납기${dropped?` · 제외 업체 ${dropped}곳 숨김`:''}</span></div>
+  <div class="tblwrap"><table class="tbl"><thead><tr><th>업체</th><th>상태</th>${qtys.map(t2=>`<th>${t2?t2.toLocaleString()+'개':'수량 미정'}</th>`).join('')}<th>리드타임</th><th>조건</th></tr></thead><tbody>`;
+  vends.forEach((v,vi0)=>{
+    const vi=(p.vendors||[]).indexOf(v);
+    const lead=Math.min(...(v.quotes||[]).map(q=>q.lead_days||Infinity));
+    t+=`<tr><td><b>${esc(v.name)}</b>${v.partner_ref?' <span class="tag t-ok" style="font-size:9px">거래처</span>':''}</td>
+      <td>${v.status==='selected'?'<span class="tag t-ok">✅ 선정</span>':'<span class="tag t-warn">검토</span>'}</td>`;
+    qtys.forEach(t2=>{
+      const q=(v.quotes||[]).find(x=>(Number(x.qty)||0)===t2);
+      if(!q){t+='<td style="color:var(--text-3)">—</td>';return;}
+      const krw=fxKrw(Number(q.unit)||0,q.cur||'USD');
+      const isBest=krw&&bestByQty[t2]&&krw<=bestByQty[t2];
+      t+=`<td style="${isBest?'background:rgba(52,211,153,.12)':''}">
+        <b style="${isBest?'color:var(--ok)':''}">${q.unit} ${esc(q.cur||'USD')}</b>
+        <div class="hint">${krw?'≈₩'+Math.round(krw).toLocaleString():''} ${costRateCell(p,krw)}</div>
+        <button class="btn sm" style="padding:0 6px;font-size:10px;margin-top:2px" onclick="poFromQuote(${vi},${(v.quotes||[]).indexOf(q)})">발주→</button></td>`;
+    });
+    t+=`<td>${lead!==Infinity?lead+'일'+(lead===minLead?' 🚀':''):'—'}</td>
+      <td style="font-size:11.5px;color:var(--text-2)">${esc((v.quotes||[]).map(q=>q.terms).filter(Boolean)[0]||'')}</td></tr>`;
+  });
+  t+='</tbody></table></div><div class="hint" style="margin-top:8px">원가율 = 견적단가₩ ÷ 목표판매가(사업성 검토). 셀의 "발주→"로 그 견적을 바로 PO에 채울 수 있습니다.</div>';
+  return t;
+}
 function paneVendors(p){
+  if(VDMODE==='compare')return paneVendorsCompare(p);
   const vends=p.vendors||[];
   // 이 제품이 포함된 소싱 문의 (역참조)
   const related=OUTREACH.filter(o=>(o.product_ids||[]).includes(p.id));
@@ -882,7 +932,8 @@ function paneVendors(p){
     <input id="nv-name" style="flex:1" placeholder="업체명 (예: KINSHUN Packaging)">
     <input id="nv-contact" style="flex:1" placeholder="연락 채널 (알리바바·이메일 등)">
     <button class="btn sm" onclick="addVendor()">＋ 업체 추가</button>
-    <button class="btn sm" onclick="openQuoteImport()">📥 받은 견적서에서 불러오기</button></div>
+    <button class="btn sm" onclick="openQuoteImport()">📥 받은 견적서에서 불러오기</button>
+    ${(p.vendors||[]).filter(v=>(v.quotes||[]).length).length>=2?`<button class="btn sm" style="border-color:var(--accent);color:var(--accent-strong)" onclick="toggleVdMode()">📊 비교 모드</button>`:''}</div>
     <div class="hint">₩환산은 goods 환율(수출입은행 API) 기준 참고치. 업체 선정 시 카드가 초록 테두리로 표시됩니다. "실제 생산 진행 = 선정 + 발주"한 업체만 나중에 business 거래처로 연결합니다.</div>`;
   return html;
 }
