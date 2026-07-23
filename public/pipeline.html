@@ -349,9 +349,12 @@ function fmtUpd(iso){
   if(d===y)return '어제';
   return d.slice(5).replace('-','/');
 }
+// 비교견적 수령 = 견적(quote)을 낸 업체 수 (2곳+ 이면 비교 가능)
+function quoteVendorCount(p){return (p.vendors||[]).filter(v=>(v.quotes||[]).length>0).length;}
+function quoteLineCount(p){return (p.vendors||[]).reduce((a,v)=>a+(v.quotes||[]).length,0);}
 function tableSection(kind,title,list){
   const val=p=>({name:p.name,type:p.type,client:(p.client||''),stage:p.stages.indexOf(p.stage)/p.stages.length,
-    due:payDue(p)||'9999',eta:(p.po&&p.po.eta)||'9999',amt:unpaidKrw(p),stale:daysSince(p.updated_at),updated:p.updated_at||''})[SORTK];
+    quotes:quoteVendorCount(p),eta:(p.po&&p.po.eta)||'9999',amt:unpaidKrw(p),stale:daysSince(p.updated_at),updated:p.updated_at||''})[SORTK];
   const rows=[...list].sort((a,b)=>{const x=val(a),y=val(b);return (x<y?-1:x>y?1:0)*(SORTD?-1:1)});
   const arrow=k=>SORTK===k?(SORTD?' ▾':' ▴'):'';
   const isOem=kind==='oem';
@@ -362,14 +365,14 @@ function tableSection(kind,title,list){
       <th style="width:26px"><input type="checkbox" class="chk" title="이 구분 전체 선택" ${allSel?'checked':''} onclick="event.stopPropagation();toggleSelAll(${JSON.stringify(rows.map(p=>p.id))})"></th>
       <th onclick="sortT('name')">제품${arrow('name')}</th>${clientHead}<th onclick="sortT('type')">유형${arrow('type')}</th>
       <th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th>
-      <th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th>
+      <th onclick="sortT('quotes')" title="견적을 받은 업체 수 (2곳+ 비교 가능)">비교견적${arrow('quotes')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th>
       <th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th>
       <th onclick="sortT('updated')">수정${arrow('updated')}</th></tr></thead><tbody>`;
   if(!rows.length){
     const cols=isOem?11:10;
     t+=`<tr><td colspan="${cols}" style="padding:18px;text-align:center;color:var(--text-3)">해당 제품 없음</td></tr>`;
   } else t+=rows.map(p=>{
-    const due=payDue(p),eta=(p.po&&p.po.eta)||null,amt=unpaidKrw(p),st=daysSince(p.updated_at);
+    const eta=(p.po&&p.po.eta)||null,amt=unpaidKrw(p),st=daysSince(p.updated_at),qc=quoteVendorCount(p),ql=quoteLineCount(p);
     return `<tr onclick="openDetail('${p.id}')">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${SEL.has(p.id)?'checked':''} onclick="toggleSel('${p.id}')"></td>
       <td><b>${esc(p.emoji)} ${esc(p.name)}</b></td>
@@ -378,7 +381,7 @@ function tableSection(kind,title,list){
       <td><div class="mini-steps">${p.stages.map((s,i)=>{const c=p.stages.indexOf(p.stage);return `<i class="${i<c?'d':i===c?'c':''}" title="${stageLabel(s)}"></i>`}).join('')}</div>
           <span style="font-size:10.5px;color:var(--text-3)">${stageLabel(p.stage)}</span></td>
       <td class="nextact">${esc(nextAction(p))}</td>
-      <td class="${ddayClass(due)}">${due?'~'+due.slice(5):'—'}</td>
+      <td title="견적 ${ql}건 · 업체 ${qc}곳">${qc?`<b style="color:${qc>=2?'var(--accent-strong)':'var(--text)'}">${qc}곳</b>${qc>=2?' 📊':''}`:'<span style="color:var(--text-3)">—</span>'}</td>
       <td style="color:var(--text-2)">${eta?'📦 '+eta.slice(5):'—'}</td>
       <td>${amt?'₩'+Math.round(amt).toLocaleString():'—'}</td>
       <td>${st>=7?`<span class="tag t-warn">D+${st} ⚠️</span>`:'<span style="color:var(--text-3)">—</span>'}</td>
