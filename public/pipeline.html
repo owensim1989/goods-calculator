@@ -341,9 +341,17 @@ function renderTable(vis){
   if(!html)html='<div style="padding:24px;text-align:center;color:var(--text-3)">해당 구분의 진행 중 제품이 없습니다</div>';
   $('tableWrap').innerHTML=html;
 }
+function fmtUpd(iso){
+  if(!iso)return '—';
+  const d=iso.slice(0,10),t=todayStr();
+  if(d===t)return `<b style="color:var(--accent-strong)">오늘</b>`;
+  const y=new Date(Date.now()-864e5).toISOString().slice(0,10);
+  if(d===y)return '어제';
+  return d.slice(5).replace('-','/');
+}
 function tableSection(kind,title,list){
   const val=p=>({name:p.name,type:p.type,client:(p.client||''),stage:p.stages.indexOf(p.stage)/p.stages.length,
-    due:payDue(p)||'9999',eta:(p.po&&p.po.eta)||'9999',amt:unpaidKrw(p),stale:daysSince(p.updated_at)})[SORTK];
+    due:payDue(p)||'9999',eta:(p.po&&p.po.eta)||'9999',amt:unpaidKrw(p),stale:daysSince(p.updated_at),updated:p.updated_at||''})[SORTK];
   const rows=[...list].sort((a,b)=>{const x=val(a),y=val(b);return (x<y?-1:x>y?1:0)*(SORTD?-1:1)});
   const arrow=k=>SORTK===k?(SORTD?' ▾':' ▴'):'';
   const isOem=kind==='oem';
@@ -355,9 +363,10 @@ function tableSection(kind,title,list){
       <th onclick="sortT('name')">제품${arrow('name')}</th>${clientHead}<th onclick="sortT('type')">유형${arrow('type')}</th>
       <th onclick="sortT('stage')">단계${arrow('stage')}</th><th>다음 액션</th>
       <th onclick="sortT('due')">대금 마감${arrow('due')}</th><th onclick="sortT('eta')">입고 ETA${arrow('eta')}</th>
-      <th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th></tr></thead><tbody>`;
+      <th onclick="sortT('amt')">대금 예정${arrow('amt')}</th><th onclick="sortT('stale')">정체${arrow('stale')}</th>
+      <th onclick="sortT('updated')">수정${arrow('updated')}</th></tr></thead><tbody>`;
   if(!rows.length){
-    const cols=isOem?10:9;
+    const cols=isOem?11:10;
     t+=`<tr><td colspan="${cols}" style="padding:18px;text-align:center;color:var(--text-3)">해당 제품 없음</td></tr>`;
   } else t+=rows.map(p=>{
     const due=payDue(p),eta=(p.po&&p.po.eta)||null,amt=unpaidKrw(p),st=daysSince(p.updated_at);
@@ -373,11 +382,12 @@ function tableSection(kind,title,list){
       <td style="color:var(--text-2)">${eta?'📦 '+eta.slice(5):'—'}</td>
       <td>${amt?'₩'+Math.round(amt).toLocaleString():'—'}</td>
       <td>${st>=7?`<span class="tag t-warn">D+${st} ⚠️</span>`:'<span style="color:var(--text-3)">—</span>'}</td>
+      <td style="font-size:12px;color:var(--text-2)" title="${esc(p.updated_at||'')}">${fmtUpd(p.updated_at)}</td>
       </tr>`;}).join('');
   return t+'</tbody></table></div></div>';
 }
 function sortT(k){if(SORTK===k)SORTD=!SORTD;else{SORTK=k;SORTD=true}
-  try{localStorage.setItem('pl_sortk',SORTK);localStorage.setItem('pl_sortd',SORTD?'1':'0')}catch(e){}
+  try{localStorage.setItem('pl_sortk2',SORTK);localStorage.setItem('pl_sortd2',SORTD?'1':'0')}catch(e){}
   render()}
 
 // ══════════ 🏭 소싱: 다중선택 + 제조사 문의 ══════════
@@ -601,8 +611,9 @@ function brandBadge(p){return brandOf(p)==='oem'
   :`<span class="tag" style="background:var(--accent-bg);color:var(--accent-strong)" title="자체브랜드(미스터두낫띵)">🏷️ 자체</span>`;}
 function setBFilter(b){BFILTER=(BFILTER===b?'all':b);render();}
 let VIEW=(function(){try{return localStorage.getItem('pl_view')||'table'}catch(e){return 'table'}})();
-let SORTK=(function(){try{return localStorage.getItem('pl_sortk')||'stale'}catch(e){return 'stale'}})();
-let SORTD=(function(){try{return (localStorage.getItem('pl_sortd')??'1')==='1'}catch(e){return true}})();
+// 기본 정렬 = 최근 수정순 (내림차순) — 키 v2 로 변경해 기존 저장값(정체순) 리셋 (2026-07-23 Owen 요청)
+let SORTK=(function(){try{return localStorage.getItem('pl_sortk2')||'updated'}catch(e){return 'updated'}})();
+let SORTD=(function(){try{return (localStorage.getItem('pl_sortd2')??'1')==='1'}catch(e){return true}})();
 function setFilter(f){FILTER=f;render()}
 function setView(v){VIEW=v;try{localStorage.setItem('pl_view',v)}catch(e){};render()}
 
