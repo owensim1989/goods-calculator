@@ -6399,8 +6399,9 @@ JSON만 반환. 설명 금지:
 // ━━━ 웹서치 기반 Claude 호출 — pause_turn(장기 검색 턴 일시정지) 이어받기 포함 (2026-07-24) ━━━
 async function _claudeWebSearchText(prompt, opts = {}) {
   const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: opts.maxSearches || 10 }];
-  // 이미지(제품 시안) 있으면 vision 블록 + 텍스트 (2026-07-25: 시안 구조 인식 후 동일 스펙 검색)
-  const userContent = opts.imageBlock ? [opts.imageBlock, { type: 'text', text: prompt }] : prompt;
+  // 시안 미디어(이미지 또는 제작가이드 PDF document) 블록 + 텍스트 (2026-07-25: 시안 구조 인식 후 동일 스펙 검색)
+  const media = (opts.mediaBlocks && opts.mediaBlocks.length) ? opts.mediaBlocks : (opts.imageBlock ? [opts.imageBlock] : []);
+  const userContent = media.length ? [...media, { type: 'text', text: prompt }] : prompt;
   let messages = [{ role: 'user', content: userContent }];
   for (let hop = 0; hop < 4; hop++) {
     const j = await callClaude(messages, { ...opts, tools, raw: true });
@@ -6415,40 +6416,116 @@ async function _claudeWebSearchText(prompt, opts = {}) {
   throw new Error('web search pause_turn 반복 초과');
 }
 
+// Drive URL 에서 folder/file id 추출
+function _driveIdFromUrl(u) {
+  const s = String(u || '');
+  let m = s.match(/\/folders\/([\w-]+)/);       if (m) return { kind: 'folder', id: m[1] };
+  m = s.match(/\/file\/d\/([\w-]+)/);            if (m) return { kind: 'file', id: m[1] };
+  m = s.match(/[?&]id=([\w-]+)/);                if (m) return { kind: 'file', id: m[1] };
+  m = s.match(/\/document\/d\/([\w-]+)/);        if (m) return { kind: 'file', id: m[1] };
+  return null;
+}
+
+// 🚀 연동된 제품 파이프라인의 드라이브 링크에서 시안(이미지 또는 제작가이드 PDF) 자동 로드
+//   Owen(2026-07-25): "시안 링크는 항상 파이프라인에 있다" → 사업성 검토 시장가 조사가 그 링크를 직접 사용.
+//   서비스계정(getDriveClient, 공유드라이브 지원)으로 폴더 내 이미지>PDF 우선 1개 다운로드. 실패 시 null(무해).
+const DRIVE_ALL = { supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives' };
+async function _pipelineDesignMedia(cpId) {
+  if (!cpId) return null;
+  try {
+    const pipelineStore = require('./lib/pipeline-store');
+    const linked = pipelineStore.listProjects({}).filter(p => p.consumerPricingId && String(p.consumerPricingId) === String(cpId));
+    if (!linked.length) return null;
+    // 후보 드라이브 링크 수집: 첨부(kind:drive) → design.files → ref_links
+    const urls = [];
+    for (const p of linked) {
+      for (const a of (p.attachments || [])) if (a.kind === 'drive' && a.url) urls.push(a.url);
+      for (const f of ((p.design && p.design.files) || [])) if (typeof f === 'string' && /drive\.google/.test(f)) urls.push(f);
+      for (const rl of (p.ref_links || [])) if (rl && rl.url && /drive\.google/.test(rl.url)) urls.push(rl.url);
+    }
+    if (!urls.length) return null;
+    const { getDriveClient } = require('./lib/backup-to-drive');
+    const drive = await getDriveClient();
+    for (const url of urls) {
+      const ref = _driveIdFromUrl(url);
+      if (!ref) continue;
+      let file = null;
+      if (ref.kind === 'folder') {
+        const q = `'${ref.id}' in parents and trashed = false and (mimeType contains 'image/' or mimeType = 'application/pdf')`;
+        const list = await drive.files.list({ q, fields: 'files(id,name,mimeType,size)', pageSize: 30, orderBy: 'name', ...DRIVE_ALL });
+        const files = (list.data.files || []);
+        // 이미지 우선, 없으면 PDF
+        file = files.find(f => (f.mimeType || '').startsWith('image/')) || files.find(f => f.mimeType === 'application/pdf') || null;
+      } else {
+        const meta = await drive.files.get({ fileId: ref.id, fields: 'id,name,mimeType,size', supportsAllDrives: true });
+        const mt = meta.data.mimeType || '';
+        if (mt.startsWith('image/') || mt === 'application/pdf') file = meta.data;
+      }
+      if (!file) continue;
+      const isPdf = file.mimeType === 'application/pdf';
+      if (isPdf && Number(file.size) > 28 * 1024 * 1024) continue; // 너무 큰 PDF skip
+      const dl = await drive.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+      const buf = Buffer.from(dl.data);
+      if (!buf || !buf.length) continue;
+      if (isPdf) {
+        return { block: { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') } }, source: 'pipeline-pdf', fileName: file.name };
+      }
+      if (sharp) {
+        const resized = await sharp(buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+        return { block: { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } }, source: 'pipeline-image', fileName: file.name };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn('[market-price] 파이프라인 시안 로드 실패(무시):', e.message);
+    return null;
+  }
+}
+
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
   const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
   if (!productName) return res.status(400).json({ error: '제품명(productName) 필수' });
   const ourKRW = Number(ourTargetKRW) || null;
 
-  // 🖼️ 제품 시안 이미지 로드 → Claude vision 블록 (2026-07-25 Owen: 시안 구조 보고 동일 스펙 비교)
-  //   신규 업로드분(imageDataUrl) 우선, 없으면 저장된 카탈로그 이미지 파일(cpId) 읽기. sharp 로 1024px jpeg 축소.
-  let imageBlock = null, hasImage = false;
+  // 🖼️ 제품 시안 로드 → Claude vision/document 블록 (2026-07-25 Owen: 시안 구조 보고 동일 스펙 비교)
+  //   우선순위: ① 세션 신규 업로드(imageDataUrl) → ② 연동 파이프라인 드라이브 링크의 시안(PDF/이미지) → ③ 저장된 카탈로그 이미지(cpId)
+  let mediaBlock = null, hasImage = false, imageSource = 'none', sourceFile = null;
   try {
-    let buf = null;
     if (imageDataUrl && /^data:image\//.test(imageDataUrl)) {
       const dec = decodeImagePayload(imageDataUrl);
-      if (dec) buf = dec.buf;
-    } else if (cpId) {
+      if (dec && dec.buf && sharp) {
+        const resized = await sharp(dec.buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+        mediaBlock = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } };
+        imageSource = 'upload';
+      }
+    }
+    if (!mediaBlock) {
+      const pm = await _pipelineDesignMedia(cpId);   // 🚀 파이프라인 링크 직접 사용
+      if (pm) { mediaBlock = pm.block; imageSource = pm.source; sourceFile = pm.fileName; }
+    }
+    if (!mediaBlock && cpId) {
       const imgId = cpImageId(cpId);
       const found = imgId ? findCatalogImage(imgId) : null;
-      if (found) buf = fs.readFileSync(found.path);
+      if (found && sharp) {
+        const resized = await sharp(fs.readFileSync(found.path)).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+        mediaBlock = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } };
+        imageSource = 'cp-file';
+      }
     }
-    if (buf && buf.length && sharp) {
-      const resized = await sharp(buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
-      imageBlock = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } };
-      hasImage = true;
-    }
-  } catch (imgErr) { console.warn('[market-price] 시안 이미지 로드 실패(무시):', imgErr.message); }
+    hasImage = !!mediaBlock;
+  } catch (imgErr) { console.warn('[market-price] 시안 로드 실패(무시):', imgErr.message); }
+  const mediaBlocks = mediaBlock ? [mediaBlock] : [];
+  const isPdfDesign = imageSource === 'pipeline-pdf';
 
   // ── 1차: 🔍 실검색 모드 (Claude 웹서치) — 조구만·카카오프렌즈·라인프렌즈 3사 고정 (2026-07-24 Owen 확정)
   try {
     const searchPrompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 조사원입니다. 웹 검색으로 아래 제품과 **구조·형태가 동일한** 실제 판매 중인 상품의 실제 가격을 조사하세요.
 
-${hasImage ? `[⚠️ 가장 중요 — 먼저 제품 시안 이미지를 보고 구조를 파악]
-첨부된 이미지가 우리가 만들려는 실제 제품 시안입니다. 제품명만 보고 흔한 품목(예: 그냥 프린팅된 볼펜)으로 착각하지 말고, **이미지에 보이는 실제 구조**를 정확히 파악하세요.
+${hasImage ? `[⚠️ 가장 중요 — 먼저 첨부된 제품 시안(${isPdfDesign ? '제작가이드 PDF — 디자인·사이즈·소재·구조 페이지 포함' : '제품 이미지'})을 보고 구조를 파악]
+첨부 자료가 우리가 만들려는 실제 제품의 시안입니다. 제품명만 보고 흔한 품목(예: 그냥 프린팅된 볼펜)으로 착각하지 말고, **자료에 보이는 실제 구조·사이즈·소재**를 정확히 파악하세요.
 예: "볼펜"이라도 (a) 몸통에 캐릭터가 인쇄만 된 볼펜과 (b) 2D/입체 캐릭터 피규어·아크릴 조형물이 펜 상단/몸통에 부착된 '캐릭터 조형 볼펜'은 전혀 다른 제품·가격대입니다.
-이미지에서 관찰한 형태(부착물 유무·2D/3D·소재감·조형 복잡도 등)를 observedSpec 에 한 줄로 적고, **그 구조와 동일한 유형의 상품만** 검색·수집하세요. 단순 인쇄 제품은 구조가 다르면 제외.` : `[제품 정보만으로 판단 — 시안 이미지 없음]
+${isPdfDesign ? 'PDF 제작가이드의 Design/Info/Package 페이지에서 부착 조형물 유무·2D/3D·치수(mm)·재질을 읽으세요. ' : ''}관찰한 형태(부착물 유무·2D/3D·소재감·조형 복잡도 등)를 observedSpec 에 한 줄로 적고, **그 구조와 동일한 유형의 상품만** 검색·수집하세요. 단순 인쇄 제품은 구조가 다르면 제외.` : `[제품 정보만으로 판단 — 시안 자료 없음]
 observedSpec 은 제품명·카테고리 기반 추정으로 채우고, 이미지가 없으니 구조 매칭은 텍스트 정보 범위에서만.`}
 
 [조사 대상 브랜드 — 이 3개만, 다른 브랜드 금지]
@@ -6480,7 +6557,7 @@ JSON만 반환. 설명 금지:
   "summary": "조사 요약 1~2문장"
 }`;
     // sonnet 사용: haiku 는 "페이지 접근 불가"라며 가격 추출을 소극적으로 포기하는 경향 (2026-07-24 실측)
-    const { text, searches } = await _claudeWebSearchText(searchPrompt, { model: 'claude-sonnet-5', max_tokens: 3200, maxSearches: 14, imageBlock });
+    const { text, searches } = await _claudeWebSearchText(searchPrompt, { model: 'claude-sonnet-5', max_tokens: 3200, maxSearches: 14, mediaBlocks });
     const parsed = extractJSON(text);
     if (!parsed || !Array.isArray(parsed.brands)) throw new Error('search_parse_failed: ' + String(text).slice(0, 200));
     const normItem = (it, cur) => ({
@@ -6512,6 +6589,7 @@ JSON만 반환. 설명 금지:
       success: true, mode: 'search', searches, brands,
       observedSpec: String(parsed.observedSpec || '').slice(0, 200),
       usedImage: hasImage,
+      imageSource, sourceFile,
       summary: parsed.summary || '',
       avgKRW, avgTWD, ourPriceKRW: ourKRW,
       gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,

@@ -1369,7 +1369,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <h4>📊 시장가 비교 (sanity check) <span class="auto-tag">AI 추정</span>
       <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 Claude 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만 실판매가·실링크 수집 → 우리 가격 적정성 점검">🔍 시장가 조사 (🇰🇷+🇹🇼 실검색)</button>
     </h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사의 유사 제품을 Claude 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다. <b>⑤ 제품 이미지(시안)를 넣으면 시안 구조를 인식해 "같은 구조(🎯)" 제품끼리 비교</b>합니다. 평균 대비 ±15% 가이드라인. (웹서치 불가 시 AI 추정으로 자동 폴백)</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사의 유사 제품을 Claude 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다. <b>연동된 제품 파이프라인의 디자인 링크(제작가이드 PDF·시안)를 자동으로 읽어 구조를 인식해 "같은 구조(🎯)" 제품끼리 비교</b>합니다(⑤ 제품 이미지도 사용 가능). 평균 대비 ±15% 가이드라인. (웹서치 불가 시 AI 추정으로 자동 폴백)</p>
     <div id="cp-market-price-result" style="display:none;"></div>
     <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
       💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 조사</b> 버튼을 누르면 조구만·카카오·라인 3사 실검색 결과가 표시됩니다 (웹서치 ~30초)
@@ -6003,13 +6003,16 @@ function cpRenderMarketPrice(data){
     : `<b style="color:var(--warning);">AI 추정 (웹서치 폴백)</b> — 실검색 불가로 추정값 표시. 링크로 실제 가격 확인 필요`;
   const meta = `<div class="cp-mp-meta">${modeBadge}${ts ? ` · 조사 시점: ${ts}` : ''}</div>`;
 
-  // 🖼️ 시안 인식 결과 배너 (이미지 기반 구조 매칭)
+  // 🖼️ 시안 인식 결과 배너 (이미지/PDF 기반 구조 매칭) — 시안 출처 표시 (2026-07-25)
+  const srcLabelMap = { 'pipeline-pdf':'🚀 파이프라인 제작가이드(PDF)', 'pipeline-image':'🚀 파이프라인 시안 이미지', 'upload':'🖼️ 업로드 시안', 'cp-file':'🖼️ 등록 제품 이미지' };
+  const srcLabel = srcLabelMap[data.imageSource] || '🖼️ 시안';
+  const srcFile = data.sourceFile ? ` <span style="color:var(--text-muted);font-size:10px;">(${escapeHtml(data.sourceFile)})</span>` : '';
   const specBanner = data.observedSpec
     ? `<div style="font-size:12px;margin:0 0 12px;line-height:1.5;background:${data.usedImage?'rgba(52,211,153,0.1)':'var(--bg)'};border:1px solid ${data.usedImage?'rgba(52,211,153,0.35)':'var(--border)'};padding:9px 13px;border-radius:8px;">
-        ${data.usedImage ? '🖼️ <b>시안 이미지 인식</b>' : '📝 <b>제품 정보 기반</b>'}: ${escapeHtml(data.observedSpec)}
-        ${data.usedImage ? '<span style="color:var(--text-muted);"> — 이 구조와 <b>같은 유형(🎯)</b> 위주로 비교했습니다.</span>' : '<span style="color:var(--text-muted);"> (시안 이미지 없음 — ⑤ 제품 이미지를 넣으면 구조까지 맞춰 검색합니다)</span>'}
+        ${data.usedImage ? `<b>${srcLabel} 인식</b>${srcFile}` : '📝 <b>제품 정보 기반</b>'}: ${escapeHtml(data.observedSpec)}
+        ${data.usedImage ? '<span style="color:var(--text-muted);"> — 이 구조와 <b>같은 유형(🎯)</b> 위주로 비교했습니다.</span>' : '<span style="color:var(--text-muted);"> (시안 없음 — 연동 파이프라인에 디자인 링크를 넣거나 ⑤ 제품 이미지를 넣으면 구조까지 맞춰 검색합니다)</span>'}
       </div>`
-    : (isSearchMode && !data.usedImage ? `<div style="font-size:11px;color:var(--text-muted);margin:0 0 10px;">💡 ⑤ 제품 이미지(시안)를 넣으면 "구조가 같은 제품"끼리 비교합니다 (지금은 이름·카테고리 기준).</div>` : '');
+    : (isSearchMode && !data.usedImage ? `<div style="font-size:11px;color:var(--text-muted);margin:0 0 10px;">💡 연동 파이프라인의 디자인 링크(또는 ⑤ 제품 이미지)가 있으면 "구조가 같은 제품"끼리 비교합니다 (지금은 이름·카테고리 기준).</div>` : '');
 
   wrap.innerHTML = `
     ${specBanner}
