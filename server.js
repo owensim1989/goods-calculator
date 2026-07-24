@@ -6517,6 +6517,7 @@ app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   } catch (imgErr) { console.warn('[market-price] 시안 로드 실패(무시):', imgErr.message); }
   const mediaBlocks = mediaBlock ? [mediaBlock] : [];
   const isPdfDesign = imageSource === 'pipeline-pdf';
+  let _searchErrMsg = null;
 
   // ── 1차: 🔍 실검색 모드 (Claude 웹서치) — 조구만·카카오프렌즈·라인프렌즈 3사 고정 (2026-07-24 Owen 확정)
   try {
@@ -6596,7 +6597,8 @@ JSON만 반환. 설명 금지:
       verdict, generatedAt: new Date().toISOString()
     });
   } catch (searchErr) {
-    console.warn('[estimate-market-price] 실검색 실패 → AI 추정 폴백:', String(searchErr.message).slice(0, 200));
+    _searchErrMsg = String(searchErr.message).slice(0, 300);
+    console.warn('[estimate-market-price] 실검색 실패 → AI 추정 폴백:', _searchErrMsg);
   }
 
   // ── 2차 폴백: AI 추정 모드 (웹서치 미가용·파싱 실패 시)
@@ -6672,6 +6674,8 @@ JSON만 반환. 설명 금지:
       ourPriceKRW: ourKRW,
       gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,
       verdict,
+      imageSource, sourceFile, usedImage: hasImage,
+      _debug: { searchError: _searchErrMsg, imageSource, sourceFile, isPdfDesign },
       generatedAt: new Date().toISOString()
     });
   } catch (e) {
