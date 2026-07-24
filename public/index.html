@@ -4629,6 +4629,8 @@ async function cpLoadProject(id){
     if(!it || it.error){showToast('불러오기 실패');return;}
     CP_CURRENT = it;
     cpRenderPipelineMirror(); // 🚀 파이프라인 연동 상태 미러 (비동기, 논블로킹)
+    // 저장 프로젝트 로드 시 분포박스·유사패널 자동 갱신 — 필드 세팅(동기) 완료 후 (2026-07-24)
+    setTimeout(() => { try { cpOnSpecChanged(); } catch(e){} }, 300);
     // 🔍 시리즈 관계 복원 (2026-05-11) — 저장된 row 가 복제로 만들어진 경우 root 표기
     CP_CLONED_FROM = (typeof it.seriesRootId === 'string' && it.seriesRootId) ? it.seriesRootId : null;
     document.getElementById('cp-name').value = it.프로젝트명||'';
