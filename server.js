@@ -6482,46 +6482,6 @@ async function _pipelineDesignMedia(cpId) {
   }
 }
 
-// 임시 진단: 파이프라인 시안(드라이브) 로드 단계별 상태 (2026-07-25)
-app.get('/api/debug/pipeline-design', async (req, res) => {
-  const cpId = req.query.cpId || '';
-  const out = { cpId, steps: {} };
-  try {
-    const pipelineStore = require('./lib/pipeline-store');
-    const linked = pipelineStore.listProjects({}).filter(p => p.consumerPricingId && String(p.consumerPricingId) === String(cpId));
-    out.steps.linkedCount = linked.length;
-    const urls = [];
-    for (const p of linked) {
-      for (const a of (p.attachments || [])) if (a.kind === 'drive' && a.url) urls.push(a.url);
-    }
-    out.steps.driveUrls = urls;
-    if (urls.length) {
-      const ref = _driveIdFromUrl(urls[0]);
-      out.steps.parsedRef = ref;
-      try {
-        const { getDriveClient } = require('./lib/backup-to-drive');
-        const drive = await getDriveClient();
-        out.steps.driveClient = 'ok';
-        // SA 이메일 (공유 대상 안내용 — 비밀 아님)
-        try {
-          const b64 = process.env.GOOGLE_SA_KEY_BASE64;
-          const rawj = b64 ? Buffer.from(b64, 'base64').toString('utf8') : (process.env.GOOGLE_SA_KEY_JSON || '');
-          out.steps.serviceAccountEmail = rawj ? (JSON.parse(rawj).client_email || null) : null;
-        } catch (ee) { out.steps.saEmailError = String(ee.message).slice(0, 120); }
-        if (ref && ref.kind === 'folder') {
-          // (a) 필터 없이 전체
-          const listAll = await drive.files.list({ q: `'${ref.id}' in parents and trashed = false`, fields: 'files(id,name,mimeType,size)', pageSize: 30, ...DRIVE_ALL });
-          out.steps.folderAllFiles = (listAll.data.files || []).map(f => ({ name: f.name, mime: f.mimeType }));
-          // (b) 폴더 자체 메타 접근 가능한지
-          try { const fm = await drive.files.get({ fileId: ref.id, fields: 'id,name,driveId', supportsAllDrives: true }); out.steps.folderMeta = fm.data; }
-          catch (fe) { out.steps.folderMetaError = String(fe.message).slice(0, 200); }
-        }
-      } catch (de) { out.steps.driveError = String(de.message).slice(0, 300); }
-    }
-  } catch (e) { out.error = String(e.message).slice(0, 300); }
-  res.json(out);
-});
-
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
   const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
@@ -6715,7 +6675,6 @@ JSON만 반환. 설명 금지:
       gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,
       verdict,
       imageSource, sourceFile, usedImage: hasImage,
-      _debug: { searchError: _searchErrMsg, imageSource, sourceFile, isPdfDesign },
       generatedAt: new Date().toISOString()
     });
   } catch (e) {
