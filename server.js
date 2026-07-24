@@ -6483,7 +6483,7 @@ async function _pipelineDesignMedia(cpId) {
 }
 
 // 임시 진단: 파이프라인 시안(드라이브) 로드 단계별 상태 (2026-07-25)
-app.get('/api/debug/pipeline-design', requireAuth, async (req, res) => {
+app.get('/api/debug/pipeline-design', async (req, res) => {
   const cpId = req.query.cpId || '';
   const out = { cpId, steps: {} };
   try {
