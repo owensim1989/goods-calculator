@@ -1150,6 +1150,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:12px;" onclick="cpNewProject()">+ 새 프로젝트</button>
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;margin-left:6px;" onclick="goToCatalogPage()" title="제품 리스트·바이어 엑셀·관리 도구는 사이드바 '제품 리스트' 메뉴로 이동했습니다">제품 리스트로 이동 →</button>
     </h3>
+    <!-- 상태 필터 칩 (2026-07-01: 승인건 기본 숨김 — 승인되면 '제품 리스트'에서 확인. Owen 요청) -->
+    <div id="cp-status-filter" style="display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap;"></div>
     <div id="cp-list-empty" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.</div>
     <div id="cp-list"></div>
   </div>
@@ -4089,17 +4091,46 @@ function cpGroupBySeriesRoot(items){
   }
   return flat;
 }
+// 상태 필터 (2026-07-01): '진행중'=승인 제외 / '승인'=승인만 / '전체'. 기본 승인 숨김, 선택 localStorage 기억.
+let cpStatusFilter = (function(){ try{ return localStorage.getItem('goods_cpStatusFilter') || '진행중'; }catch(e){ return '진행중'; } })();
+function cpSetStatusFilter(f){ cpStatusFilter = f; try{ localStorage.setItem('goods_cpStatusFilter', f); }catch(e){} cpLoadList(); }
+function cpRenderStatusFilter(allItems){
+  const el = document.getElementById('cp-status-filter'); if(!el) return;
+  let active = 0, appr = 0;
+  for(const it of (allItems||[])){ if((it.상태||'검토중')==='승인') appr++; else active++; }
+  const defs = [['진행중', active], ['승인', appr], ['전체', (allItems||[]).length]];
+  el.innerHTML = defs.map(([key,cnt])=>{
+    const on = cpStatusFilter===key;
+    const style = on
+      ? 'background:rgba(245,158,11,0.16);color:#f59e0b;border:1px solid rgba(245,158,11,0.45);'
+      : 'background:transparent;color:var(--text-muted);border:1px solid var(--border);';
+    return `<button type="button" onclick="cpSetStatusFilter('${key}')" style="font-size:11px;padding:3px 11px;border-radius:999px;cursor:pointer;${style}">${key} ${cnt}</button>`;
+  }).join('');
+}
 async function cpLoadList(){
   try{
     const r = await fetch('/api/consumer-pricing');
     const data = await r.json();
-    const items = data.items || [];
-    // list 캐시도 같이 갱신 (검색 모달·자동 감지 배너 재사용)
-    CP_LIST_CACHE = items;
+    const allItems = data.items || [];
+    // list 캐시도 같이 갱신 (검색 모달·자동 감지 배너 재사용) — 캐시는 전체 유지
+    CP_LIST_CACHE = allItems;
     CP_LIST_CACHE_AT = Date.now();
     const listEl = document.getElementById('cp-list');
     const emptyEl = document.getElementById('cp-list-empty');
-    if(!items.length){emptyEl.style.display='block';listEl.innerHTML='';return;}
+    cpRenderStatusFilter(allItems);
+    // 상태 필터 적용
+    const items = allItems.filter(it => {
+      const s = it.상태 || '검토중';
+      if (cpStatusFilter === '승인') return s === '승인';
+      if (cpStatusFilter === '진행중') return s !== '승인';
+      return true;
+    });
+    if(!items.length){
+      emptyEl.style.display='block';
+      emptyEl.textContent = allItems.length ? '이 필터에 해당하는 프로젝트가 없어요. 위 칩에서 다른 상태를 선택하세요.' : '저장된 프로젝트가 없습니다. 아래에서 신규 작성하세요.';
+      listEl.innerHTML='';
+      return;
+    }
     emptyEl.style.display='none';
     // 카탈로그 등록 여부 판별용 — 등록된 카탈로그 항목이 들고 있는 cpId(소비자가_산정_ID) 집합
     if (typeof cpFetchCatalogCached === 'function') { try { await cpFetchCatalogCached(); } catch(_){} }
