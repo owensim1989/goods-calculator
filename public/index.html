@@ -1194,8 +1194,6 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <label>② 🎯 타겟 소비자가 (KRW) *</label>
         <input type="text" id="cp-target-price" placeholder="예: 15,000" oninput="cpOnTargetInput(this)">
         <div id="cp-target-vs-avg" style="font-size:11px;color:var(--text-muted);margin-top:4px;min-height:14px;"></div>
-        <!-- 🆕 카테고리 가격 분포 박스 (B) — 카테고리 선택 시 자동 표시 -->
-        <div id="cp-price-distrib-box" style="display:none;margin-top:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;line-height:1.5;"></div>
       </div>
     </div>
 
@@ -1258,6 +1256,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </select></div>
       <div class="cp-field"><label>HS 참조 일치</label><input type="text" id="cp-hs-match" readonly style="background:var(--bg);" placeholder="AI 분석 후 표시"></div>
     </div>
+    <!-- 🆕 카테고리 가격 분포 박스 (B) — 품목 선택 직후 이 자리에 표시 (2026-07-24 위→아래 흐름 순서로 이동, Owen 요청) -->
+    <div id="cp-price-distrib-box" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;line-height:1.5;"></div>
   </div>
 
   <div class="cp-auto-section">
@@ -1367,9 +1367,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
   <div class="cp-auto-section" id="cp-market-price-section">
     <h4>📊 시장가 비교 (sanity check) <span class="auto-tag">AI 추정</span>
-      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="라인프렌즈·카카오프렌즈·산리오 동급 카테고리 한국 시장가를 AI로 추정 → 우리 가격이 시장 평균 대비 적정한지 점검">🔍 시장가 추정</button>
+      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="라인프렌즈·카카오프렌즈·기타 소형 캐릭터 굿즈의 🇰🇷한국·🇹🇼대만 시장가를 AI로 추정 → 우리 가격이 시장 평균 대비 적정한지 점검">🔍 시장가 추정 (🇰🇷+🇹🇼)</button>
     </h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">우리 한국 타겟가가 라인프렌즈/카카오프렌즈/산리오 동급 캐릭터 굿즈 시장 평균 대비 적정한지 AI로 빠르게 점검합니다. 정확한 동일 제품 매칭은 불가능하므로 카테고리 평균 기반 ±15% 가이드라인.</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">라인프렌즈·카카오프렌즈·기타 소형 캐릭터 굿즈(산리오·치이카와 등) 동급 제품의 <b>🇰🇷 한국·🇹🇼 대만</b> 시장 평균을 AI로 추정하고, 브랜드별 공식몰·Shopee 대만 <b>실제 판매가 확인 링크</b>를 함께 제공합니다. 카테고리 평균 기반 ±15% 가이드라인.</p>
     <div id="cp-market-price-result" style="display:none;"></div>
     <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
       💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 추정</b> 버튼을 누르면 결과가 표시됩니다 (AI 호출 1회 ~5초)
@@ -1388,7 +1388,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </span>
     </h4>
     <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-      이미 카탈로그에 등록되어 판매중인 비슷한 스펙 (같은 카테고리 + 사이즈 ±N%) 자체 제품의 가격입니다. 비슷한 제품인데 가격 차이가 크면 검토 필요.
+      🎯 <b>동일 품목</b>(제품명 기준, 예: 볼펜↔볼펜)이 먼저 나오고, 없으면 "없음"으로 표시됩니다. 같은 분류(카테고리) 유사 제품은 아래 접힌 섹션에서 펼쳐 보세요.
     </p>
     <div id="cp-similar-products-body" style="font-size:12px;"></div>
   </div>
@@ -5007,6 +5007,45 @@ function cpToggleSimilarPanel(){
 // 카탈로그 country code 매핑 (catalog retails 필드 ↔ CP_COUNTRIES code)
 const CP_SIMILAR_COUNTRY_CODES = ['KR','TW','HK','CN','TH','US'];   // catalog 에 없는 JP 는 표 컬럼만 비움
 
+// ━━━ 동일 품목 매칭 (2026-07-24 Owen: 완전 동일 품목 우선 노출) ━━━
+// 프로젝트명·카탈로그 제품명을 토큰으로 쪼개 교집합 매칭. 관례상 이름 앞부분 = 품목(예: "볼펜 (Ball pen)" / "Ball pen - Sofa").
+const CP_SAME_ITEM_STOPWORDS = new Set(['the','and','for','of','with','new','ver','mr','donothing','mrdonothing','미스터두낫띵','두낫띵']);
+function cpNameTokens(s){
+  return String(s||'').toLowerCase()
+    .replace(/[()\[\]{}_\-·,./+]/g,' ')
+    .split(/\s+/)
+    .map(t=>t.trim())
+    .filter(t=>t.length>=2 && !CP_SAME_ITEM_STOPWORDS.has(t));
+}
+function cpFindSameItemByName(name, opts){
+  const myTokens = cpNameTokens(name);
+  if (!myTokens.length) return [];
+  const excludeId = (opts && opts.excludeId) || null;
+  const headTokens = myTokens.slice(0, 2);   // 이름 앞 2토큰 = 품목일 가능성 높음
+  const out = [];
+  for (const it of (CP_CATALOG_CACHE || [])){
+    if (excludeId && it.id === excludeId) continue;
+    const st = it.판매상태 || '';
+    if (st === '단종' || st === 'Out of stock') continue;
+    const hasAnyPrice = it.retailKR > 0 || (it.retails && Object.values(it.retails).some(v => v > 0));
+    if (!hasAnyPrice) continue;
+    const itTokens = cpNameTokens(it.productName || '');
+    if (!itTokens.length) continue;
+    const hit = myTokens.filter(t => itTokens.some(x => x === t || x.indexOf(t) === 0 || t.indexOf(x) === 0));
+    if (!hit.length) continue;
+    // 색상·사이즈 같은 꼬리 토큰만 겹치는 오탐 방지: 앞토큰 매칭이거나 2개 이상 겹칠 때만 동일 품목 인정
+    const strong = hit.some(t => headTokens.includes(t));
+    if (!strong && hit.length < 2) continue;
+    out.push({ item: it, score: (strong ? 10 : 0) + hit.length, sizeSim: false, matSim: false });
+  }
+  out.sort((a,b)=> b.score - a.score || ((Date.parse(b.item.등록일||'')||0) - (Date.parse(a.item.등록일||'')||0)));
+  return out.slice(0, 50);
+}
+
+// 같은 분류(카테고리) 섹션 — 기본 접힘 (2026-07-24 Owen)
+let CP_SIMILAR_CAT_COLLAPSED = true;
+function cpToggleSimilarCatSection(){ CP_SIMILAR_CAT_COLLAPSED = !CP_SIMILAR_CAT_COLLAPSED; cpRefreshSimilarPanel(); }
+
 function cpRefreshSimilarPanel(){
   const sect = document.getElementById('cp-similar-products-section');
   const body = document.getElementById('cp-similar-products-body');
@@ -5019,28 +5058,43 @@ function cpRefreshSimilarPanel(){
   const tolEl = document.getElementById('cp-similar-tolerance');
   const tol = tolEl ? (parseInt(tolEl.value, 10) || 30) / 100 : 0.30;
   const excludeId = CP_CURRENT?.id || null;
-  const matches = cpFindSimilarBySpec(cat, size, material, { sizeTolerance: tol, excludeId });
-  if (!matches.length){
-    sect.style.display = 'block';
-    if (countEl) countEl.textContent = '';
-    body.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-muted);font-size:12px;">"${escapeHtml(cat)}" 카테고리에 매칭되는 유사 제품 없음 (사이즈 ±${(tol*100).toFixed(0)}% 또는 카탈로그 미등록)</div>`;
-    return;
-  }
+  const name = (document.getElementById('cp-name')?.value || '').trim();
+  // ① 동일 품목 (이름 매칭) ② 같은 분류 (스펙 매칭) — ①에 이미 나온 제품은 ②에서 제외
+  const sameItem = cpFindSameItemByName(name, { excludeId });
+  const sameIds = new Set(sameItem.map(m => m.item.id));
+  const catMatches = cpFindSimilarBySpec(cat, size, material, { sizeTolerance: tol, excludeId })
+    .filter(m => !sameIds.has(m.item.id));
   sect.style.display = 'block';
-  if (CP_SIMILAR_PANEL_COLLAPSED){
-    body.style.display = 'none';
-  } else {
-    body.style.display = 'block';
-  }
-  // 카운트: 사이즈 매칭 / 카테고리만 분리
-  const sizeMatched = matches.filter(m => m.sizeSim).length;
-  const catOnly = matches.length - sizeMatched;
+  body.style.display = CP_SIMILAR_PANEL_COLLAPSED ? 'none' : 'block';
   if (countEl){
     const parts = [];
-    if (sizeMatched > 0) parts.push(`<b style="color:var(--success);">사이즈 매칭 ${sizeMatched}건</b>`);
-    if (catOnly > 0) parts.push(`<span style="color:var(--text-muted);">카테고리만 ${catOnly}건</span>`);
+    parts.push(sameItem.length
+      ? `<b style="color:var(--success);">동일 품목 ${sameItem.length}건</b>`
+      : `<span style="color:var(--text-muted);">동일 품목 없음</span>`);
+    if (catMatches.length > 0) parts.push(`<span style="color:var(--text-muted);">같은 분류 ${catMatches.length}건</span>`);
     countEl.innerHTML = parts.join(' · ');
   }
+  const target = cpParseNum(document.getElementById('cp-target-price')?.value) || 0;
+  // ① 동일 품목 — 항상 노출, 없으면 "없음" 명시
+  const aHtml = sameItem.length
+    ? cpSimilarTableHTML(sameItem, target)
+    : `<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:12px;background:var(--bg);border:1px dashed var(--border);border-radius:8px;">동일 품목 없음 — 카탈로그에 "${escapeHtml(name || '(제품명 미입력)')}" 와 같은 품목의 등록 제품이 없습니다</div>`;
+  // ② 같은 분류 — 기본 접힘 토글
+  const bLabel = `${CP_SIMILAR_CAT_COLLAPSED ? '▸' : '▾'} 유사 자체 제품 가격 비교 — 같은 분류 "${escapeHtml(cat)}" ${catMatches.length}건 ${CP_SIMILAR_CAT_COLLAPSED ? '보기' : '접기'}`;
+  const bInner = CP_SIMILAR_CAT_COLLAPSED ? '' : (catMatches.length
+    ? `<div style="margin-top:8px;">${cpSimilarTableHTML(catMatches, target)}</div>`
+    : `<div style="margin-top:8px;padding:12px;text-align:center;color:var(--text-muted);font-size:12px;">"${escapeHtml(cat)}" 분류에 추가 매칭 제품 없음 (사이즈 ±${(tol*100).toFixed(0)}% 또는 카탈로그 미등록)</div>`);
+  body.innerHTML = `
+    <div style="font-weight:600;font-size:12px;margin-bottom:6px;">🎯 동일 품목 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">— 제품명 기준 완전 동일 품목 우선</span></div>
+    ${aHtml}
+    <div style="margin-top:12px;">
+      <button type="button" onclick="cpToggleSimilarCatSection()" style="width:100%;text-align:left;font-size:12px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;">${bLabel}</button>
+      ${bInner}
+    </div>`;
+}
+
+// 매칭 리스트 → 국가별 가격 비교 테이블 HTML (동일 품목 / 같은 분류 공용)
+function cpSimilarTableHTML(matches, target){
   // 상위 8개만 표시
   const top = matches.slice(0, 8);
   // 컬럼 헤더 — 국가별 retail
@@ -5048,8 +5102,7 @@ function cpRefreshSimilarPanel(){
     const flag = CP_FLAGS[code] || '';
     return `<th style="padding:6px 8px;font-size:10px;text-align:right;color:var(--text-muted);font-weight:500;">${flag}${code}</th>`;
   }).join('');
-  // 행 — 제품 카드
-  const target = cpParseNum(document.getElementById('cp-target-price')?.value) || 0;
+  // 행 — 제품 카드 (target 은 파라미터로 받음)
   const rows = top.map(m => {
     const it = m.item;
     const thumb = it.imageUrl || (it.hasLocalImage && it.imageId ? '/api/catalog-image/' + encodeURIComponent(it.imageId) : '');
@@ -5111,7 +5164,7 @@ function cpRefreshSimilarPanel(){
       ${cells}
     </tr>`;
   })();
-  body.innerHTML = `
+  return `
     <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:var(--bg);">
@@ -5821,29 +5874,47 @@ function cpRenderMarketPrice(data){
   const brands = data.brands || [];
   // 우리 제품명을 검색어로 사용 (없으면 productExample fallback)
   const searchKeyword = (document.getElementById('cp-name')?.value||'').trim();
+  // 대만 검색용 영문 키워드 (제품명의 ASCII 부분, 예: "볼펜 (Ball pen)" → "Ball pen")
+  const asciiKw = ((searchKeyword.match(/[A-Za-z0-9][A-Za-z0-9 ]*/g)||[]).join(' ').replace(/\s+/g,' ').trim());
+  const fmtTWD = (v) => (v || v===0) ? 'NT$' + Math.round(v).toLocaleString() : '-';
   const cards = brands.map(b => {
     const brand = (b.brand||'').toLowerCase();
-    const kw = encodeURIComponent(searchKeyword || b.productExample || '');
-    let url = '';
-    if (brand.includes('line') || brand.includes('라인')) {
-      url = `https://store.linefriends.com/kr/search?keyword=${kw}`;
-    } else if (brand.includes('kakao') || brand.includes('카카오')) {
-      url = `https://store.kakaofriends.com/kr/search?keyword=${kw}`;
-    } else if (brand.includes('sanrio') || brand.includes('산리오')) {
-      url = `https://www.sanrio.co.kr/search/?searchword=${kw}`;
-    } else {
-      // 그 외 브랜드는 구글 검색으로 fallback
-      url = `https://www.google.com/search?q=${encodeURIComponent(b.brand+' '+(searchKeyword||b.productExample||''))}`;
-    }
+    const kr = b.kr || { estimated: b.estimatedKRW, low: b.lowKRW, high: b.highKRW };   // 구형 캐시 호환
+    const tw = b.tw || {};
+    const krKw = encodeURIComponent(searchKeyword || b.productExample || '');
+    // 🇰🇷 실제 확인 링크 — 브랜드 공식몰 검색 (그 외는 네이버쇼핑)
+    let krUrl, krLabel;
+    if (brand.includes('line') || brand.includes('라인')) { krUrl = `https://store.linefriends.com/kr/search?keyword=${krKw}`; krLabel = '라인프렌즈 공식몰'; }
+    else if (brand.includes('kakao') || brand.includes('카카오')) { krUrl = `https://store.kakaofriends.com/kr/search?keyword=${krKw}`; krLabel = '카카오프렌즈 스토어'; }
+    else { krUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent('캐릭터 ' + (searchKeyword || b.productExample || '굿즈'))}`; krLabel = '네이버쇼핑'; }
+    // 🇹🇼 실제 확인 링크 — Shopee 대만 검색 (대만 캐릭터 굿즈 최대 유통 채널)
+    const twBrandEng = brand.includes('line') ? 'line friends' : (brand.includes('kakao') ? 'kakao friends' : 'sanrio');
+    const twUrl = `https://shopee.tw/search?keyword=${encodeURIComponent((twBrandEng + ' ' + asciiKw).trim())}`;
     return `
-    <div class="cp-mp-card" onclick="window.open('${escapeHtml(url)}', '_blank', 'noopener')" title="🔗 ${escapeHtml(b.brand)} 공식몰에서 검색 결과 새 탭 열기" style="cursor:pointer;">
-      <div class="brand">${escapeHtml(b.brand||'')} <span style="font-size:10px;color:var(--text-muted);font-weight:400;">🔗</span></div>
+    <div class="cp-mp-card">
+      <div class="brand">${escapeHtml(b.brand||'')}</div>
       <div class="product">${escapeHtml(b.productExample||'-')}</div>
-      <div class="price">${b.estimatedKRW ? cpFmtKRW(b.estimatedKRW) : '-'}</div>
-      <div class="range">범위: ${b.lowKRW?cpFmtKRW(b.lowKRW):'-'} ~ ${b.highKRW?cpFmtKRW(b.highKRW):'-'}</div>
+      <div style="display:flex;flex-direction:column;gap:3px;margin:6px 0;">
+        <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇰🇷</span><span class="price" style="margin:0;">${kr.estimated ? cpFmtKRW(kr.estimated) : '-'}</span><span class="range" style="margin:0;">${kr.low?cpFmtKRW(kr.low):'-'} ~ ${kr.high?cpFmtKRW(kr.high):'-'}</span></div>
+        <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇹🇼</span><span style="font-weight:700;font-size:14px;">${tw.estimated ? fmtTWD(tw.estimated) : '-'}</span><span class="range" style="margin:0;">${tw.low?fmtTWD(tw.low):'-'} ~ ${tw.high?fmtTWD(tw.high):'-'}</span></div>
+      </div>
       <div class="reason">${escapeHtml(b.reason||'')}</div>
+      <div style="display:flex;gap:5px;margin-top:7px;flex-wrap:wrap;">
+        <a href="${escapeHtml(krUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="${escapeHtml(krLabel)}에서 실제 판매가 확인">🇰🇷 ${escapeHtml(krLabel)} ↗</a>
+        <a href="${escapeHtml(twUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="Shopee 대만에서 실제 판매가 확인">🇹🇼 Shopee 대만 ↗</a>
+      </div>
     </div>`;
   }).join('');
+  // 시장 전체 검색 링크 (실제 소비자가 직접 확인용)
+  const naverAll = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent('캐릭터 ' + (searchKeyword || '굿즈'))}`;
+  const shopeeAll = `https://shopee.tw/search?keyword=${encodeURIComponent(asciiKw || 'character goods')}`;
+  const pchomeAll = `https://ecshweb.pchome.com.tw/search/v3.3/?q=${encodeURIComponent(asciiKw || 'character')}`;
+  const marketLinks = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:10px;color:var(--text-muted);">
+    실제 시장가 직접 확인:
+    <a href="${escapeHtml(naverAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇰🇷 네이버쇼핑 ↗</a>
+    <a href="${escapeHtml(shopeeAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇹🇼 Shopee ↗</a>
+    <a href="${escapeHtml(pchomeAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇹🇼 PChome ↗</a>
+  </div>`;
 
   let summaryHtml = '';
   const verdict = data.verdict;
@@ -5859,15 +5930,19 @@ function cpRenderMarketPrice(data){
     summaryHtml = `
       <div class="cp-mp-summary ${verdict}">
         <div class="lhs">
-          <div class="lbl">3사 평균</div>
+          <div class="lbl">🇰🇷 시장 평균</div>
           <div class="val">${cpFmtKRW(data.avgKRW)}</div>
         </div>
+        ${data.avgTWD ? `<div class="lhs">
+          <div class="lbl">🇹🇼 시장 평균</div>
+          <div class="val">${fmtTWD(data.avgTWD)}</div>
+        </div>` : ''}
         <div class="lhs">
           <div class="lbl">우리 가격</div>
           <div class="val">${cpFmtKRW(data.ourPriceKRW)}</div>
         </div>
         <div class="lhs">
-          <div class="lbl">갭</div>
+          <div class="lbl">갭 (🇰🇷 기준)</div>
           <div class="gap ${verdict}">${gapTxt}</div>
         </div>
         <div class="verdict ${verdict}">${verdictTxt}</div>
@@ -5878,9 +5953,13 @@ function cpRenderMarketPrice(data){
     summaryHtml = `
       <div class="cp-mp-summary no-target">
         <div class="lhs">
-          <div class="lbl">3사 평균 (한국 타겟가 미입력)</div>
+          <div class="lbl">🇰🇷 시장 평균 (한국 타겟가 미입력)</div>
           <div class="val">${cpFmtKRW(data.avgKRW)}</div>
         </div>
+        ${data.avgTWD ? `<div class="lhs">
+          <div class="lbl">🇹🇼 시장 평균</div>
+          <div class="val">${fmtTWD(data.avgTWD)}</div>
+        </div>` : ''}
         <div style="font-size:12px;color:var(--text-muted);">한국 타겟가를 입력하면 갭% 자동 계산됩니다</div>
       </div>
     `;
@@ -5893,6 +5972,7 @@ function cpRenderMarketPrice(data){
   wrap.innerHTML = `
     ${summaryNote}
     <div class="cp-mp-grid">${cards}</div>
+    ${marketLinks}
     ${summaryHtml}
     ${meta}
   `;

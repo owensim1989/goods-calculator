@@ -6399,7 +6399,9 @@ app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!productName) return res.status(400).json({ error: '제품명(productName) 필수' });
   try {
     const ourKRW = Number(ourTargetKRW) || null;
-    const prompt = `당신은 한국의 캐릭터 굿즈 시장 가격 분석 전문가입니다. 아래 제품과 비교 가능한 라인프렌즈·카카오프렌즈·산리오 동일 카테고리 굿즈의 한국 시장 일반적 소비자가(권장소비자가/온라인 정상가 기준)를 추정하세요.
+    // 2026-07-24 (Owen): 한국+대만 2개 시장 동시 추정 — 라인프렌즈·카카오프렌즈·기타 소형 캐릭터 굿즈(산리오·치이카와 등)
+    const prompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 분석 전문가입니다. 아래 제품과 비교 가능한 동일 카테고리 굿즈의 (a) 한국 시장 소비자가(KRW)와 (b) 대만 시장 소비자가(TWD)를 각각 추정하세요.
+비교 축 3개: ① LineFriends(라인프렌즈) ② KakaoFriends(카카오프렌즈) ③ 기타 소형 캐릭터 굿즈 브랜드(산리오·치이카와·미피 등 시장 일반).
 
 [비교 대상 제품]
 - 제품명: ${productName}
@@ -6410,30 +6412,48 @@ app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
 ${ourKRW ? `- 우리 한국 타겟가: ${ourKRW.toLocaleString()}원 (참고용 — 추정에 직접 반영 X)` : ''}
 
 [추정 원칙]
-1. 각 브랜드(LineFriends / KakaoFriends / Sanrio) 한국 공식몰·온라인몰의 동급 카테고리 제품 가격대를 기준
-2. 비슷한 사이즈·소재·기능의 제품을 골라 대표 가격 1개 + 일반 범위(low~high) 제시
-3. 라이선스 비용·마케팅 비용 차이를 감안한 합리적 추정 (정확한 동일 제품 매칭 불가능 — 카테고리 평균 가격대)
-4. 산리오는 한국 정발 가격 기준 (산리오코리아 또는 산리오 공식 몰 기준). 일본 가격 X
-5. 캐릭터 굿즈 시장 일반 가격 인지: PVC키링 8,000~15,000원 / 아크릴키링 5,000~10,000원 / 봉제인형 소형 15,000~25,000원·중형 25,000~45,000원·대형 50,000~120,000원 / 머그컵 12,000~20,000원 / 의류 20,000~50,000원 / 폰케이스 15,000~28,000원 / 스티커 3,000~7,000원
+1. 한국: 각 브랜드 한국 공식몰·온라인몰(네이버쇼핑 정상가)의 동급 카테고리 가격대 기준
+2. 대만: LINE FRIENDS 대만 유통가·Shopee TW·PChome·誠品 등 대만 온라인 정상가(TWD) 기준. 대만은 수입 캐릭터 굿즈가 한국 대비 10~30% 비싼 경향 반영
+3. 비슷한 사이즈·소재·기능의 제품 대표가 1개 + 일반 범위(low~high). 정확한 동일 제품 매칭 불가 시 카테고리 평균 가격대
+4. 캐릭터 굿즈 한국 일반가 인지: PVC키링 8,000~15,000원 / 아크릴키링 5,000~10,000원 / 볼펜·문구 3,000~12,000원 / 봉제 소형 15,000~25,000·중형 25,000~45,000 / 머그 12,000~20,000 / 의류 20,000~50,000 / 스티커 3,000~7,000원
+5. TWD 환산 참고: 1 TWD ≈ 42~45 KRW
 
 JSON만 반환. 설명 금지:
 {
   "brands": [
-    {"brand": "LineFriends", "productExample": "BT21 미니 인형 (15cm급)", "estimatedKRW": 22000, "lowKRW": 18000, "highKRW": 28000, "reason": "BT21 공식몰 미니 인형 카테고리 평균"},
-    {"brand": "KakaoFriends", "productExample": "라이언 미니 피규어", "estimatedKRW": 19000, "lowKRW": 15000, "highKRW": 25000, "reason": "카카오프렌즈 스토어 동급 사이즈 인형/피규어 평균"},
-    {"brand": "Sanrio", "productExample": "마이멜로디 봉제 인형 S", "estimatedKRW": 20000, "lowKRW": 16000, "highKRW": 26000, "reason": "산리오코리아 공식몰 소형 봉제 평균"}
+    {"brand": "LineFriends", "productExample": "브라운 볼펜 (동급)", "kr": {"estimated": 6000, "low": 4500, "high": 9000}, "tw": {"estimated": 160, "low": 120, "high": 220}, "reason": "라인프렌즈 공식몰 문구 카테고리 평균 · 대만 정발가"},
+    {"brand": "KakaoFriends", "productExample": "라이언 볼펜 (동급)", "kr": {"estimated": 5500, "low": 4000, "high": 8000}, "tw": {"estimated": 150, "low": 110, "high": 200}, "reason": "카카오프렌즈 스토어 동급 평균 · Shopee TW 시세"},
+    {"brand": "기타 소형 캐릭터 굿즈", "productExample": "산리오·치이카와 볼펜 (동급)", "kr": {"estimated": 5000, "low": 3500, "high": 7500}, "tw": {"estimated": 140, "low": 100, "high": 190}, "reason": "산리오KR·치이카와 정발가 평균 · 대만 수입가"}
   ],
-  "summary": "동급 캐릭터 봉제 인형 한국 시장 평균 18,000~28,000원 구간"
+  "summary": "동급 캐릭터 볼펜 한국 4,000~9,000원 · 대만 NT$110~220 구간"
 }`;
-    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 1200 });
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 1600 });
     const parsed = extractJSON(out);
     if (!parsed || !Array.isArray(parsed.brands)) {
       console.error('[estimate-market-price] 파싱 실패. Claude 원문:\n', out.slice(0, 1500));
       return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 1200) });
     }
-    // 평균/갭 계산
-    const validEstimates = parsed.brands.map(b => Number(b.estimatedKRW)).filter(n => n > 0);
-    const avgKRW = validEstimates.length ? Math.round(validEstimates.reduce((a, b) => a + b, 0) / validEstimates.length) : null;
+    // 브랜드별 KR/TW 정규화 (구형 estimatedKRW 응답도 호환)
+    const brands = parsed.brands.map(b => ({
+      brand: b.brand || '',
+      productExample: b.productExample || '',
+      reason: b.reason || '',
+      kr: {
+        estimated: Number(b.kr?.estimated ?? b.estimatedKRW) || null,
+        low: Number(b.kr?.low ?? b.lowKRW) || null,
+        high: Number(b.kr?.high ?? b.highKRW) || null
+      },
+      tw: {
+        estimated: Number(b.tw?.estimated) || null,
+        low: Number(b.tw?.low) || null,
+        high: Number(b.tw?.high) || null
+      }
+    }));
+    // 시장별 평균/갭 계산
+    const krVals = brands.map(b => b.kr.estimated).filter(n => n > 0);
+    const twVals = brands.map(b => b.tw.estimated).filter(n => n > 0);
+    const avgKRW = krVals.length ? Math.round(krVals.reduce((a, b) => a + b, 0) / krVals.length) : null;
+    const avgTWD = twVals.length ? Math.round(twVals.reduce((a, b) => a + b, 0) / twVals.length) : null;
     let gapPct = null, verdict = null;
     if (avgKRW && ourKRW) {
       gapPct = ((ourKRW / avgKRW) - 1) * 100;
@@ -6443,9 +6463,10 @@ JSON만 반환. 설명 금지:
     }
     res.json({
       success: true,
-      brands: parsed.brands,
+      brands,
       summary: parsed.summary || '',
       avgKRW,
+      avgTWD,
       ourPriceKRW: ourKRW,
       gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,
       verdict,
