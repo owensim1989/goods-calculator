@@ -6399,7 +6399,9 @@ JSON만 반환. 설명 금지:
 // ━━━ 웹서치 기반 Claude 호출 — pause_turn(장기 검색 턴 일시정지) 이어받기 포함 (2026-07-24) ━━━
 async function _claudeWebSearchText(prompt, opts = {}) {
   const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: opts.maxSearches || 10 }];
-  let messages = [{ role: 'user', content: prompt }];
+  // 이미지(제품 시안) 있으면 vision 블록 + 텍스트 (2026-07-25: 시안 구조 인식 후 동일 스펙 검색)
+  const userContent = opts.imageBlock ? [opts.imageBlock, { type: 'text', text: prompt }] : prompt;
+  let messages = [{ role: 'user', content: userContent }];
   for (let hop = 0; hop < 4; hop++) {
     const j = await callClaude(messages, { ...opts, tools, raw: true });
     if (j.stop_reason === 'pause_turn') {
@@ -6415,43 +6417,70 @@ async function _claudeWebSearchText(prompt, opts = {}) {
 
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
-  const { productName, category, size, material, hsCode, ourTargetKRW } = req.body || {};
+  const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
   if (!productName) return res.status(400).json({ error: '제품명(productName) 필수' });
   const ourKRW = Number(ourTargetKRW) || null;
 
+  // 🖼️ 제품 시안 이미지 로드 → Claude vision 블록 (2026-07-25 Owen: 시안 구조 보고 동일 스펙 비교)
+  //   신규 업로드분(imageDataUrl) 우선, 없으면 저장된 카탈로그 이미지 파일(cpId) 읽기. sharp 로 1024px jpeg 축소.
+  let imageBlock = null, hasImage = false;
+  try {
+    let buf = null;
+    if (imageDataUrl && /^data:image\//.test(imageDataUrl)) {
+      const dec = decodeImagePayload(imageDataUrl);
+      if (dec) buf = dec.buf;
+    } else if (cpId) {
+      const imgId = cpImageId(cpId);
+      const found = imgId ? findCatalogImage(imgId) : null;
+      if (found) buf = fs.readFileSync(found.path);
+    }
+    if (buf && buf.length && sharp) {
+      const resized = await sharp(buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+      imageBlock = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } };
+      hasImage = true;
+    }
+  } catch (imgErr) { console.warn('[market-price] 시안 이미지 로드 실패(무시):', imgErr.message); }
+
   // ── 1차: 🔍 실검색 모드 (Claude 웹서치) — 조구만·카카오프렌즈·라인프렌즈 3사 고정 (2026-07-24 Owen 확정)
   try {
-    const searchPrompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 조사원입니다. 웹 검색으로 아래 제품과 유사한 **실제 판매 중인 상품의 실제 가격**을 조사하세요.
+    const searchPrompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 조사원입니다. 웹 검색으로 아래 제품과 **구조·형태가 동일한** 실제 판매 중인 상품의 실제 가격을 조사하세요.
+
+${hasImage ? `[⚠️ 가장 중요 — 먼저 제품 시안 이미지를 보고 구조를 파악]
+첨부된 이미지가 우리가 만들려는 실제 제품 시안입니다. 제품명만 보고 흔한 품목(예: 그냥 프린팅된 볼펜)으로 착각하지 말고, **이미지에 보이는 실제 구조**를 정확히 파악하세요.
+예: "볼펜"이라도 (a) 몸통에 캐릭터가 인쇄만 된 볼펜과 (b) 2D/입체 캐릭터 피규어·아크릴 조형물이 펜 상단/몸통에 부착된 '캐릭터 조형 볼펜'은 전혀 다른 제품·가격대입니다.
+이미지에서 관찰한 형태(부착물 유무·2D/3D·소재감·조형 복잡도 등)를 observedSpec 에 한 줄로 적고, **그 구조와 동일한 유형의 상품만** 검색·수집하세요. 단순 인쇄 제품은 구조가 다르면 제외.` : `[제품 정보만으로 판단 — 시안 이미지 없음]
+observedSpec 은 제품명·카테고리 기반 추정으로 채우고, 이미지가 없으니 구조 매칭은 텍스트 정보 범위에서만.`}
 
 [조사 대상 브랜드 — 이 3개만, 다른 브랜드 금지]
 1. JOGUMAN STUDIO (조구만 스튜디오)
 2. KakaoFriends (카카오프렌즈)
 3. LineFriends (라인프렌즈)
 
-[우리 제품 — 이것과 유사한 품목을 각 브랜드에서 찾기]
+[우리 제품]
 - 제품명: ${productName}
 - 카테고리: ${category || '미정'}
 - 사이즈(mm): ${size || '미정'}
 - 소재: ${material || '미정'}
 
 [조사 방법]
-1. ⚠️ 커버리지 우선: 6개 조합(3브랜드 × 한국/대만)을 **각 1회씩 먼저** 검색해 전 조합을 커버한 뒤, 남는 예산으로 보강. 한국에만 검색을 몰아쓰지 말 것
-2. 한국 시장 = 공식몰·네이버 스마트스토어·네이버쇼핑 / 대만 시장 = Shopee TW·PChome·誠品 (대만은 "site:shopee.tw joguman 原子筆" 같은 사이트 한정·중국어 병용 검색이 효과적)
-3. 유사 품목의 실제 판매 상품을 시장별 최대 3개씩 수집 — 검색 결과에서 확인한 실제 상품명·판매가·URL만 기록 (추측·기억으로 채우지 말 것). 단, **검색 결과 스니펫/제목에 보이는 가격은 유효한 실판매가로 기록** — 페이지를 직접 열 수 없다는 이유로 포기하지 말 것. 쇼핑 검색결과(네이버쇼핑·Shopee 리스트)의 가격 표기도 수집 대상
-4. 한국은 KRW, 대만은 TWD 표기가. 대만에서 못 찾은 브랜드는 items 빈 배열 + note에 사유
-5. 검색은 총 14회 이내
+1. ${hasImage ? '위에서 파악한 실제 구조와 **동일 유형**의 상품을 검색 (예: 캐릭터 조형 부착형이면 "피규어 볼펜"·"마스코트 볼펜"·"入体 造型 原子筆" 등으로, 단순 인쇄형과 구분).' : '유사 품목을 검색.'} 검색어에 구조 키워드를 반드시 포함
+2. ⚠️ 커버리지 우선: 6개 조합(3브랜드 × 한국/대만)을 **각 1회씩 먼저** 검색해 전 조합 커버 후 보강. 한국에만 몰아쓰지 말 것
+3. 한국 = 공식몰·네이버 스마트스토어·네이버쇼핑 / 대만 = Shopee TW·PChome·誠品 (대만은 "site:shopee.tw joguman 造型 原子筆" 등 사이트 한정·중국어 병용이 효과적)
+4. 실제 판매 상품을 시장별 최대 3개씩 — 실제 상품명·판매가·URL만 기록(추측 금지). **검색 결과 스니펫/제목의 가격도 유효**하니 페이지 못 열어도 포기 말 것. 각 상품의 구조가 우리 제품과 같은지 structMatch(true/false)로 표시
+5. 한국은 KRW, 대만은 TWD. 못 찾은 조합은 items 빈 배열 + note 사유. 검색 총 14회 이내
 
 JSON만 반환. 설명 금지:
 {
+  "observedSpec": "시안에서 파악한 제품 구조 한 줄 (예: 2D 아크릴 캐릭터가 펜 상단에 부착된 캐릭터 조형 볼펜)",
   "brands": [
-    {"brand": "JOGUMAN STUDIO", "kr": {"items": [{"name": "실제 상품명", "price": 6500, "url": "https://실제URL", "seller": "판매처"}]}, "tw": {"items": []}, "note": "대만 공식 유통 미확인"},
+    {"brand": "JOGUMAN STUDIO", "kr": {"items": [{"name": "실제 상품명", "price": 6500, "url": "https://실제URL", "seller": "판매처", "structMatch": true}]}, "tw": {"items": []}, "note": "대만 공식 유통 미확인"},
     {"brand": "KakaoFriends", "kr": {"items": []}, "tw": {"items": []}, "note": ""},
     {"brand": "LineFriends", "kr": {"items": []}, "tw": {"items": []}, "note": ""}
   ],
   "summary": "조사 요약 1~2문장"
 }`;
     // sonnet 사용: haiku 는 "페이지 접근 불가"라며 가격 추출을 소극적으로 포기하는 경향 (2026-07-24 실측)
-    const { text, searches } = await _claudeWebSearchText(searchPrompt, { model: 'claude-sonnet-5', max_tokens: 3000, maxSearches: 14 });
+    const { text, searches } = await _claudeWebSearchText(searchPrompt, { model: 'claude-sonnet-5', max_tokens: 3200, maxSearches: 14, imageBlock });
     const parsed = extractJSON(text);
     if (!parsed || !Array.isArray(parsed.brands)) throw new Error('search_parse_failed: ' + String(text).slice(0, 200));
     const normItem = (it, cur) => ({
@@ -6459,6 +6488,7 @@ JSON만 반환. 설명 금지:
       price: Number(it.price) > 0 ? Number(it.price) : null,
       url: (typeof it.url === 'string' && /^https?:\/\//.test(it.url)) ? it.url : null,
       seller: String(it.seller || '').slice(0, 60),
+      structMatch: it.structMatch === true,
       currency: cur
     });
     const brands = parsed.brands.map(b => {
@@ -6480,6 +6510,8 @@ JSON만 반환. 설명 금지:
     console.log('[estimate-market-price] 실검색 모드 성공 — 검색', searches, '회, KR', krAll.length, '건 / TW', twAll.length, '건');
     return res.json({
       success: true, mode: 'search', searches, brands,
+      observedSpec: String(parsed.observedSpec || '').slice(0, 200),
+      usedImage: hasImage,
       summary: parsed.summary || '',
       avgKRW, avgTWD, ourPriceKRW: ourKRW,
       gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,

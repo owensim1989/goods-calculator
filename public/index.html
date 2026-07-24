@@ -1369,7 +1369,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <h4>📊 시장가 비교 (sanity check) <span class="auto-tag">AI 추정</span>
       <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 Claude 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만 실판매가·실링크 수집 → 우리 가격 적정성 점검">🔍 시장가 조사 (🇰🇷+🇹🇼 실검색)</button>
     </h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사의 유사 제품을 Claude 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다. 평균 대비 ±15% 가이드라인. (웹서치 불가 시 AI 추정으로 자동 폴백)</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사의 유사 제품을 Claude 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다. <b>⑤ 제품 이미지(시안)를 넣으면 시안 구조를 인식해 "같은 구조(🎯)" 제품끼리 비교</b>합니다. 평균 대비 ±15% 가이드라인. (웹서치 불가 시 AI 추정으로 자동 폴백)</p>
     <div id="cp-market-price-result" style="display:none;"></div>
     <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
       💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 조사</b> 버튼을 누르면 조구만·카카오·라인 3사 실검색 결과가 표시됩니다 (웹서치 ~30초)
@@ -5840,15 +5840,18 @@ async function cpEstimateMarketPrice(){
   const material = document.getElementById('cp-material')?.value || '';
   const hsCode = document.getElementById('cp-hs')?.value || '';
   const ourTargetKRW = cpParseNum(document.getElementById('cp-target-price').value) || null;
+  // 🖼️ 시안 이미지: 신규 업로드분은 dataUrl 직접 전송, 저장본은 cpId로 서버가 파일 읽음 (2026-07-25)
+  const cpId = (CP_CURRENT && CP_CURRENT.id) || null;
+  const imageDataUrl = (CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.dataUrl) || null;
 
   const btn = document.getElementById('cp-btn-market-price');
   const orig = btn.innerHTML;
-  btn.innerHTML = '⏳ 실검색 중… (~30초)';
+  btn.innerHTML = (cpId || imageDataUrl) ? '⏳ 시안 분석·실검색 중… (~40초)' : '⏳ 실검색 중… (~30초)';
   btn.disabled = true;
   try {
     const r = await fetch('/api/consumer-pricing/estimate-market-price',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ productName, category, size, material, hsCode, ourTargetKRW })
+      body: JSON.stringify({ productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl })
     });
     const j = await r.json();
     if(!r.ok){
@@ -5881,12 +5884,17 @@ function cpRenderMarketPrice(data){
   const fmtTWD = (v) => (v || v===0) ? 'NT$' + Math.round(v).toLocaleString() : '-';
   const isSearchMode = data.mode === 'search';
   // 실검색 모드: 실제 상품 리스트 (이름·실판매가·실제 링크)
-  const itemRows = (items, fmt) => items.map(it => `
-      <div style="display:flex;align-items:baseline;gap:6px;min-width:0;font-size:11.5px;line-height:1.4;">
-        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}${it.seller ? ' · ' + escapeHtml(it.seller) : ''}">${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(it.name)}</a>` : escapeHtml(it.name)}</span>
+  const itemRows = (items, fmt) => items.map(it => {
+    // 구조 일치 표시: 🎯=시안과 동일 구조 / ≈=구조 다름(참고). structMatch 미지원(구형)이면 배지 없음
+    const sm = (it.structMatch === true) ? `<span title="시안과 동일 구조" style="flex-shrink:0;">🎯</span>`
+             : (it.structMatch === false) ? `<span title="구조 다름 — 참고용" style="flex-shrink:0;opacity:.7;">≈</span>` : '';
+    return `
+      <div style="display:flex;align-items:baseline;gap:5px;min-width:0;font-size:11.5px;line-height:1.4;${it.structMatch===false?'opacity:.6;':''}">
+        ${sm}<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}${it.seller ? ' · ' + escapeHtml(it.seller) : ''}">${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(it.name)}</a>` : escapeHtml(it.name)}</span>
         <b style="font-variant-numeric:tabular-nums;white-space:nowrap;">${fmt(it.price)}</b>
         ${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--primary);text-decoration:none;">↗</a>` : ''}
-      </div>`).join('');
+      </div>`;
+  }).join('');
   const cards = brands.map(b => {
     const brand = (b.brand||'').toLowerCase();
     const kr = b.kr || { estimated: b.estimatedKRW, low: b.lowKRW, high: b.highKRW };   // 구형 캐시 호환
@@ -5995,7 +6003,16 @@ function cpRenderMarketPrice(data){
     : `<b style="color:var(--warning);">AI 추정 (웹서치 폴백)</b> — 실검색 불가로 추정값 표시. 링크로 실제 가격 확인 필요`;
   const meta = `<div class="cp-mp-meta">${modeBadge}${ts ? ` · 조사 시점: ${ts}` : ''}</div>`;
 
+  // 🖼️ 시안 인식 결과 배너 (이미지 기반 구조 매칭)
+  const specBanner = data.observedSpec
+    ? `<div style="font-size:12px;margin:0 0 12px;line-height:1.5;background:${data.usedImage?'rgba(52,211,153,0.1)':'var(--bg)'};border:1px solid ${data.usedImage?'rgba(52,211,153,0.35)':'var(--border)'};padding:9px 13px;border-radius:8px;">
+        ${data.usedImage ? '🖼️ <b>시안 이미지 인식</b>' : '📝 <b>제품 정보 기반</b>'}: ${escapeHtml(data.observedSpec)}
+        ${data.usedImage ? '<span style="color:var(--text-muted);"> — 이 구조와 <b>같은 유형(🎯)</b> 위주로 비교했습니다.</span>' : '<span style="color:var(--text-muted);"> (시안 이미지 없음 — ⑤ 제품 이미지를 넣으면 구조까지 맞춰 검색합니다)</span>'}
+      </div>`
+    : (isSearchMode && !data.usedImage ? `<div style="font-size:11px;color:var(--text-muted);margin:0 0 10px;">💡 ⑤ 제품 이미지(시안)를 넣으면 "구조가 같은 제품"끼리 비교합니다 (지금은 이름·카테고리 기준).</div>` : '');
+
   wrap.innerHTML = `
+    ${specBanner}
     ${summaryNote}
     <div class="cp-mp-grid">${cards}</div>
     ${marketLinks}
