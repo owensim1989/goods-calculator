@@ -1367,12 +1367,12 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
   <div class="cp-auto-section" id="cp-market-price-section">
     <h4>📊 시장가 비교 (sanity check) <span class="auto-tag">AI 추정</span>
-      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="라인프렌즈·카카오프렌즈·기타 소형 캐릭터 굿즈의 🇰🇷한국·🇹🇼대만 시장가를 AI로 추정 → 우리 가격이 시장 평균 대비 적정한지 점검">🔍 시장가 추정 (🇰🇷+🇹🇼)</button>
+      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 Claude 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만 실판매가·실링크 수집 → 우리 가격 적정성 점검">🔍 시장가 조사 (🇰🇷+🇹🇼 실검색)</button>
     </h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">라인프렌즈·카카오프렌즈·기타 소형 캐릭터 굿즈(산리오·치이카와 등) 동급 제품의 <b>🇰🇷 한국·🇹🇼 대만</b> 시장 평균을 AI로 추정하고, 브랜드별 공식몰·Shopee 대만 <b>실제 판매가 확인 링크</b>를 함께 제공합니다. 카테고리 평균 기반 ±15% 가이드라인.</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사의 유사 제품을 Claude 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다. 평균 대비 ±15% 가이드라인. (웹서치 불가 시 AI 추정으로 자동 폴백)</p>
     <div id="cp-market-price-result" style="display:none;"></div>
     <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
-      💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 추정</b> 버튼을 누르면 결과가 표시됩니다 (AI 호출 1회 ~5초)
+      💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 조사</b> 버튼을 누르면 조구만·카카오·라인 3사 실검색 결과가 표시됩니다 (웹서치 ~30초)
     </div>
   </div>
 
@@ -5843,7 +5843,7 @@ async function cpEstimateMarketPrice(){
 
   const btn = document.getElementById('cp-btn-market-price');
   const orig = btn.innerHTML;
-  btn.innerHTML = '⏳ AI 분석중...';
+  btn.innerHTML = '⏳ 실검색 중… (~30초)';
   btn.disabled = true;
   try {
     const r = await fetch('/api/consumer-pricing/estimate-market-price',{
@@ -5879,31 +5879,52 @@ function cpRenderMarketPrice(data){
   // 대만 검색용 영문 키워드 (제품명의 ASCII 부분, 예: "볼펜 (Ball pen)" → "Ball pen")
   const asciiKw = ((searchKeyword.match(/[A-Za-z0-9][A-Za-z0-9 ]*/g)||[]).join(' ').replace(/\s+/g,' ').trim());
   const fmtTWD = (v) => (v || v===0) ? 'NT$' + Math.round(v).toLocaleString() : '-';
+  const isSearchMode = data.mode === 'search';
+  // 실검색 모드: 실제 상품 리스트 (이름·실판매가·실제 링크)
+  const itemRows = (items, fmt) => items.map(it => `
+      <div style="display:flex;align-items:baseline;gap:6px;min-width:0;font-size:11.5px;line-height:1.4;">
+        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}${it.seller ? ' · ' + escapeHtml(it.seller) : ''}">${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(it.name)}</a>` : escapeHtml(it.name)}</span>
+        <b style="font-variant-numeric:tabular-nums;white-space:nowrap;">${fmt(it.price)}</b>
+        ${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--primary);text-decoration:none;">↗</a>` : ''}
+      </div>`).join('');
   const cards = brands.map(b => {
     const brand = (b.brand||'').toLowerCase();
     const kr = b.kr || { estimated: b.estimatedKRW, low: b.lowKRW, high: b.highKRW };   // 구형 캐시 호환
     const tw = b.tw || {};
     const krKw = encodeURIComponent(searchKeyword || b.productExample || '');
-    // 🇰🇷 실제 확인 링크 — 브랜드 공식몰 검색 (그 외는 네이버쇼핑)
+    // 🇰🇷 실제 확인 링크 — 브랜드 공식몰/스토어 검색
     let krUrl, krLabel;
     if (brand.includes('line') || brand.includes('라인')) { krUrl = `https://store.linefriends.com/kr/search?keyword=${krKw}`; krLabel = '라인프렌즈 공식몰'; }
     else if (brand.includes('kakao') || brand.includes('카카오')) { krUrl = `https://store.kakaofriends.com/kr/search?keyword=${krKw}`; krLabel = '카카오프렌즈 스토어'; }
-    else { krUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent('캐릭터 ' + (searchKeyword || b.productExample || '굿즈'))}`; krLabel = '네이버쇼핑'; }
+    else { krUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent('조구만 ' + (searchKeyword || ''))}`; krLabel = '네이버쇼핑(조구만)'; }
     // 🇹🇼 실제 확인 링크 — Shopee 대만 검색 (대만 캐릭터 굿즈 최대 유통 채널)
-    const twBrandEng = brand.includes('line') ? 'line friends' : (brand.includes('kakao') ? 'kakao friends' : 'sanrio');
+    const twBrandEng = brand.includes('line') ? 'line friends' : (brand.includes('kakao') ? 'kakao friends' : 'joguman');
     const twUrl = `https://shopee.tw/search?keyword=${encodeURIComponent((twBrandEng + ' ' + asciiKw).trim())}`;
+    // 시장별 본문 — search 모드는 실제 상품 리스트 + 평균, estimate 모드는 추정가·범위
+    let krBody, twBody;
+    if (isSearchMode) {
+      krBody = (kr.items && kr.items.length)
+        ? `${itemRows(kr.items, cpFmtKRW)}<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">🇰🇷 평균 <b>${kr.avg ? cpFmtKRW(kr.avg) : '-'}</b> (${kr.items.length}건 실판매가)</div>`
+        : `<div style="font-size:11px;color:var(--text-muted);">🇰🇷 검색 결과 없음</div>`;
+      twBody = (tw.items && tw.items.length)
+        ? `${itemRows(tw.items, fmtTWD)}<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">🇹🇼 평균 <b>${tw.avg ? fmtTWD(tw.avg) : '-'}</b> (${tw.items.length}건 실판매가)</div>`
+        : `<div style="font-size:11px;color:var(--text-muted);">🇹🇼 검색 결과 없음${b.note ? ' — ' + escapeHtml(b.note) : ''}</div>`;
+    } else {
+      krBody = `<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇰🇷</span><span class="price" style="margin:0;">${kr.estimated ? cpFmtKRW(kr.estimated) : '-'}</span><span class="range" style="margin:0;">${kr.low?cpFmtKRW(kr.low):'-'} ~ ${kr.high?cpFmtKRW(kr.high):'-'}</span></div>`;
+      twBody = `<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇹🇼</span><span style="font-weight:700;font-size:14px;">${tw.estimated ? fmtTWD(tw.estimated) : '-'}</span><span class="range" style="margin:0;">${tw.low?fmtTWD(tw.low):'-'} ~ ${tw.high?fmtTWD(tw.high):'-'}</span></div>`;
+    }
     return `
     <div class="cp-mp-card">
       <div class="brand">${escapeHtml(b.brand||'')}</div>
-      <div class="product">${escapeHtml(b.productExample||'-')}</div>
-      <div style="display:flex;flex-direction:column;gap:3px;margin:6px 0;">
-        <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇰🇷</span><span class="price" style="margin:0;">${kr.estimated ? cpFmtKRW(kr.estimated) : '-'}</span><span class="range" style="margin:0;">${kr.low?cpFmtKRW(kr.low):'-'} ~ ${kr.high?cpFmtKRW(kr.high):'-'}</span></div>
-        <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇹🇼</span><span style="font-weight:700;font-size:14px;">${tw.estimated ? fmtTWD(tw.estimated) : '-'}</span><span class="range" style="margin:0;">${tw.low?fmtTWD(tw.low):'-'} ~ ${tw.high?fmtTWD(tw.high):'-'}</span></div>
+      ${b.productExample ? `<div class="product">${escapeHtml(b.productExample)}</div>` : ''}
+      <div style="display:flex;flex-direction:column;gap:4px;margin:6px 0;">
+        ${isSearchMode ? `<div style="font-size:10px;color:var(--text-muted);font-weight:600;">🇰🇷 한국 실판매</div>` : ''}${krBody}
+        ${isSearchMode ? `<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:4px;">🇹🇼 대만 실판매</div>` : ''}${twBody}
       </div>
-      <div class="reason">${escapeHtml(b.reason||'')}</div>
+      ${b.reason ? `<div class="reason">${escapeHtml(b.reason)}</div>` : ''}
       <div style="display:flex;gap:5px;margin-top:7px;flex-wrap:wrap;">
-        <a href="${escapeHtml(krUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="${escapeHtml(krLabel)}에서 실제 판매가 확인">🇰🇷 ${escapeHtml(krLabel)} ↗</a>
-        <a href="${escapeHtml(twUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="Shopee 대만에서 실제 판매가 확인">🇹🇼 Shopee 대만 ↗</a>
+        <a href="${escapeHtml(krUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="${escapeHtml(krLabel)}에서 더 확인">🇰🇷 ${escapeHtml(krLabel)} ↗</a>
+        <a href="${escapeHtml(twUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="Shopee 대만에서 더 확인">🇹🇼 Shopee 대만 ↗</a>
       </div>
     </div>`;
   }).join('');
@@ -5969,7 +5990,10 @@ function cpRenderMarketPrice(data){
 
   const summaryNote = data.summary ? `<div style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.5;background:var(--bg);padding:10px 14px;border-radius:8px;">📌 ${escapeHtml(data.summary)}</div>` : '';
   const ts = data.generatedAt ? new Date(data.generatedAt).toLocaleString('ko-KR') : '';
-  const meta = ts ? `<div class="cp-mp-meta">분석 시점: ${ts} · AI 추정값이므로 실제 시장가와 차이 가능</div>` : '';
+  const modeBadge = isSearchMode
+    ? `<b style="color:var(--success);">🔍 실검색 기반</b> — Claude 웹서치 ${data.searches ? data.searches + '회' : ''}로 수집한 실제 판매가·실제 링크`
+    : `<b style="color:var(--warning);">AI 추정 (웹서치 폴백)</b> — 실검색 불가로 추정값 표시. 링크로 실제 가격 확인 필요`;
+  const meta = `<div class="cp-mp-meta">${modeBadge}${ts ? ` · 조사 시점: ${ts}` : ''}</div>`;
 
   wrap.innerHTML = `
     ${summaryNote}

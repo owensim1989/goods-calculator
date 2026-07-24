@@ -5989,6 +5989,7 @@ function _callClaudeOnce(messages, opts = {}) {
     const body = JSON.stringify({
       model: opts.model || 'claude-haiku-4-5-20251001',
       max_tokens: opts.max_tokens || 1800,
+      ...(opts.tools ? { tools: opts.tools } : {}),   // 서버 도구 (예: web_search) 패스스루 (2026-07-24)
       messages
     });
     const req = https.request({
@@ -6013,7 +6014,9 @@ function _callClaudeOnce(messages, opts = {}) {
             const statusHint = res.statusCode ? ` [HTTP ${res.statusCode}]` : '';
             return reject(new Error((j.error.message || j.error.type || 'claude error') + statusHint));
           }
-          const text = (j.content && j.content[0] && j.content[0].text) || '';
+          if (opts.raw) return resolve(j);   // 전체 응답 필요 시 (web_search pause_turn 처리 등)
+          // 웹서치 등 서버 도구 사용 시 content 가 여러 블록(text/server_tool_use/…) — text 블록 전체 join (기존 단일 text 호환)
+          const text = (j.content || []).filter(b => b && b.type === 'text').map(b => b.text || '').join('\n');
           if (!text) {
             console.warn('[Claude] 빈 응답. stop_reason=', j.stop_reason, 'usage=', JSON.stringify(j.usage || {}));
           }
@@ -6393,15 +6396,100 @@ JSON만 반환. 설명 금지:
 // body: { productName, category, size, material, hsCode, ourTargetKRW }
 // 응답: { success, brands: [{brand, productExample, estimatedKRW, lowKRW, highKRW, reason}], avgKRW, ourPriceKRW, gapPct, verdict }
 // verdict: 'cheap' | 'aligned' | 'expensive' (우리 가격 vs 3브랜드 평균 비교)
+// ━━━ 웹서치 기반 Claude 호출 — pause_turn(장기 검색 턴 일시정지) 이어받기 포함 (2026-07-24) ━━━
+async function _claudeWebSearchText(prompt, opts = {}) {
+  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: opts.maxSearches || 10 }];
+  let messages = [{ role: 'user', content: prompt }];
+  for (let hop = 0; hop < 4; hop++) {
+    const j = await callClaude(messages, { ...opts, tools, raw: true });
+    if (j.stop_reason === 'pause_turn') {
+      messages = messages.concat([{ role: 'assistant', content: j.content }]);
+      continue;
+    }
+    const searches = (j.usage && j.usage.server_tool_use && j.usage.server_tool_use.web_search_requests) || 0;
+    const text = (j.content || []).filter(b => b && b.type === 'text').map(b => b.text || '').join('\n');
+    return { text, searches };
+  }
+  throw new Error('web search pause_turn 반복 초과');
+}
+
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
   const { productName, category, size, material, hsCode, ourTargetKRW } = req.body || {};
   if (!productName) return res.status(400).json({ error: '제품명(productName) 필수' });
+  const ourKRW = Number(ourTargetKRW) || null;
+
+  // ── 1차: 🔍 실검색 모드 (Claude 웹서치) — 조구만·카카오프렌즈·라인프렌즈 3사 고정 (2026-07-24 Owen 확정)
   try {
-    const ourKRW = Number(ourTargetKRW) || null;
-    // 2026-07-24 (Owen): 한국+대만 2개 시장 동시 추정 — 라인프렌즈·카카오프렌즈·기타 소형 캐릭터 굿즈(산리오·치이카와 등)
+    const searchPrompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 조사원입니다. 웹 검색으로 아래 제품과 유사한 **실제 판매 중인 상품의 실제 가격**을 조사하세요.
+
+[조사 대상 브랜드 — 이 3개만, 다른 브랜드 금지]
+1. JOGUMAN STUDIO (조구만 스튜디오)
+2. KakaoFriends (카카오프렌즈)
+3. LineFriends (라인프렌즈)
+
+[우리 제품 — 이것과 유사한 품목을 각 브랜드에서 찾기]
+- 제품명: ${productName}
+- 카테고리: ${category || '미정'}
+- 사이즈(mm): ${size || '미정'}
+- 소재: ${material || '미정'}
+
+[조사 방법]
+1. 브랜드별로 한국 시장(공식몰·네이버 스마트스토어·네이버쇼핑)과 대만 시장(Shopee TW·PChome·誠品 등)을 검색
+2. 유사 품목의 실제 판매 상품을 시장별 최대 3개씩 수집 — 반드시 검색 결과에서 확인한 실제 상품명·실제 판매가·실제 URL만 기록 (추측·기억으로 채우지 말 것)
+3. 한국은 KRW, 대만은 TWD 표기가. 대만에서 못 찾은 브랜드는 items 빈 배열 + note에 사유
+4. 검색은 총 ${10}회 이내로 효율적으로
+
+JSON만 반환. 설명 금지:
+{
+  "brands": [
+    {"brand": "JOGUMAN STUDIO", "kr": {"items": [{"name": "실제 상품명", "price": 6500, "url": "https://실제URL", "seller": "판매처"}]}, "tw": {"items": []}, "note": "대만 공식 유통 미확인"},
+    {"brand": "KakaoFriends", "kr": {"items": []}, "tw": {"items": []}, "note": ""},
+    {"brand": "LineFriends", "kr": {"items": []}, "tw": {"items": []}, "note": ""}
+  ],
+  "summary": "조사 요약 1~2문장"
+}`;
+    const { text, searches } = await _claudeWebSearchText(searchPrompt, { max_tokens: 3000, maxSearches: 10 });
+    const parsed = extractJSON(text);
+    if (!parsed || !Array.isArray(parsed.brands)) throw new Error('search_parse_failed: ' + String(text).slice(0, 200));
+    const normItem = (it, cur) => ({
+      name: String(it.name || '').slice(0, 120),
+      price: Number(it.price) > 0 ? Number(it.price) : null,
+      url: (typeof it.url === 'string' && /^https?:\/\//.test(it.url)) ? it.url : null,
+      seller: String(it.seller || '').slice(0, 60),
+      currency: cur
+    });
+    const brands = parsed.brands.map(b => {
+      const krItems = (Array.isArray(b.kr?.items) ? b.kr.items : []).map(it => normItem(it, 'KRW')).filter(it => it.price);
+      const twItems = (Array.isArray(b.tw?.items) ? b.tw.items : []).map(it => normItem(it, 'TWD')).filter(it => it.price);
+      const avg = arr => arr.length ? Math.round(arr.reduce((a, x) => a + x.price, 0) / arr.length) : null;
+      return { brand: b.brand || '', note: b.note || '', kr: { items: krItems, avg: avg(krItems) }, tw: { items: twItems, avg: avg(twItems) } };
+    });
+    const krAll = brands.flatMap(b => b.kr.items.map(i => i.price));
+    const twAll = brands.flatMap(b => b.tw.items.map(i => i.price));
+    const avgKRW = krAll.length ? Math.round(krAll.reduce((a, b2) => a + b2, 0) / krAll.length) : null;
+    const avgTWD = twAll.length ? Math.round(twAll.reduce((a, b2) => a + b2, 0) / twAll.length) : null;
+    let gapPct = null, verdict = null;
+    if (avgKRW && ourKRW) {
+      gapPct = ((ourKRW / avgKRW) - 1) * 100;
+      verdict = gapPct < -15 ? 'cheap' : (gapPct > 15 ? 'expensive' : 'aligned');
+    }
+    console.log('[estimate-market-price] 실검색 모드 성공 — 검색', searches, '회, KR', krAll.length, '건 / TW', twAll.length, '건');
+    return res.json({
+      success: true, mode: 'search', searches, brands,
+      summary: parsed.summary || '',
+      avgKRW, avgTWD, ourPriceKRW: ourKRW,
+      gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,
+      verdict, generatedAt: new Date().toISOString()
+    });
+  } catch (searchErr) {
+    console.warn('[estimate-market-price] 실검색 실패 → AI 추정 폴백:', String(searchErr.message).slice(0, 200));
+  }
+
+  // ── 2차 폴백: AI 추정 모드 (웹서치 미가용·파싱 실패 시)
+  try {
     const prompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 분석 전문가입니다. 아래 제품과 비교 가능한 동일 카테고리 굿즈의 (a) 한국 시장 소비자가(KRW)와 (b) 대만 시장 소비자가(TWD)를 각각 추정하세요.
-비교 축 3개: ① LineFriends(라인프렌즈) ② KakaoFriends(카카오프렌즈) ③ 기타 소형 캐릭터 굿즈 브랜드(산리오·치이카와·미피 등 시장 일반).
+비교 축 3개: ① JOGUMAN STUDIO(조구만 스튜디오) ② KakaoFriends(카카오프렌즈) ③ LineFriends(라인프렌즈).
 
 [비교 대상 제품]
 - 제품명: ${productName}
@@ -6423,7 +6511,7 @@ JSON만 반환. 설명 금지:
   "brands": [
     {"brand": "LineFriends", "productExample": "브라운 볼펜 (동급)", "kr": {"estimated": 6000, "low": 4500, "high": 9000}, "tw": {"estimated": 160, "low": 120, "high": 220}, "reason": "라인프렌즈 공식몰 문구 카테고리 평균 · 대만 정발가"},
     {"brand": "KakaoFriends", "productExample": "라이언 볼펜 (동급)", "kr": {"estimated": 5500, "low": 4000, "high": 8000}, "tw": {"estimated": 150, "low": 110, "high": 200}, "reason": "카카오프렌즈 스토어 동급 평균 · Shopee TW 시세"},
-    {"brand": "기타 소형 캐릭터 굿즈", "productExample": "산리오·치이카와 볼펜 (동급)", "kr": {"estimated": 5000, "low": 3500, "high": 7500}, "tw": {"estimated": 140, "low": 100, "high": 190}, "reason": "산리오KR·치이카와 정발가 평균 · 대만 수입가"}
+    {"brand": "JOGUMAN STUDIO", "productExample": "조구만 볼펜 (동급)", "kr": {"estimated": 5000, "low": 3500, "high": 7500}, "tw": {"estimated": 140, "low": 100, "high": 190}, "reason": "조구만 공식 스마트스토어 문구 평균 · 대만 수입가"}
   ],
   "summary": "동급 캐릭터 볼펜 한국 4,000~9,000원 · 대만 NT$110~220 구간"
 }`;
@@ -6463,6 +6551,7 @@ JSON만 반환. 설명 금지:
     }
     res.json({
       success: true,
+      mode: 'estimate',   // 실검색 실패 폴백 — 숫자는 AI 추정값
       brands,
       summary: parsed.summary || '',
       avgKRW,
