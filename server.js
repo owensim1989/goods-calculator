@@ -6502,10 +6502,19 @@ app.get('/api/debug/pipeline-design', async (req, res) => {
         const { getDriveClient } = require('./lib/backup-to-drive');
         const drive = await getDriveClient();
         out.steps.driveClient = 'ok';
+        // SA 이메일 (공유 대상 안내용 — 비밀 아님)
+        try {
+          const b64 = process.env.GOOGLE_SA_KEY_BASE64;
+          const rawj = b64 ? Buffer.from(b64, 'base64').toString('utf8') : (process.env.GOOGLE_SA_KEY_JSON || '');
+          out.steps.serviceAccountEmail = rawj ? (JSON.parse(rawj).client_email || null) : null;
+        } catch (ee) { out.steps.saEmailError = String(ee.message).slice(0, 120); }
         if (ref && ref.kind === 'folder') {
-          const q = `'${ref.id}' in parents and trashed = false and (mimeType contains 'image/' or mimeType = 'application/pdf')`;
-          const list = await drive.files.list({ q, fields: 'files(id,name,mimeType,size)', pageSize: 30, orderBy: 'name', ...DRIVE_ALL });
-          out.steps.folderFiles = (list.data.files || []).map(f => ({ name: f.name, mime: f.mimeType, size: f.size }));
+          // (a) 필터 없이 전체
+          const listAll = await drive.files.list({ q: `'${ref.id}' in parents and trashed = false`, fields: 'files(id,name,mimeType,size)', pageSize: 30, ...DRIVE_ALL });
+          out.steps.folderAllFiles = (listAll.data.files || []).map(f => ({ name: f.name, mime: f.mimeType }));
+          // (b) 폴더 자체 메타 접근 가능한지
+          try { const fm = await drive.files.get({ fileId: ref.id, fields: 'id,name,driveId', supportsAllDrives: true }); out.steps.folderMeta = fm.data; }
+          catch (fe) { out.steps.folderMetaError = String(fe.message).slice(0, 200); }
         }
       } catch (de) { out.steps.driveError = String(de.message).slice(0, 300); }
     }
