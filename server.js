@@ -6482,6 +6482,37 @@ async function _pipelineDesignMedia(cpId) {
   }
 }
 
+// 임시 진단: 파이프라인 시안(드라이브) 로드 단계별 상태 (2026-07-25)
+app.get('/api/debug/pipeline-design', requireAuth, async (req, res) => {
+  const cpId = req.query.cpId || '';
+  const out = { cpId, steps: {} };
+  try {
+    const pipelineStore = require('./lib/pipeline-store');
+    const linked = pipelineStore.listProjects({}).filter(p => p.consumerPricingId && String(p.consumerPricingId) === String(cpId));
+    out.steps.linkedCount = linked.length;
+    const urls = [];
+    for (const p of linked) {
+      for (const a of (p.attachments || [])) if (a.kind === 'drive' && a.url) urls.push(a.url);
+    }
+    out.steps.driveUrls = urls;
+    if (urls.length) {
+      const ref = _driveIdFromUrl(urls[0]);
+      out.steps.parsedRef = ref;
+      try {
+        const { getDriveClient } = require('./lib/backup-to-drive');
+        const drive = await getDriveClient();
+        out.steps.driveClient = 'ok';
+        if (ref && ref.kind === 'folder') {
+          const q = `'${ref.id}' in parents and trashed = false and (mimeType contains 'image/' or mimeType = 'application/pdf')`;
+          const list = await drive.files.list({ q, fields: 'files(id,name,mimeType,size)', pageSize: 30, orderBy: 'name', ...DRIVE_ALL });
+          out.steps.folderFiles = (list.data.files || []).map(f => ({ name: f.name, mime: f.mimeType, size: f.size }));
+        }
+      } catch (de) { out.steps.driveError = String(de.message).slice(0, 300); }
+    }
+  } catch (e) { out.error = String(e.message).slice(0, 300); }
+  res.json(out);
+});
+
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
   const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
