@@ -6435,10 +6435,11 @@ app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
 - 소재: ${material || '미정'}
 
 [조사 방법]
-1. 브랜드별로 한국 시장(공식몰·네이버 스마트스토어·네이버쇼핑)과 대만 시장(Shopee TW·PChome·誠品 등)을 검색
-2. 유사 품목의 실제 판매 상품을 시장별 최대 3개씩 수집 — 반드시 검색 결과에서 확인한 실제 상품명·실제 판매가·실제 URL만 기록 (추측·기억으로 채우지 말 것)
-3. 한국은 KRW, 대만은 TWD 표기가. 대만에서 못 찾은 브랜드는 items 빈 배열 + note에 사유
-4. 검색은 총 ${10}회 이내로 효율적으로
+1. ⚠️ 커버리지 우선: 6개 조합(3브랜드 × 한국/대만)을 **각 1회씩 먼저** 검색해 전 조합을 커버한 뒤, 남는 예산으로 보강. 한국에만 검색을 몰아쓰지 말 것
+2. 한국 시장 = 공식몰·네이버 스마트스토어·네이버쇼핑 / 대만 시장 = Shopee TW·PChome·誠品 (대만은 "site:shopee.tw joguman 原子筆" 같은 사이트 한정·중국어 병용 검색이 효과적)
+3. 유사 품목의 실제 판매 상품을 시장별 최대 3개씩 수집 — 반드시 검색 결과에서 확인한 실제 상품명·실제 판매가·실제 URL만 기록 (추측·기억으로 채우지 말 것)
+4. 한국은 KRW, 대만은 TWD 표기가. 대만에서 못 찾은 브랜드는 items 빈 배열 + note에 사유
+5. 검색은 총 14회 이내
 
 JSON만 반환. 설명 금지:
 {
@@ -6449,7 +6450,7 @@ JSON만 반환. 설명 금지:
   ],
   "summary": "조사 요약 1~2문장"
 }`;
-    const { text, searches } = await _claudeWebSearchText(searchPrompt, { max_tokens: 3000, maxSearches: 10 });
+    const { text, searches } = await _claudeWebSearchText(searchPrompt, { max_tokens: 3000, maxSearches: 14 });
     const parsed = extractJSON(text);
     if (!parsed || !Array.isArray(parsed.brands)) throw new Error('search_parse_failed: ' + String(text).slice(0, 200));
     const normItem = (it, cur) => ({
