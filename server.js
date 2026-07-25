@@ -7252,14 +7252,24 @@ try {
   driveBackup.mountAdminRoutes(app, { projectName: 'goods-calculator', extraJsonFiles: localJson, imageDirs: [CATALOG_IMAGE_DIR], requireAdmin: (req,res,next)=>next() });
 } catch (err) { console.error('[backup-to-drive] mount 실패:', err.message); }
 
-// ── Drive 견적 인박스 watcher (2026-04-25) ──
+// ── Drive 견적 인박스 watcher — 🖥️ 정액제 전환(2026-07-25): 스캔·파일이동은 goods, AI 파싱은 맥미니 데몬 큐로 위임 ──
 try {
-  inboxWatcher.scheduleHourly({
-    folderId: process.env.INBOX_DRIVE_FOLDER_ID || '',
-    parsedDbPath: PARSED_DB_PATH,
-    anthropicKey: ANTHROPIC_API_KEY,
-    intervalMinutes: parseInt(process.env.INBOX_INTERVAL_MINUTES, 10) || 30
-  });
+  const quoteParseStore = require('./lib/quote-parse-store');
+  const inboxFolderId = process.env.INBOX_DRIVE_FOLDER_ID || '';
+  const inboxMs = Math.max(5, parseInt(process.env.INBOX_INTERVAL_MINUTES, 10) || 30) * 60 * 1000;
+  if (!inboxFolderId) {
+    console.warn('[inbox-watcher] INBOX_DRIVE_FOLDER_ID 미설정 — 비활성');
+  } else {
+    const scanInbox = async () => {
+      try {
+        const r = await inboxWatcher.runOnceQueued({ folderId: inboxFolderId, parsedDbPath: PARSED_DB_PATH, enqueueFn: (item) => quoteParseStore.enqueue(item) });
+        if (r.scanned > 0 || r.failed > 0) console.log(`[inbox-queued] scanned=${r.scanned} queued=${r.queued} skip=${r.skipped} fail=${r.failed}`);
+        if (r.queued > 0) parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH); // placeholder 반영
+      } catch (e) { console.error('[inbox-queued] 실행 실패:', e.message); }
+    };
+    setTimeout(() => { scanInbox(); setInterval(scanInbox, inboxMs); }, 60 * 1000);
+    console.log('[inbox-watcher] 🖥️ 정액제 큐 모드 활성 (' + (inboxMs / 60000) + '분 주기, AI파싱=맥미니 데몬)');
+  }
 } catch (err) { console.error('[inbox-watcher] 시작 실패:', err.message); }
   console.log(`[제품원가 계산기] http://localhost:${PORT}`);
   // 시작 시 동기화 + 환율
