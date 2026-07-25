@@ -5912,6 +5912,7 @@ function cpMpStartPoll(cpId){
         cpMpStopPoll();
         _cpMarketPriceCache = rec.result; _cpMpExcluded = new Set(); _cpMpManual = [];
         cpRenderMarketPrice(rec.result);
+        if(typeof cpRenderCountryTable==='function') cpRenderCountryTable();  // 🔍 시장 소비자가 컬럼에 실검색 반영
       } else if(rec && rec.status === 'error'){
         cpMpStopPoll();
         cpMpShowPending('조사 실패: ' + (rec.error || '알 수 없는 오류') + ' — 다시 시도해 주세요.');
@@ -5931,7 +5932,7 @@ async function cpMpLoadExisting(cpId){
   try {
     const rec = await fetch('/api/consumer-pricing/market-research/'+encodeURIComponent(cpId), {credentials:'include'}).then(r=>r.json());
     if(!CP_CURRENT || CP_CURRENT.id !== cpId) return;
-    if(rec && rec.status === 'done' && rec.result){ _cpMarketPriceCache = rec.result; cpRenderMarketPrice(rec.result); }
+    if(rec && rec.status === 'done' && rec.result){ _cpMarketPriceCache = rec.result; cpRenderMarketPrice(rec.result); if(typeof cpRenderCountryTable==='function') cpRenderCountryTable(); }
     else if(rec && rec.status === 'pending'){ cpMpShowPending('맥미니에서 시장가 조사 중…'); cpMpStartPoll(cpId); }
   } catch(e){ /* 무시 */ }
 }
@@ -5947,7 +5948,7 @@ function cpMpCollect(){
   const avg = a => a.length ? Math.round(a.reduce((x,y)=>x+y,0)/a.length) : null;
   return { avgKRW: avg(kr), avgTWD: avg(tw), nKR: kr.length, nTW: tw.length };
 }
-function cpMpToggle(key, checked){ if (checked) _cpMpExcluded.delete(key); else _cpMpExcluded.add(key); cpRenderMarketPrice(_cpMarketPriceCache); }
+function cpMpToggle(key, checked){ if (checked) _cpMpExcluded.delete(key); else _cpMpExcluded.add(key); cpRenderMarketPrice(_cpMarketPriceCache); if(typeof cpRenderCountryTable==="function") cpRenderCountryTable(); }
 function cpMpAddManual(){
   const nm = (document.getElementById('cpMpAddName')?.value||'').trim();
   const mk = document.getElementById('cpMpAddMarket')?.value || 'KR';
@@ -5955,9 +5956,9 @@ function cpMpAddManual(){
   const url = (document.getElementById('cpMpAddUrl')?.value||'').trim();
   if (!nm || !(pr>0)) { showToast('상품명과 가격을 입력하세요'); return; }
   _cpMpManual.push({ name: nm, market: mk, price: pr, url: url || null });
-  cpRenderMarketPrice(_cpMarketPriceCache);
+  cpRenderMarketPrice(_cpMarketPriceCache); if(typeof cpRenderCountryTable==="function") cpRenderCountryTable();
 }
-function cpMpRemoveManual(i){ _cpMpManual.splice(i,1); _cpMpExcluded.delete('M:'+i); cpRenderMarketPrice(_cpMarketPriceCache); }
+function cpMpRemoveManual(i){ _cpMpManual.splice(i,1); _cpMpExcluded.delete('M:'+i); cpRenderMarketPrice(_cpMarketPriceCache); if(typeof cpRenderCountryTable==="function") cpRenderCountryTable(); }
 async function cpMpResearch(){ await cpEstimateMarketPrice({ specOverride: (document.getElementById('cpMpSpecEdit')?.value||'').trim() }); }
 
 function cpRenderMarketPrice(data){
