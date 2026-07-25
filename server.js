@@ -3354,67 +3354,52 @@ async function _runPricingAudit(jobId, filepath) {
     // 4) 각 제품 처리
     const aiFails = [];
     const krMissing = [];
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-      job.progress = i;
-
+    // Pass 1: 최저가 계산 + AI 추정 대상 수집 (🖥️ AI 호출은 맥미니 데몬 정액제로 위임, 2026-07-25)
+    const aiProducts = [];
+    for (const p of products) {
       if (p.krwPrice == null) {
         krMissing.push(p);
-        p.aiPrices = null;
-        p.minSafe = {}; p.classified = {}; p.recommended = {};
-        for (const c of COUNTRIES) {
-          p.minSafe[c.code] = null;
-          p.classified[c.code] = p.current[c.code] == null ? 'EMPTY' : 'OK';
-          p.recommended[c.code] = null;
-        }
+        p.aiPrices = null; p.minSafe = {}; p.classified = {}; p.recommended = {};
+        for (const c of COUNTRIES) { p.minSafe[c.code] = null; p.classified[c.code] = p.current[c.code] == null ? 'EMPTY' : 'OK'; p.recommended[c.code] = null; }
         continue;
       }
-
-      // 수익률 최저가
       p.minSafe = {};
       for (const c of COUNTRIES) p.minSafe[c.code] = calcMinSafe(c, p.krwPrice, p.category);
+      p.aiPrices = null;
+      aiProducts.push(p);
+    }
 
-      // AI 호출
-      try {
-        const prompt = `Mr.Donothing is a Korean character IP brand selling licensed character goods (figures, plush, keyrings, apparel, stationery, home & living, prints) globally. Reference brands: Line Friends, Kakao Friends, Sanrio, Pop Mart, MINISO.
-
-Product:
-- Name: ${p.name}
-- Category: ${p.category}
-- Korea retail (anchor): ${p.krwPrice} KRW
-- Size: ${p.size || 'n/a'}
-- Material: ${p.material || 'n/a'}
-- Origin: ${p.origin || 'n/a'}
-
-Estimate typical local consumer retail price in 7 markets for this product, considering local character-goods pricing norms and purchasing power.
-
-Output strict JSON only, exact keys (local currency, integer or decimal):
-{"KR": 12000, "TW": 280, "HK": 78, "CN": 70, "TH": 320, "US": 8.5, "JP": 1100}
-
-Rounding hint: KR multiples of 100; JP/TH/TW multiples of 10; HK/CN integer; US 0.5 step.`;
-
-        const resp = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 400 });
-        const ai = extractJSON(resp);
-        if (!ai || typeof ai !== 'object') throw new Error('JSON parse fail');
-        p.aiPrices = ai;
-      } catch (e) {
-        aiFails.push({ name: p.name, error: e.message });
-        p.aiPrices = null;
+    // 🖥️ 맥미니 데몬(정액제)에 청크 위임 → 청크별 결과 대기
+    const paStore = require('./lib/pricing-audit-store');
+    const CHUNK = 15;
+    const chunks = [];
+    for (let i = 0; i < aiProducts.length; i += CHUNK) {
+      chunks.push({ chunkIndex: chunks.length, products: aiProducts.slice(i, i + CHUNK).map(p => ({ id: p.id, name: p.name, category: p.category, krwPrice: p.krwPrice, size: p.size || '', material: p.material || '', origin: p.origin || '' })) });
+    }
+    if (chunks.length) {
+      paStore.startJob(jobId, chunks);
+      console.log(`[audit ${jobId}] 맥미니 데몬에 ${chunks.length}청크(${aiProducts.length}제품) 위임 — 결과 대기`);
+      const deadline = Date.now() + 55 * 60 * 1000;
+      let jrec = paStore.getJob(jobId);
+      while (jrec && jrec.status !== 'done' && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 15000));
+        jrec = paStore.getJob(jobId);
+        const remain = jrec ? (jrec.remainingChunks != null ? jrec.remainingChunks : jrec.totalChunks) : 0;
+        job.progress = Math.max(0, aiProducts.length - remain * CHUNK);
       }
+      const results = (jrec && jrec.results) || {};
+      for (const p of aiProducts) { p.aiPrices = results[p.id] || null; if (!p.aiPrices) aiFails.push({ name: p.name, error: 'no_ai_result' }); }
+      paStore.finish(jobId);
+    }
 
-      // 분류 + 추천
-      p.classified = {};
-      p.recommended = {};
+    // Pass 2: 분류 + 추천 (aiPrices 채워진 뒤)
+    for (const p of aiProducts) {
+      p.classified = {}; p.recommended = {};
       for (const c of COUNTRIES) {
-        const cur = p.current[c.code];
-        const ms = p.minSafe[c.code];
-        const ai = p.aiPrices ? p.aiPrices[c.code] : null;
+        const cur = p.current[c.code]; const ms = p.minSafe[c.code]; const ai = p.aiPrices ? p.aiPrices[c.code] : null;
         p.classified[c.code] = classify(cur, ms, ai);
         p.recommended[c.code] = recommend(c, p.krwPrice, ms, ai);
       }
-
-      if (i < products.length - 1) await new Promise(r => setTimeout(r, 150));
-      if ((i+1) % 20 === 0) console.log(`[audit ${jobId}] ${i+1}/${products.length}`);
     }
 
     // 5) 엑셀 생성
@@ -3693,7 +3678,7 @@ app.get('/api/admin/pricing-audit/run', async (req, res) => {
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 미설치' });
-  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+  // 🖥️ AI 추정은 맥미니 데몬(정액제)이 수행 — goods 는 ANTHROPIC_API_KEY 불필요 (2026-07-25)
 
   // 동시 실행 1개 제한
   const running = Object.values(_pricingAuditJobs).find(j => j.status === 'running');
