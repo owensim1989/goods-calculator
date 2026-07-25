@@ -1366,13 +1366,13 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div class="cp-auto-section" id="cp-market-price-section">
-    <h4>📊 시장가 비교 (sanity check) <span class="auto-tag">AI 추정</span>
-      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 Claude 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만 실판매가·실링크 수집 → 우리 가격 적정성 점검">🔍 시장가 조사 (🇰🇷+🇹🇼 실검색)</button>
+    <h4>📊 시장가 비교 (sanity check) <span class="auto-tag" style="background:rgba(96,165,250,0.16);color:#60a5fa;">🖥️ 맥미니 실검색</span>
+      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="맥미니 Claude(정액제)가 조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만 실판매가·실링크 수집. 별도 API 비용 없음(정액제). 결과는 1~2분 뒤 표시">🖥️ 시장가 조사 (정액제 실검색)</button>
     </h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사의 유사 제품을 Claude 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다. <b>연동된 제품 파이프라인의 디자인 링크(제작가이드 PDF·시안)를 자동으로 읽어 구조를 인식해 "같은 구조(🎯)" 제품끼리 비교</b>합니다(⑤ 제품 이미지도 사용 가능). 평균 대비 ±15% 가이드라인. (웹서치 불가 시 AI 추정으로 자동 폴백)</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>맥미니 Claude(정액제)</b>가 <b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사 유사 제품을 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다 — <b>별도 API 비용 없음</b>. 요청 후 <b>보통 1~2분</b>에 결과가 뜨고, 한 번 조사한 제품은 저장돼 다시 열면 그대로 표시됩니다. 구조 설명을 고쳐 재조사·항목 채택/제외·직접 추가로 평균을 조정할 수 있어요.</p>
     <div id="cp-market-price-result" style="display:none;"></div>
     <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
-      💡 제품명·카테고리·사이즈·한국 타겟가를 입력한 뒤 <b>🔍 시장가 조사</b> 버튼을 누르면 조구만·카카오·라인 3사 실검색 결과가 표시됩니다 (웹서치 ~30초)
+      💡 프로젝트를 <b>저장</b>한 뒤 <b>🖥️ 시장가 조사</b> 버튼을 누르면 맥미니가 조구만·카카오·라인 3사를 실검색합니다 (결과 1~2분, 정액제라 비용 없음)
     </div>
   </div>
 
@@ -4530,6 +4530,7 @@ function cpNewProject(){
   CP_COUNTRIES.forEach(c => { c.tariffPct = null; c.shipKRW = null; c.finalLocal = null; if (c.code !== 'KR') c.rate = null; });
   CP_CURRENT = null;
   cpRenderPipelineMirror(); // 신규 프로젝트 → 파이프라인 미러 숨김
+  cpMpLoadExisting(null);   // 시장가 조사 결과·폴링 정리
   // 🔍 복제 / 시리즈 관계 리셋 (2026-05-11)
   CP_CLONED_FROM = null;
   if (typeof cpUpdateClonedFromTag === 'function') cpUpdateClonedFromTag();
@@ -4629,6 +4630,7 @@ async function cpLoadProject(id){
     if(!it || it.error){showToast('불러오기 실패');return;}
     CP_CURRENT = it;
     cpRenderPipelineMirror(); // 🚀 파이프라인 연동 상태 미러 (비동기, 논블로킹)
+    cpMpLoadExisting(it.id);  // 🖥️ 저장된 시장가 조사 결과 있으면 표시 / pending이면 폴링 재개
     // 저장 프로젝트 로드 시 분포박스·유사패널 자동 갱신 — 필드 세팅(동기) 완료 후 (2026-07-24)
     setTimeout(() => { try { cpOnSpecChanged(); } catch(e){} }, 300);
     // 🔍 시리즈 관계 복원 (2026-05-11) — 저장된 row 가 복제로 만들어진 경우 root 표기
@@ -5835,43 +5837,88 @@ let _cpMarketPriceCache = null;  // 마지막 응답 캐시 (cpSave 시 함께 �
 // 큐레이션 상태 (2026-07-25): 채택/제외 결과 키 + 수동 추가 상품
 let _cpMpExcluded = new Set();
 let _cpMpManual = [];
+// 🖥️ 시장가 조사 — 맥미니 데몬(정액제) 경유 비동기 (2026-07-25 Owen: 유료 API 미사용)
+let _cpMpPollTimer = null;
+function cpMpStopPoll(){ if(_cpMpPollTimer){ clearInterval(_cpMpPollTimer); _cpMpPollTimer=null; } }
+function cpMpShowPending(msg){
+  const wrap = document.getElementById('cp-market-price-result');
+  const empty = document.getElementById('cp-market-price-empty');
+  if(empty) empty.style.display='none';
+  if(wrap){ wrap.style.display='block';
+    wrap.innerHTML = `<div style="padding:18px;text-align:center;font-size:13px;color:var(--text-muted);line-height:1.7;">
+      <div style="font-size:22px;margin-bottom:6px;">🖥️⏳</div>
+      ${escapeHtml(msg||'맥미니에서 시장가 조사 중…')}<br>
+      <span style="font-size:11px;">정액제로 실검색(웹서치)합니다 — 보통 1~2분. 이 화면을 떠나도 결과는 저장됩니다.</span>
+    </div>`;
+  }
+}
 async function cpEstimateMarketPrice(opts){
   opts = opts || {};
   const productName = (document.getElementById('cp-name').value||'').trim();
   if(!productName){showToast('제품명을 먼저 입력하세요');return;}
+  const cpId = (CP_CURRENT && CP_CURRENT.id) || null;
+  if(!cpId){ showToast('먼저 프로젝트를 저장해야 시장가 조사를 요청할 수 있어요'); return; }
   const category = document.getElementById('cp-category')?.value || '';
   const size = document.getElementById('cp-size')?.value || '';
   const material = document.getElementById('cp-material')?.value || '';
-  const hsCode = document.getElementById('cp-hs')?.value || '';
   const ourTargetKRW = cpParseNum(document.getElementById('cp-target-price').value) || null;
-  // 🖼️ 시안 이미지: 신규 업로드분은 dataUrl 직접 전송, 저장본은 cpId로 서버가 파일 읽음 (2026-07-25)
-  const cpId = (CP_CURRENT && CP_CURRENT.id) || null;
-  const imageDataUrl = (CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.dataUrl) || null;
-  const specOverride = (opts.specOverride || '').trim();
+  const specText = (opts.specOverride || '').trim();
 
   const btn = opts.specOverride ? document.getElementById('cpMpResearchBtn') : document.getElementById('cp-btn-market-price');
   const orig = btn ? btn.innerHTML : '';
-  if(btn){ btn.innerHTML = specOverride ? '⏳ 지정 구조로 재조사 중…' : ((cpId || imageDataUrl) ? '⏳ 시안 분석·실검색 중… (~40초)' : '⏳ 실검색 중… (~30초)'); btn.disabled = true; }
+  if(btn){ btn.innerHTML = '⏳ 요청 중…'; btn.disabled = true; }
   try {
-    const r = await fetch('/api/consumer-pricing/estimate-market-price',{
+    const r = await fetch('/api/consumer-pricing/market-research/request',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl, specOverride })
+      body: JSON.stringify({ cpId, productName, category, size, material, ourTargetKRW, specText })
     });
     const j = await r.json();
-    if(!r.ok){
-      showToast('시장가 추정 실패: ' + (j.error || r.status));
-      return;
-    }
-    _cpMarketPriceCache = j;
-    _cpMpExcluded = new Set();   // 새 조사 → 큐레이션 초기화
-    _cpMpManual = [];
-    cpRenderMarketPrice(j);
+    if(!r.ok){ showToast('조사 요청 실패: ' + (j.error || r.status)); return; }
+    _cpMpExcluded = new Set(); _cpMpManual = [];   // 새 조사 → 큐레이션 초기화
+    cpMpShowPending(specText ? '지정한 구조로 맥미니에서 다시 조사 중…' : '맥미니에서 시장가 조사 중…');
+    cpMpStartPoll(cpId);
   } catch(e){
-    console.error(e);
-    showToast('시장가 추정 실패: ' + e.message);
+    console.error(e); showToast('조사 요청 실패: ' + e.message);
   } finally {
     if(btn){ btn.innerHTML = orig; btn.disabled = false; }
   }
+}
+// 폴링: 결과(done) 뜰 때까지 (최대 ~6분). 다른 제품 로드 시 중단.
+function cpMpStartPoll(cpId){
+  cpMpStopPoll();
+  let tries = 0;
+  _cpMpPollTimer = setInterval(async () => {
+    tries++;
+    if(!CP_CURRENT || CP_CURRENT.id !== cpId){ cpMpStopPoll(); return; }   // 프로젝트 전환 시 중단
+    if(tries > 40){ cpMpStopPoll(); cpMpShowPending('조사가 지연되고 있어요 — 맥미니 데몬 상태를 확인하거나 잠시 후 다시 시도하세요.'); return; }
+    try {
+      const rec = await fetch('/api/consumer-pricing/market-research/'+encodeURIComponent(cpId), {credentials:'include'}).then(r=>r.json());
+      if(rec && rec.status === 'done' && rec.result){
+        cpMpStopPoll();
+        _cpMarketPriceCache = rec.result; _cpMpExcluded = new Set(); _cpMpManual = [];
+        cpRenderMarketPrice(rec.result);
+      } else if(rec && rec.status === 'error'){
+        cpMpStopPoll();
+        cpMpShowPending('조사 실패: ' + (rec.error || '알 수 없는 오류') + ' — 다시 시도해 주세요.');
+      }
+    } catch(e){ /* 네트워크 일시 오류 무시, 계속 폴링 */ }
+  }, 12000);
+}
+// 저장 프로젝트 로드 시: 기존 조사 결과 있으면 표시, pending이면 폴링 재개 (캐시 재활용)
+async function cpMpLoadExisting(cpId){
+  cpMpStopPoll();
+  const wrap = document.getElementById('cp-market-price-result');
+  const empty = document.getElementById('cp-market-price-empty');
+  if(wrap){ wrap.style.display='none'; wrap.innerHTML=''; }
+  if(empty) empty.style.display='block';
+  _cpMarketPriceCache = null; _cpMpExcluded = new Set(); _cpMpManual = [];
+  if(!cpId) return;
+  try {
+    const rec = await fetch('/api/consumer-pricing/market-research/'+encodeURIComponent(cpId), {credentials:'include'}).then(r=>r.json());
+    if(!CP_CURRENT || CP_CURRENT.id !== cpId) return;
+    if(rec && rec.status === 'done' && rec.result){ _cpMarketPriceCache = rec.result; cpRenderMarketPrice(rec.result); }
+    else if(rec && rec.status === 'pending'){ cpMpShowPending('맥미니에서 시장가 조사 중…'); cpMpStartPoll(cpId); }
+  } catch(e){ /* 무시 */ }
 }
 
 // ── 큐레이션 헬퍼 (2026-07-25): 채택/제외 → 평균 자동 재계산, 수동 추가 ──
@@ -6041,7 +6088,7 @@ function cpRenderMarketPrice(data){
   const meta = `<div class="cp-mp-meta">${modeBadge}${ts ? ` · 조사 시점: ${ts}` : ''}</div>`;
 
   // 🖼️ 시안 인식 결과 배너 (이미지/PDF 기반 구조 매칭) — 시안 출처 표시 (2026-07-25)
-  const srcLabelMap = { 'pipeline-pdf':'🚀 파이프라인 제작가이드(PDF)', 'pipeline-image':'🚀 파이프라인 시안 이미지', 'upload':'🖼️ 업로드 시안', 'cp-file':'🖼️ 등록 제품 이미지' };
+  const srcLabelMap = { 'pipeline-pdf':'🚀 파이프라인 제작가이드(PDF)', 'pipeline-image':'🚀 파이프라인 시안 이미지', 'upload':'🖼️ 업로드 시안', 'cp-file':'🖼️ 등록 제품 이미지', 'mac-daemon':'🖥️ 맥미니 조사(정액제)' };
   const srcLabel = srcLabelMap[data.imageSource] || '🖼️ 시안';
   const srcFile = data.sourceFile ? ` <span style="color:var(--text-muted);font-size:10px;">(${escapeHtml(data.sourceFile)})</span>` : '';
   // 🆕 편집 가능한 구조설명 + "이 설명으로 다시 조사" (① 통제, 2026-07-25)

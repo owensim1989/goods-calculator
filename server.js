@@ -6482,6 +6482,35 @@ async function _pipelineDesignMedia(cpId) {
   }
 }
 
+// ━━━ 🖥️ 시장가 조사 — 맥미니 데몬(정액제) 경유 큐 (2026-07-25 Owen: 유료 API 대신 맥미니 경로로만) ━━━
+// /request 는 /:cpId 보다 먼저 등록 (경로 충돌 방지)
+app.post('/api/consumer-pricing/market-research/request', async (req, res) => {
+  try {
+    const mrStore = require('./lib/market-research-store');
+    const b = req.body || {};
+    const cpId = String(b.cpId || '').trim();
+    if (!cpId) return res.status(400).json({ error: 'cpId 필요 — 프로젝트를 먼저 저장하세요' });
+    const rec = mrStore.request(cpId, {
+      cpId,
+      productName: String(b.productName || '').slice(0, 200),
+      category: String(b.category || '').slice(0, 60),
+      size: String(b.size || '').slice(0, 60),
+      material: String(b.material || '').slice(0, 60),
+      ourTargetKRW: (Number(b.ourTargetKRW) > 0) ? Number(b.ourTargetKRW) : null,
+      specText: String(b.specText || '').slice(0, 400)   // 사용자가 지정/편집한 구조 (있으면 우선)
+    });
+    res.json({ ok: true, status: rec.status, requestedAt: rec.requestedAt });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/consumer-pricing/market-research/:cpId', async (req, res) => {
+  try {
+    const mrStore = require('./lib/market-research-store');
+    const rec = mrStore.get(req.params.cpId);
+    if (!rec) return res.json({ status: 'none' });
+    res.json(rec);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
   const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
