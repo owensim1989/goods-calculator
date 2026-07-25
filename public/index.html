@@ -1424,6 +1424,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <th>권장<br>최저가</th>
         <th>확정<br>현지가</th>
         <th>확정<br>KRW</th>
+        <th>🔍 시장<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">소비자가</span></th>
         <th>vs최저</th>
         <th>마진<br><span style="font-size:9px;font-weight:400;color:var(--text-muted);">KR→수출</span></th>
       </tr></thead>
@@ -5563,6 +5564,11 @@ function cpRenderCountryTable(){
     });
   }
 
+  // 🔍 시장 소비자가 컬럼 소스 (2026-07-25): 시장가 조사(실검색, 조구만·카카오·라인) 우선 — KR/TW만. 나머지는 자체 유사평균 폴백.
+  let _mr = null;
+  try { if (_cpMarketPriceCache && _cpMarketPriceCache.mode === 'search' && typeof cpMpCollect === 'function') _mr = cpMpCollect(); } catch (e) {}
+  const _mrByCode = { KR: (_mr && _mr.avgKRW) || null, TW: (_mr && _mr.avgTWD) || null };
+
   // 카테고리 미입력 경고 토글
   const warnEl = document.getElementById('cp-formula-warn');
   if (warnEl) warnEl.style.display = (target > 0 && !category) ? 'inline' : 'none';
@@ -5707,26 +5713,34 @@ function cpRenderCountryTable(){
       }
     }
 
-    // 🆕 유사 자체 제품 평균과 비교 — 확정 KRW 셀의 sub-line (클릭 시 실제 제품 리스트 모달)
-    let similarHint = '';
+    // 🔍 시장 소비자가 (별도 컬럼, 2026-07-25) — 확정가와 혼동 방지. 시장가 조사(실검색) 우선, 없으면 자체 유사평균 폴백.
     const _spD = _spDistByCode[c.code];
-    if (_spD && _spD.n >= 1){
-      const avgInLocal = _spD.avg;   // 카탈로그 retails 는 현지 통화 단위
-      const myInLocal = isKR ? (finalLocal || target) : finalLocal;
+    let marketCell = '<td style="text-align:right;color:var(--text-muted);font-size:11px;">—</td>';
+    {
       const SYM = { KR:'₩', TW:'NT$', HK:'HK$', CN:'¥', TH:'฿', US:'$', JP:'¥' };
       const symbol = SYM[c.code] || '';
-      const fmtVal = (c.code === 'KR' || c.code === 'CN' || c.code === 'TH' || c.code === 'JP')
-        ? Math.round(avgInLocal).toLocaleString()
-        : avgInLocal.toFixed(2);
-      const escName = String(c.name||c.code).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-      const clickAttr = `style=\"cursor:pointer;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:2px;\" onclick=\"event.stopPropagation();cpOpenSimilarPriceModal('${c.code}','${escName}',${myInLocal||0})\" title=\"클릭 → ${c.name} 통화 기준 실제 제품 리스트 보기 (유사 ${_spD.n}건)\"`;
-      if (myInLocal != null && myInLocal > 0 && avgInLocal > 0){
-        const diffPct = ((myInLocal / avgInLocal) - 1) * 100;
-        const col = cpPriceGapColor(diffPct);
-        const sign = diffPct >= 0 ? '+' : '';
-        similarHint = `<div ${clickAttr} style="font-size:9px;color:${col};margin-top:2px;line-height:1.2;cursor:pointer;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:2px;">≈ ${symbol}${fmtVal} (${sign}${diffPct.toFixed(0)}%) 🔍</div>`;
-      } else if (avgInLocal > 0){
-        similarHint = `<div ${clickAttr} style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.2;cursor:pointer;text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:2px;">≈ ${symbol}${fmtVal} 🔍</div>`;
+      const fmtV = (v) => (c.code==='KR'||c.code==='CN'||c.code==='TH'||c.code==='JP') ? Math.round(v).toLocaleString() : (Math.round(v*100)/100).toLocaleString();
+      const mrVal = _mrByCode[c.code];                          // 실검색 (조구만·카카오·라인) — KR/TW
+      const catVal = (_spD && _spD.n >= 1) ? _spD.avg : null;   // 자체 유사제품 평균 — 전 국가
+      const myInLocal = isKR ? (finalLocal || target) : finalLocal;
+      let benchVal = null, tag = '', tagColor = '', clickAttr = '';
+      if (mrVal != null && mrVal > 0) {
+        benchVal = mrVal; tag = '실검색'; tagColor = 'var(--success)';
+        clickAttr = `onclick=\"event.stopPropagation();document.getElementById('cp-market-price-section')&&document.getElementById('cp-market-price-section').scrollIntoView({block:'start'})\" title=\"시장가 조사(조구만·카카오·라인 실검색) ${c.code} 평균 — 클릭 시 상세로 이동\"`;
+      } else if (catVal != null && catVal > 0) {
+        benchVal = catVal; tag = '자체'; tagColor = 'var(--text-muted)';
+        const escName = String(c.name||c.code).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        clickAttr = `onclick=\"event.stopPropagation();cpOpenSimilarPriceModal('${c.code}','${escName}',${myInLocal||0})\" title=\"자체 유사 제품(같은 분류) ${c.code} 평균 (${_spD.n}건) — 클릭 시 제품 리스트\"`;
+      }
+      if (benchVal != null) {
+        let diffHtml = '';
+        if (myInLocal != null && myInLocal > 0) {
+          const dp = ((myInLocal / benchVal) - 1) * 100;
+          diffHtml = ` <span style="color:${cpPriceGapColor(dp)};font-size:9px;">(${dp>=0?'+':''}${dp.toFixed(0)}%)</span>`;
+        }
+        marketCell = `<td ${clickAttr} style="text-align:right;font-size:11px;cursor:pointer;white-space:nowrap;">`
+          + `<span style="font-size:8px;padding:0 3px;border-radius:3px;background:rgba(127,127,127,0.14);color:${tagColor};">${tag}</span> `
+          + `≈ ${symbol}${fmtV(benchVal)}${diffHtml} <span style="opacity:.6;">🔍</span></td>`;
       }
     }
 
@@ -5743,7 +5757,8 @@ function cpRenderCountryTable(){
         ${isKR ? cpFmtLocal(target, c.currency) : (recLocal != null ? cpFmtLocal(recLocal, c.currency) + ' ' + recApplyBtn : '-')}
       </td>
       <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${(isKR||recLocal==null)?'':recLocal}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
-      <td class="cp-final" style="${isLoss?'color:var(--danger);font-weight:700;':''}">${finalKRW!=null?(isLoss?'🔴 ':'')+cpFmtKRW(finalKRW):'-'}${isLoss?'<div style="font-size:10px;color:var(--danger);font-weight:400;">수익률 미달</div>':''}${similarHint}</td>
+      <td class="cp-final" style="${isLoss?'color:var(--danger);font-weight:700;':''}">${finalKRW!=null?(isLoss?'🔴 ':'')+cpFmtKRW(finalKRW):'-'}${isLoss?'<div style="font-size:10px;color:var(--danger);font-weight:400;">수익률 미달</div>':''}</td>
+      ${marketCell}
       <td class="${diffCls}">${diffTxt}</td>
       ${marginCell}
     </tr>`;
