@@ -1367,9 +1367,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
   <div class="cp-auto-section" id="cp-market-price-section">
     <h4>📊 시장가 비교 (sanity check) <span class="auto-tag" style="background:rgba(96,165,250,0.16);color:#60a5fa;">🖥️ 맥미니 실검색</span>
-      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="맥미니 Claude(정액제)가 조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만 실판매가·실링크 수집. 별도 API 비용 없음(정액제). 결과는 1~2분 뒤 표시">🖥️ 시장가 조사 (정액제 실검색)</button>
+      <button class="cp-btn cp-btn-primary" id="cp-btn-market-price" style="margin-left:auto;font-size:12px;padding:6px 14px;" onclick="cpEstimateMarketPrice()" title="맥미니 Claude(정액제)가 조구만·카카오프렌즈·라인프렌즈 3사의 유사 제품을 웹서치로 실제 검색 → 🇰🇷한국·🇹🇼대만·🇭🇰홍콩·🇹🇭태국 실판매가·실링크 수집. 별도 API 비용 없음(정액제). 결과는 1~2분 뒤 표시">🖥️ 시장가 조사 (정액제 실검색)</button>
     </h4>
-    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>맥미니 Claude(정액제)</b>가 <b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사 유사 제품을 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만의 <b>실제 판매 상품·가격·링크</b>를 수집합니다 — <b>별도 API 비용 없음</b>. 요청 후 <b>보통 1~2분</b>에 결과가 뜨고, 한 번 조사한 제품은 저장돼 다시 열면 그대로 표시됩니다. 구조 설명을 고쳐 재조사·항목 채택/제외·직접 추가로 평균을 조정할 수 있어요.</p>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"><b>맥미니 Claude(정액제)</b>가 <b>조구만 · 카카오프렌즈 · 라인프렌즈</b> 3사 유사 제품을 웹서치로 <b>실제 검색</b>해 🇰🇷 한국·🇹🇼 대만·🇭🇰 홍콩·🇹🇭 태국의 <b>실제 판매 상품·가격·링크</b>를 수집합니다 — <b>별도 API 비용 없음</b>. 요청 후 <b>보통 1~2분</b>에 결과가 뜨고, 한 번 조사한 제품은 저장돼 다시 열면 그대로 표시됩니다. 구조 설명을 고쳐 재조사·항목 채택/제외·직접 추가로 평균을 조정할 수 있어요.</p>
     <div id="cp-market-price-result" style="display:none;"></div>
     <div id="cp-market-price-empty" style="font-size:12px;color:var(--text-muted);padding:14px;background:var(--bg);border-radius:8px;text-align:center;">
       💡 프로젝트를 <b>저장</b>한 뒤 <b>🖥️ 시장가 조사</b> 버튼을 누르면 맥미니가 조구만·카카오·라인 3사를 실검색합니다 (결과 1~2분, 정액제라 비용 없음)
@@ -5541,9 +5541,13 @@ function cpRoundLocal(local, round) {
   return round === 0.5 ? Math.round(ceiled * 10) / 10 : Math.round(ceiled);
 }
 
+// 국가 표시 순서 — 실검색 대상(KR·TW·HK·TH) 먼저, 그다음 미국·일본, 🇨🇳중국은 항상 맨 아래 (Owen 2026-07-25)
+const CP_DISPLAY_ORDER = { KR:0, TW:1, HK:2, TH:3, US:4, JP:5, IDN:6, CN:99 };
 function cpRenderCountryTable(){
   const tb = document.getElementById('cp-country-tbody');
   if(!tb||!CP_COUNTRIES.length){if(tb)tb.innerHTML='';return;}
+  // 배열 자체를 정렬 → 편집 핸들러 인덱스와 렌더 순서 일치 유지 (중국 최하단)
+  CP_COUNTRIES.sort((a,b)=>((CP_DISPLAY_ORDER[a.code]??50)-(CP_DISPLAY_ORDER[b.code]??50)));
   const target = cpParseNum(document.getElementById('cp-target-price').value)||0;
   const fx = (CP_PRESETS&&CP_PRESETS.fx)||{};
   const productName = (document.getElementById('cp-name')?.value||'').trim();
@@ -5564,10 +5568,10 @@ function cpRenderCountryTable(){
     });
   }
 
-  // 🔍 시장 소비자가 컬럼 소스 (2026-07-25): 시장가 조사(실검색, 조구만·카카오·라인) 우선 — KR/TW만. 나머지는 자체 유사평균 폴백.
+  // 🔍 시장 소비자가 컬럼 소스 (2026-07-25): 시장가 조사(실검색, 조구만·카카오·라인) 우선 — KR/TW/HK/TH. 미국·일본·중국은 자체 유사평균.
   let _mr = null;
   try { if (_cpMarketPriceCache && _cpMarketPriceCache.mode === 'search' && typeof cpMpCollect === 'function') _mr = cpMpCollect(); } catch (e) {}
-  const _mrByCode = { KR: (_mr && _mr.avgKRW) || null, TW: (_mr && _mr.avgTWD) || null };
+  const _mrByCode = { KR: (_mr && _mr.avgKRW) || null, TW: (_mr && _mr.avgTWD) || null, HK: (_mr && _mr.avgHKD) || null, TH: (_mr && _mr.avgTHB) || null };
 
   // 카테고리 미입력 경고 토글
   const warnEl = document.getElementById('cp-formula-warn');
@@ -5939,14 +5943,19 @@ async function cpMpLoadExisting(cpId){
 
 // ── 큐레이션 헬퍼 (2026-07-25): 채택/제외 → 평균 자동 재계산, 수동 추가 ──
 function cpMpCollect(){
-  const c = _cpMarketPriceCache; const kr = [], tw = [];
+  const c = _cpMarketPriceCache; const kr = [], tw = [], hk = [], th = [];
+  const bucket = { KR: kr, TW: tw, HK: hk, TH: th };
   if (c && Array.isArray(c.brands)) c.brands.forEach((b, bi) => {
-    (b.kr?.items || []).forEach((it, ii) => { if (it.price > 0 && !_cpMpExcluded.has(bi+':KR:'+ii)) kr.push(it.price); });
-    (b.tw?.items || []).forEach((it, ii) => { if (it.price > 0 && !_cpMpExcluded.has(bi+':TW:'+ii)) tw.push(it.price); });
+    ['KR','TW','HK','TH'].forEach(mk => {
+      const items = (b[mk.toLowerCase()]?.items) || [];
+      items.forEach((it, ii) => { if (it.price > 0 && !_cpMpExcluded.has(bi+':'+mk+':'+ii)) bucket[mk].push(it.price); });
+    });
   });
-  _cpMpManual.forEach((m, mi) => { if (m.price > 0 && !_cpMpExcluded.has('M:'+mi)) (m.market==='TW'?tw:kr).push(m.price); });
+  _cpMpManual.forEach((m, mi) => { if (m.price > 0 && !_cpMpExcluded.has('M:'+mi)) (bucket[m.market] || kr).push(m.price); });
   const avg = a => a.length ? Math.round(a.reduce((x,y)=>x+y,0)/a.length) : null;
-  return { avgKRW: avg(kr), avgTWD: avg(tw), nKR: kr.length, nTW: tw.length };
+  // HKD/THB 는 소수 유효 (평균은 소수 2자리까지)
+  const avg2 = a => a.length ? Math.round((a.reduce((x,y)=>x+y,0)/a.length)*100)/100 : null;
+  return { avgKRW: avg(kr), avgTWD: avg(tw), avgHKD: avg2(hk), avgTHB: avg(th), nKR: kr.length, nTW: tw.length, nHK: hk.length, nTH: th.length };
 }
 function cpMpToggle(key, checked){ if (checked) _cpMpExcluded.delete(key); else _cpMpExcluded.add(key); cpRenderMarketPrice(_cpMarketPriceCache); if(typeof cpRenderCountryTable==="function") cpRenderCountryTable(); }
 function cpMpAddManual(){
@@ -5974,6 +5983,8 @@ function cpRenderMarketPrice(data){
   // 대만 검색용 영문 키워드 (제품명의 ASCII 부분, 예: "볼펜 (Ball pen)" → "Ball pen")
   const asciiKw = ((searchKeyword.match(/[A-Za-z0-9][A-Za-z0-9 ]*/g)||[]).join(' ').replace(/\s+/g,' ').trim());
   const fmtTWD = (v) => (v || v===0) ? 'NT$' + Math.round(v).toLocaleString() : '-';
+  const fmtHKD = (v) => (v || v===0) ? 'HK$' + (Math.round(v*100)/100).toLocaleString() : '-';
+  const fmtTHB = (v) => (v || v===0) ? '฿' + Math.round(v).toLocaleString() : '-';
   const isSearchMode = data.mode === 'search';
   // 실검색 모드: 실제 상품 리스트 + 채택/제외 체크박스 (2026-07-25 큐레이션)
   const itemRows = (items, fmt, bi, market) => items.map((it, ii) => {
@@ -6002,8 +6013,10 @@ function cpRenderMarketPrice(data){
     // 🇹🇼 실제 확인 링크 — Shopee 대만 검색 (대만 캐릭터 굿즈 최대 유통 채널)
     const twBrandEng = brand.includes('line') ? 'line friends' : (brand.includes('kakao') ? 'kakao friends' : 'joguman');
     const twUrl = `https://shopee.tw/search?keyword=${encodeURIComponent((twBrandEng + ' ' + asciiKw).trim())}`;
+    const hk = b.hk || {};   // 🇭🇰 홍콩(HKD) 실검색 (2026-07-25)
+    const th = b.th || {};   // 🇹🇭 태국(THB) 실검색 (2026-07-25)
     // 시장별 본문 — search 모드는 실제 상품 리스트 + 평균, estimate 모드는 추정가·범위
-    let krBody, twBody;
+    let krBody, twBody, hkBody = '', thBody = '';
     if (isSearchMode) {
       krBody = (kr.items && kr.items.length)
         ? `${itemRows(kr.items, cpFmtKRW, bi, 'KR')}`
@@ -6011,6 +6024,12 @@ function cpRenderMarketPrice(data){
       twBody = (tw.items && tw.items.length)
         ? `${itemRows(tw.items, fmtTWD, bi, 'TW')}`
         : `<div style="font-size:11px;color:var(--text-muted);">🇹🇼 검색 결과 없음${b.note ? ' — ' + escapeHtml(b.note) : ''}</div>`;
+      hkBody = (hk.items && hk.items.length)
+        ? `${itemRows(hk.items, fmtHKD, bi, 'HK')}`
+        : `<div style="font-size:11px;color:var(--text-muted);">🇭🇰 검색 결과 없음</div>`;
+      thBody = (th.items && th.items.length)
+        ? `${itemRows(th.items, fmtTHB, bi, 'TH')}`
+        : `<div style="font-size:11px;color:var(--text-muted);">🇹🇭 검색 결과 없음</div>`;
     } else {
       krBody = `<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇰🇷</span><span class="price" style="margin:0;">${kr.estimated ? cpFmtKRW(kr.estimated) : '-'}</span><span class="range" style="margin:0;">${kr.low?cpFmtKRW(kr.low):'-'} ~ ${kr.high?cpFmtKRW(kr.high):'-'}</span></div>`;
       twBody = `<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇹🇼</span><span style="font-weight:700;font-size:14px;">${tw.estimated ? fmtTWD(tw.estimated) : '-'}</span><span class="range" style="margin:0;">${tw.low?fmtTWD(tw.low):'-'} ~ ${tw.high?fmtTWD(tw.high):'-'}</span></div>`;
@@ -6022,11 +6041,15 @@ function cpRenderMarketPrice(data){
       <div style="display:flex;flex-direction:column;gap:4px;margin:6px 0;">
         ${isSearchMode ? `<div style="font-size:10px;color:var(--text-muted);font-weight:600;">🇰🇷 한국 실판매</div>` : ''}${krBody}
         ${isSearchMode ? `<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:4px;">🇹🇼 대만 실판매</div>` : ''}${twBody}
+        ${isSearchMode ? `<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:4px;">🇭🇰 홍콩 실판매</div>${hkBody}` : ''}
+        ${isSearchMode ? `<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:4px;">🇹🇭 태국 실판매</div>${thBody}` : ''}
       </div>
       ${b.reason ? `<div class="reason">${escapeHtml(b.reason)}</div>` : ''}
       <div style="display:flex;gap:5px;margin-top:7px;flex-wrap:wrap;">
         <a href="${escapeHtml(krUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="${escapeHtml(krLabel)}에서 더 확인">🇰🇷 ${escapeHtml(krLabel)} ↗</a>
         <a href="${escapeHtml(twUrl)}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="Shopee 대만에서 더 확인">🇹🇼 Shopee 대만 ↗</a>
+        <a href="https://www.hktvmall.com/hktv/zh/search?q=${encodeURIComponent((twBrandEng + ' ' + asciiKw).trim())}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="HKTVmall 홍콩에서 더 확인">🇭🇰 HKTVmall ↗</a>
+        <a href="https://shopee.co.th/search?keyword=${encodeURIComponent((twBrandEng + ' ' + asciiKw).trim())}" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;" title="Shopee 태국에서 더 확인">🇹🇭 Shopee 태국 ↗</a>
       </div>
     </div>`;
   }).join('');
@@ -6034,21 +6057,31 @@ function cpRenderMarketPrice(data){
   const naverAll = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent('캐릭터 ' + (searchKeyword || '굿즈'))}`;
   const shopeeAll = `https://shopee.tw/search?keyword=${encodeURIComponent(asciiKw || 'character goods')}`;
   const pchomeAll = `https://ecshweb.pchome.com.tw/search/v3.3/?q=${encodeURIComponent(asciiKw || 'character')}`;
+  const hktvAll = `https://www.hktvmall.com/hktv/zh/search?q=${encodeURIComponent(asciiKw || 'character goods')}`;
+  const shopeeThAll = `https://shopee.co.th/search?keyword=${encodeURIComponent(asciiKw || 'character goods')}`;
   const marketLinks = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:10px;color:var(--text-muted);">
     실제 시장가 직접 확인:
     <a href="${escapeHtml(naverAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇰🇷 네이버쇼핑 ↗</a>
     <a href="${escapeHtml(shopeeAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇹🇼 Shopee ↗</a>
     <a href="${escapeHtml(pchomeAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇹🇼 PChome ↗</a>
+    <a href="${escapeHtml(hktvAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇭🇰 HKTVmall ↗</a>
+    <a href="${escapeHtml(shopeeThAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇹🇭 Shopee TH ↗</a>
   </div>`;
 
   // 🆕 채택된 항목 + 수동추가로 평균 재계산 (search 모드). estimate 모드는 서버 추정값 사용.
   const eff = isSearchMode ? cpMpCollect() : { avgKRW: data.avgKRW, avgTWD: data.avgTWD, nKR: null, nTW: null };
   const showAvgKRW = eff.avgKRW;
   const showAvgTWD = eff.avgTWD;
+  const showAvgHKD = eff.avgHKD;   // 🇭🇰 (2026-07-25)
+  const showAvgTHB = eff.avgTHB;   // 🇹🇭 (2026-07-25)
+  const extraAvgHtml = (isSearchMode ? [
+    showAvgHKD ? `<div class="lhs"><div class="lbl">🇭🇰 시장 평균</div><div class="val">${fmtHKD(showAvgHKD)}</div></div>` : '',
+    showAvgTHB ? `<div class="lhs"><div class="lbl">🇹🇭 시장 평균</div><div class="val">${fmtTHB(showAvgTHB)}</div></div>` : ''
+  ].join('') : '');
   const ourP = data.ourPriceKRW;
   let verdict = null, gap = null;
   if (showAvgKRW && ourP) { gap = ((ourP/showAvgKRW)-1)*100; verdict = gap<-15?'cheap':(gap>15?'expensive':'aligned'); }
-  const adoptTag = (isSearchMode && (eff.nKR!=null)) ? ` <span style="font-size:10px;color:var(--text-muted);font-weight:400;">채택 🇰🇷${eff.nKR}·🇹🇼${eff.nTW}건</span>` : '';
+  const adoptTag = (isSearchMode && (eff.nKR!=null)) ? ` <span style="font-size:10px;color:var(--text-muted);font-weight:400;">채택 🇰🇷${eff.nKR}·🇹🇼${eff.nTW}·🇭🇰${eff.nHK||0}·🇹🇭${eff.nTH||0}건</span>` : '';
   let summaryHtml = '';
   if (showAvgKRW != null && ourP != null && verdict) {
     const verdictTxt = verdict==='cheap'?'🟢 시장가 대비 저렴':(verdict==='aligned'?'🔵 시장가와 적정':'🔴 시장가 대비 비쌈');
@@ -6068,6 +6101,7 @@ function cpRenderMarketPrice(data){
           <div class="lbl">🇹🇼 시장 평균</div>
           <div class="val">${fmtTWD(showAvgTWD)}</div>
         </div>` : ''}
+        ${extraAvgHtml}
         <div class="lhs">
           <div class="lbl">우리 가격</div>
           <div class="val">${cpFmtKRW(data.ourPriceKRW)}</div>
@@ -6091,6 +6125,7 @@ function cpRenderMarketPrice(data){
           <div class="lbl">🇹🇼 시장 평균</div>
           <div class="val">${fmtTWD(showAvgTWD)}</div>
         </div>` : ''}
+        ${extraAvgHtml}
         <div style="font-size:12px;color:var(--text-muted);">한국 타겟가를 입력하면 갭% 자동 계산됩니다</div>
       </div>
     `;
@@ -6120,12 +6155,14 @@ function cpRenderMarketPrice(data){
     : (data.observedSpec ? `<div style="font-size:12px;margin:0 0 12px;line-height:1.5;background:var(--bg);border:1px solid var(--border);padding:9px 13px;border-radius:8px;">${srcHead}: ${escapeHtml(data.observedSpec)}</div>` : '');
 
   // 🆕 수동 추가 상품 (③ 통제) — 내가 직접 찾은 상품을 평균에 반영
+  const _mkFmt = { KR: cpFmtKRW, TW: fmtTWD, HK: fmtHKD, TH: fmtTHB };
+  const _mkFlag = { KR:'🇰🇷', TW:'🇹🇼', HK:'🇭🇰', TH:'🇹🇭' };
   const manualRows = _cpMpManual.map((m, mi) => {
     const excluded = _cpMpExcluded.has('M:'+mi);
-    const fmt = m.market==='TW' ? fmtTWD : cpFmtKRW;
+    const fmt = _mkFmt[m.market] || cpFmtKRW;
     return `<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 0;${excluded?'opacity:.4;':''}">
       <input type="checkbox" ${excluded?'':'checked'} onchange="cpMpToggle('M:${mi}', this.checked)" style="width:13px;height:13px;cursor:pointer;margin:0;">
-      <span style="flex-shrink:0;">${m.market==='TW'?'🇹🇼':'🇰🇷'}</span>
+      <span style="flex-shrink:0;">${_mkFlag[m.market]||'🇰🇷'}</span>
       <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${excluded?'text-decoration:line-through;':''}">${m.url?`<a href="${escapeHtml(m.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(m.name)}</a>`:escapeHtml(m.name)}</span>
       <b style="font-variant-numeric:tabular-nums;${excluded?'text-decoration:line-through;':''}">${fmt(m.price)}</b>
       <button onclick="cpMpRemoveManual(${mi})" title="삭제" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:0 2px;">×</button>
@@ -6137,7 +6174,7 @@ function cpRenderMarketPrice(data){
       ${manualRows ? `<div style="margin-bottom:8px;">${manualRows}</div>` : ''}
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <input id="cpMpAddName" placeholder="상품명" style="flex:2;min-width:120px;font-size:11.5px;padding:5px 8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
-        <select id="cpMpAddMarket" style="font-size:11.5px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);"><option value="KR">🇰🇷 KRW</option><option value="TW">🇹🇼 TWD</option></select>
+        <select id="cpMpAddMarket" style="font-size:11.5px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);"><option value="KR">🇰🇷 KRW</option><option value="TW">🇹🇼 TWD</option><option value="HK">🇭🇰 HKD</option><option value="TH">🇹🇭 THB</option></select>
         <input id="cpMpAddPrice" placeholder="가격" inputmode="numeric" style="width:90px;font-size:11.5px;padding:5px 8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
         <input id="cpMpAddUrl" placeholder="링크(선택)" style="flex:1;min-width:100px;font-size:11.5px;padding:5px 8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
         <button class="cp-btn cp-btn-primary" style="font-size:11.5px;padding:5px 12px;" onclick="cpMpAddManual()">추가</button>
