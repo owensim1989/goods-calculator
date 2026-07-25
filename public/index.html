@@ -5832,7 +5832,11 @@ function cpCountryEdit(i,key,val){
 // ━━━ 📊 시장가 sanity check ━━━
 let _cpMarketPriceCache = null;  // 마지막 응답 캐시 (cpSave 시 함께 저장 가능)
 
-async function cpEstimateMarketPrice(){
+// 큐레이션 상태 (2026-07-25): 채택/제외 결과 키 + 수동 추가 상품
+let _cpMpExcluded = new Set();
+let _cpMpManual = [];
+async function cpEstimateMarketPrice(opts){
+  opts = opts || {};
   const productName = (document.getElementById('cp-name').value||'').trim();
   if(!productName){showToast('제품명을 먼저 입력하세요');return;}
   const category = document.getElementById('cp-category')?.value || '';
@@ -5843,15 +5847,15 @@ async function cpEstimateMarketPrice(){
   // 🖼️ 시안 이미지: 신규 업로드분은 dataUrl 직접 전송, 저장본은 cpId로 서버가 파일 읽음 (2026-07-25)
   const cpId = (CP_CURRENT && CP_CURRENT.id) || null;
   const imageDataUrl = (CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.dataUrl) || null;
+  const specOverride = (opts.specOverride || '').trim();
 
-  const btn = document.getElementById('cp-btn-market-price');
-  const orig = btn.innerHTML;
-  btn.innerHTML = (cpId || imageDataUrl) ? '⏳ 시안 분석·실검색 중… (~40초)' : '⏳ 실검색 중… (~30초)';
-  btn.disabled = true;
+  const btn = opts.specOverride ? document.getElementById('cpMpResearchBtn') : document.getElementById('cp-btn-market-price');
+  const orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.innerHTML = specOverride ? '⏳ 지정 구조로 재조사 중…' : ((cpId || imageDataUrl) ? '⏳ 시안 분석·실검색 중… (~40초)' : '⏳ 실검색 중… (~30초)'); btn.disabled = true; }
   try {
     const r = await fetch('/api/consumer-pricing/estimate-market-price',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl })
+      body: JSON.stringify({ productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl, specOverride })
     });
     const j = await r.json();
     if(!r.ok){
@@ -5859,15 +5863,40 @@ async function cpEstimateMarketPrice(){
       return;
     }
     _cpMarketPriceCache = j;
+    _cpMpExcluded = new Set();   // 새 조사 → 큐레이션 초기화
+    _cpMpManual = [];
     cpRenderMarketPrice(j);
   } catch(e){
     console.error(e);
     showToast('시장가 추정 실패: ' + e.message);
   } finally {
-    btn.innerHTML = orig;
-    btn.disabled = false;
+    if(btn){ btn.innerHTML = orig; btn.disabled = false; }
   }
 }
+
+// ── 큐레이션 헬퍼 (2026-07-25): 채택/제외 → 평균 자동 재계산, 수동 추가 ──
+function cpMpCollect(){
+  const c = _cpMarketPriceCache; const kr = [], tw = [];
+  if (c && Array.isArray(c.brands)) c.brands.forEach((b, bi) => {
+    (b.kr?.items || []).forEach((it, ii) => { if (it.price > 0 && !_cpMpExcluded.has(bi+':KR:'+ii)) kr.push(it.price); });
+    (b.tw?.items || []).forEach((it, ii) => { if (it.price > 0 && !_cpMpExcluded.has(bi+':TW:'+ii)) tw.push(it.price); });
+  });
+  _cpMpManual.forEach((m, mi) => { if (m.price > 0 && !_cpMpExcluded.has('M:'+mi)) (m.market==='TW'?tw:kr).push(m.price); });
+  const avg = a => a.length ? Math.round(a.reduce((x,y)=>x+y,0)/a.length) : null;
+  return { avgKRW: avg(kr), avgTWD: avg(tw), nKR: kr.length, nTW: tw.length };
+}
+function cpMpToggle(key, checked){ if (checked) _cpMpExcluded.delete(key); else _cpMpExcluded.add(key); cpRenderMarketPrice(_cpMarketPriceCache); }
+function cpMpAddManual(){
+  const nm = (document.getElementById('cpMpAddName')?.value||'').trim();
+  const mk = document.getElementById('cpMpAddMarket')?.value || 'KR';
+  const pr = cpParseNum(document.getElementById('cpMpAddPrice')?.value);
+  const url = (document.getElementById('cpMpAddUrl')?.value||'').trim();
+  if (!nm || !(pr>0)) { showToast('상품명과 가격을 입력하세요'); return; }
+  _cpMpManual.push({ name: nm, market: mk, price: pr, url: url || null });
+  cpRenderMarketPrice(_cpMarketPriceCache);
+}
+function cpMpRemoveManual(i){ _cpMpManual.splice(i,1); _cpMpExcluded.delete('M:'+i); cpRenderMarketPrice(_cpMarketPriceCache); }
+async function cpMpResearch(){ await cpEstimateMarketPrice({ specOverride: (document.getElementById('cpMpSpecEdit')?.value||'').trim() }); }
 
 function cpRenderMarketPrice(data){
   const wrap = document.getElementById('cp-market-price-result');
@@ -5883,19 +5912,21 @@ function cpRenderMarketPrice(data){
   const asciiKw = ((searchKeyword.match(/[A-Za-z0-9][A-Za-z0-9 ]*/g)||[]).join(' ').replace(/\s+/g,' ').trim());
   const fmtTWD = (v) => (v || v===0) ? 'NT$' + Math.round(v).toLocaleString() : '-';
   const isSearchMode = data.mode === 'search';
-  // 실검색 모드: 실제 상품 리스트 (이름·실판매가·실제 링크)
-  const itemRows = (items, fmt) => items.map(it => {
-    // 구조 일치 표시: 🎯=시안과 동일 구조 / ≈=구조 다름(참고). structMatch 미지원(구형)이면 배지 없음
+  // 실검색 모드: 실제 상품 리스트 + 채택/제외 체크박스 (2026-07-25 큐레이션)
+  const itemRows = (items, fmt, bi, market) => items.map((it, ii) => {
+    const key = bi+':'+market+':'+ii;
+    const excluded = _cpMpExcluded.has(key);
     const sm = (it.structMatch === true) ? `<span title="시안과 동일 구조" style="flex-shrink:0;">🎯</span>`
              : (it.structMatch === false) ? `<span title="구조 다름 — 참고용" style="flex-shrink:0;opacity:.7;">≈</span>` : '';
     return `
-      <div style="display:flex;align-items:baseline;gap:5px;min-width:0;font-size:11.5px;line-height:1.4;${it.structMatch===false?'opacity:.6;':''}">
-        ${sm}<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}${it.seller ? ' · ' + escapeHtml(it.seller) : ''}">${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(it.name)}</a>` : escapeHtml(it.name)}</span>
-        <b style="font-variant-numeric:tabular-nums;white-space:nowrap;">${fmt(it.price)}</b>
+      <div style="display:flex;align-items:center;gap:5px;min-width:0;font-size:11.5px;line-height:1.5;${excluded?'opacity:.4;':''}">
+        <input type="checkbox" ${excluded?'':'checked'} onchange="cpMpToggle('${key}', this.checked)" title="채택/제외 — 평균에 반영" style="flex-shrink:0;width:13px;height:13px;cursor:pointer;margin:0;">
+        ${sm}<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${excluded?'text-decoration:line-through;':''}" title="${escapeHtml(it.name)}${it.seller ? ' · ' + escapeHtml(it.seller) : ''}">${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(it.name)}</a>` : escapeHtml(it.name)}</span>
+        <b style="font-variant-numeric:tabular-nums;white-space:nowrap;${excluded?'text-decoration:line-through;':''}">${fmt(it.price)}</b>
         ${it.url ? `<a href="${escapeHtml(it.url)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--primary);text-decoration:none;">↗</a>` : ''}
       </div>`;
   }).join('');
-  const cards = brands.map(b => {
+  const cards = brands.map((b, bi) => {
     const brand = (b.brand||'').toLowerCase();
     const kr = b.kr || { estimated: b.estimatedKRW, low: b.lowKRW, high: b.highKRW };   // 구형 캐시 호환
     const tw = b.tw || {};
@@ -5912,10 +5943,10 @@ function cpRenderMarketPrice(data){
     let krBody, twBody;
     if (isSearchMode) {
       krBody = (kr.items && kr.items.length)
-        ? `${itemRows(kr.items, cpFmtKRW)}<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">🇰🇷 평균 <b>${kr.avg ? cpFmtKRW(kr.avg) : '-'}</b> (${kr.items.length}건 실판매가)</div>`
+        ? `${itemRows(kr.items, cpFmtKRW, bi, 'KR')}`
         : `<div style="font-size:11px;color:var(--text-muted);">🇰🇷 검색 결과 없음</div>`;
       twBody = (tw.items && tw.items.length)
-        ? `${itemRows(tw.items, fmtTWD)}<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">🇹🇼 평균 <b>${tw.avg ? fmtTWD(tw.avg) : '-'}</b> (${tw.items.length}건 실판매가)</div>`
+        ? `${itemRows(tw.items, fmtTWD, bi, 'TW')}`
         : `<div style="font-size:11px;color:var(--text-muted);">🇹🇼 검색 결과 없음${b.note ? ' — ' + escapeHtml(b.note) : ''}</div>`;
     } else {
       krBody = `<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:11px;">🇰🇷</span><span class="price" style="margin:0;">${kr.estimated ? cpFmtKRW(kr.estimated) : '-'}</span><span class="range" style="margin:0;">${kr.low?cpFmtKRW(kr.low):'-'} ~ ${kr.high?cpFmtKRW(kr.high):'-'}</span></div>`;
@@ -5947,10 +5978,16 @@ function cpRenderMarketPrice(data){
     <a href="${escapeHtml(pchomeAll)}" target="_blank" rel="noopener" style="color:var(--primary);">🇹🇼 PChome ↗</a>
   </div>`;
 
+  // 🆕 채택된 항목 + 수동추가로 평균 재계산 (search 모드). estimate 모드는 서버 추정값 사용.
+  const eff = isSearchMode ? cpMpCollect() : { avgKRW: data.avgKRW, avgTWD: data.avgTWD, nKR: null, nTW: null };
+  const showAvgKRW = eff.avgKRW;
+  const showAvgTWD = eff.avgTWD;
+  const ourP = data.ourPriceKRW;
+  let verdict = null, gap = null;
+  if (showAvgKRW && ourP) { gap = ((ourP/showAvgKRW)-1)*100; verdict = gap<-15?'cheap':(gap>15?'expensive':'aligned'); }
+  const adoptTag = (isSearchMode && (eff.nKR!=null)) ? ` <span style="font-size:10px;color:var(--text-muted);font-weight:400;">채택 🇰🇷${eff.nKR}·🇹🇼${eff.nTW}건</span>` : '';
   let summaryHtml = '';
-  const verdict = data.verdict;
-  const gap = data.gapPct;
-  if (data.avgKRW != null && data.ourPriceKRW != null && verdict) {
+  if (showAvgKRW != null && ourP != null && verdict) {
     const verdictTxt = verdict==='cheap'?'🟢 시장가 대비 저렴':(verdict==='aligned'?'🔵 시장가와 적정':'🔴 시장가 대비 비쌈');
     const gapTxt = (gap>=0?'+':'') + gap.toFixed(1) + '%';
     const advice = verdict==='cheap'
@@ -5961,12 +5998,12 @@ function cpRenderMarketPrice(data){
     summaryHtml = `
       <div class="cp-mp-summary ${verdict}">
         <div class="lhs">
-          <div class="lbl">🇰🇷 시장 평균</div>
-          <div class="val">${cpFmtKRW(data.avgKRW)}</div>
+          <div class="lbl">🇰🇷 시장 평균${adoptTag}</div>
+          <div class="val">${cpFmtKRW(showAvgKRW)}</div>
         </div>
-        ${data.avgTWD ? `<div class="lhs">
+        ${showAvgTWD ? `<div class="lhs">
           <div class="lbl">🇹🇼 시장 평균</div>
-          <div class="val">${fmtTWD(data.avgTWD)}</div>
+          <div class="val">${fmtTWD(showAvgTWD)}</div>
         </div>` : ''}
         <div class="lhs">
           <div class="lbl">우리 가격</div>
@@ -5980,16 +6017,16 @@ function cpRenderMarketPrice(data){
       </div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.5;">💡 ${escapeHtml(advice)}</div>
     `;
-  } else if (data.avgKRW != null) {
+  } else if (showAvgKRW != null) {
     summaryHtml = `
       <div class="cp-mp-summary no-target">
         <div class="lhs">
-          <div class="lbl">🇰🇷 시장 평균 (한국 타겟가 미입력)</div>
-          <div class="val">${cpFmtKRW(data.avgKRW)}</div>
+          <div class="lbl">🇰🇷 시장 평균 (한국 타겟가 미입력)${adoptTag}</div>
+          <div class="val">${cpFmtKRW(showAvgKRW)}</div>
         </div>
-        ${data.avgTWD ? `<div class="lhs">
+        ${showAvgTWD ? `<div class="lhs">
           <div class="lbl">🇹🇼 시장 평균</div>
-          <div class="val">${fmtTWD(data.avgTWD)}</div>
+          <div class="val">${fmtTWD(showAvgTWD)}</div>
         </div>` : ''}
         <div style="font-size:12px;color:var(--text-muted);">한국 타겟가를 입력하면 갭% 자동 계산됩니다</div>
       </div>
@@ -6007,17 +6044,48 @@ function cpRenderMarketPrice(data){
   const srcLabelMap = { 'pipeline-pdf':'🚀 파이프라인 제작가이드(PDF)', 'pipeline-image':'🚀 파이프라인 시안 이미지', 'upload':'🖼️ 업로드 시안', 'cp-file':'🖼️ 등록 제품 이미지' };
   const srcLabel = srcLabelMap[data.imageSource] || '🖼️ 시안';
   const srcFile = data.sourceFile ? ` <span style="color:var(--text-muted);font-size:10px;">(${escapeHtml(data.sourceFile)})</span>` : '';
-  const specBanner = data.observedSpec
-    ? `<div style="font-size:12px;margin:0 0 12px;line-height:1.5;background:${data.usedImage?'rgba(52,211,153,0.1)':'var(--bg)'};border:1px solid ${data.usedImage?'rgba(52,211,153,0.35)':'var(--border)'};padding:9px 13px;border-radius:8px;">
-        ${data.usedImage ? `<b>${srcLabel} 인식</b>${srcFile}` : '📝 <b>제품 정보 기반</b>'}: ${escapeHtml(data.observedSpec)}
-        ${data.usedImage ? '<span style="color:var(--text-muted);"> — 이 구조와 <b>같은 유형(🎯)</b> 위주로 비교했습니다.</span>' : '<span style="color:var(--text-muted);"> (시안 없음 — 연동 파이프라인에 디자인 링크를 넣거나 ⑤ 제품 이미지를 넣으면 구조까지 맞춰 검색합니다)</span>'}
+  // 🆕 편집 가능한 구조설명 + "이 설명으로 다시 조사" (① 통제, 2026-07-25)
+  const srcHead = data.observedSpec
+    ? `${data.usedImage ? `<b>${srcLabel} 인식</b>${srcFile}` : '📝 <b>제품 정보 기반</b>'}`
+    : '📝 <b>비교 기준 구조</b>';
+  const specBanner = isSearchMode
+    ? `<div style="margin:0 0 12px;padding:9px 13px;border-radius:8px;background:${data.usedImage?'rgba(52,211,153,0.08)':'var(--bg)'};border:1px solid ${data.usedImage?'rgba(52,211,153,0.3)':'var(--border)'};">
+        <div style="font-size:12px;line-height:1.5;margin-bottom:6px;">${srcHead} <span style="color:var(--text-muted);">— 아래 설명을 <b>내 스펙대로 고쳐</b> 다시 조사할 수 있어요 (AI 해석이 다를 때):</span></div>
+        <textarea id="cpMpSpecEdit" rows="2" style="width:100%;font-size:12px;padding:7px 9px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);resize:vertical;box-sizing:border-box;">${escapeHtml(data.observedSpec||'')}</textarea>
+        <div style="margin-top:6px;text-align:right;"><button id="cpMpResearchBtn" class="cp-btn cp-btn-ghost" style="font-size:11px;padding:4px 12px;" onclick="cpMpResearch()">🔄 이 설명으로 다시 조사</button></div>
       </div>`
-    : (isSearchMode && !data.usedImage ? `<div style="font-size:11px;color:var(--text-muted);margin:0 0 10px;">💡 연동 파이프라인의 디자인 링크(또는 ⑤ 제품 이미지)가 있으면 "구조가 같은 제품"끼리 비교합니다 (지금은 이름·카테고리 기준).</div>` : '');
+    : (data.observedSpec ? `<div style="font-size:12px;margin:0 0 12px;line-height:1.5;background:var(--bg);border:1px solid var(--border);padding:9px 13px;border-radius:8px;">${srcHead}: ${escapeHtml(data.observedSpec)}</div>` : '');
+
+  // 🆕 수동 추가 상품 (③ 통제) — 내가 직접 찾은 상품을 평균에 반영
+  const manualRows = _cpMpManual.map((m, mi) => {
+    const excluded = _cpMpExcluded.has('M:'+mi);
+    const fmt = m.market==='TW' ? fmtTWD : cpFmtKRW;
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 0;${excluded?'opacity:.4;':''}">
+      <input type="checkbox" ${excluded?'':'checked'} onchange="cpMpToggle('M:${mi}', this.checked)" style="width:13px;height:13px;cursor:pointer;margin:0;">
+      <span style="flex-shrink:0;">${m.market==='TW'?'🇹🇼':'🇰🇷'}</span>
+      <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${excluded?'text-decoration:line-through;':''}">${m.url?`<a href="${escapeHtml(m.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:underline dotted;">${escapeHtml(m.name)}</a>`:escapeHtml(m.name)}</span>
+      <b style="font-variant-numeric:tabular-nums;${excluded?'text-decoration:line-through;':''}">${fmt(m.price)}</b>
+      <button onclick="cpMpRemoveManual(${mi})" title="삭제" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:0 2px;">×</button>
+    </div>`;
+  }).join('');
+  const manualBox = isSearchMode ? `
+    <div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;">
+      <div style="font-size:11.5px;font-weight:600;margin-bottom:6px;">＋ 직접 찾은 상품 추가 <span style="font-weight:400;color:var(--text-muted);">(내가 검색한 실제 상품을 평균에 반영)</span></div>
+      ${manualRows ? `<div style="margin-bottom:8px;">${manualRows}</div>` : ''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <input id="cpMpAddName" placeholder="상품명" style="flex:2;min-width:120px;font-size:11.5px;padding:5px 8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+        <select id="cpMpAddMarket" style="font-size:11.5px;padding:5px 6px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);"><option value="KR">🇰🇷 KRW</option><option value="TW">🇹🇼 TWD</option></select>
+        <input id="cpMpAddPrice" placeholder="가격" inputmode="numeric" style="width:90px;font-size:11.5px;padding:5px 8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+        <input id="cpMpAddUrl" placeholder="링크(선택)" style="flex:1;min-width:100px;font-size:11.5px;padding:5px 8px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+        <button class="cp-btn cp-btn-primary" style="font-size:11.5px;padding:5px 12px;" onclick="cpMpAddManual()">추가</button>
+      </div>
+    </div>` : '';
 
   wrap.innerHTML = `
     ${specBanner}
     ${summaryNote}
     <div class="cp-mp-grid">${cards}</div>
+    ${manualBox}
     ${marketLinks}
     ${summaryHtml}
     ${meta}

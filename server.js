@@ -6485,6 +6485,7 @@ async function _pipelineDesignMedia(cpId) {
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
   const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
+  const specOverride = String((req.body && req.body.specOverride) || '').trim().slice(0, 400);  // 사용자가 직접 지정한 구조 (AI 해석 대신 우선, 2026-07-25)
   if (!productName) return res.status(400).json({ error: '제품명(productName) 필수' });
   const ourKRW = Number(ourTargetKRW) || null;
 
@@ -6522,7 +6523,11 @@ app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   // ── 1차: 🔍 실검색 모드 (Claude 웹서치) — 조구만·카카오프렌즈·라인프렌즈 3사 고정 (2026-07-24 Owen 확정)
   try {
     const searchPrompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 조사원입니다. 웹 검색으로 아래 제품과 **구조·형태가 동일한** 실제 판매 중인 상품의 실제 가격을 조사하세요.
-
+${specOverride ? `
+[⚠️⚠️ 최우선 — 사용자가 직접 지정한 비교 기준 구조]
+"${specOverride}"
+→ 시안 이미지보다 이 지정 구조를 **우선**합니다. observedSpec 에 이 구조를 반영하고, **이 구조와 동일한 유형의 상품만** 검색·수집하세요. 지정 구조와 다른 형태는 structMatch=false 로 표시하거나 제외.
+` : ''}
 ${hasImage ? `[⚠️ 가장 중요 — 먼저 첨부된 제품 시안(${isPdfDesign ? '제작가이드 PDF — 디자인·사이즈·소재·구조 페이지 포함' : '제품 이미지'})을 보고 구조를 파악]
 첨부 자료가 우리가 만들려는 실제 제품의 시안입니다. 제품명만 보고 흔한 품목(예: 그냥 프린팅된 볼펜)으로 착각하지 말고, **자료에 보이는 실제 구조·사이즈·소재**를 정확히 파악하세요.
 예: "볼펜"이라도 (a) 몸통에 캐릭터가 인쇄만 된 볼펜과 (b) 2D/입체 캐릭터 피규어·아크릴 조형물이 펜 상단/몸통에 부착된 '캐릭터 조형 볼펜'은 전혀 다른 제품·가격대입니다.
