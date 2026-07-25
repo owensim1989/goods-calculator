@@ -1437,6 +1437,18 @@ async function delProject(){
   closeM('detailModal');load();toast('삭제됨');
 }
 
+// 🔑 ESC 로 열린 모달 닫기 (2026-07-25 Owen 요청) — .mbg 오버레이 공통
+document.addEventListener('keydown',(e)=>{
+  if(e.key!=='Escape'&&e.keyCode!==27)return;
+  const open=[...document.querySelectorAll('.mbg')].filter(el=>el.classList.contains('on')||getComputedStyle(el).display!=='none');
+  if(!open.length)return;
+  e.preventDefault();
+  const top=open[open.length-1];
+  const x=top.querySelector('.x');
+  if(x){x.click();return;}
+  top.classList.remove('on'); top.style.display='none';
+});
+
 load().catch(e=>{document.body.innerHTML='<div style="padding:40px;color:#f87171">로드 실패: '+esc(e.message)+' — 로그인 상태를 확인하세요 (<a href="/login.html" style="color:#60a5fa">로그인</a>)</div>'});
 </script>
 </body>

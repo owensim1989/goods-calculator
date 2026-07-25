@@ -9909,14 +9909,25 @@ async function catRenameSave(){
 }
 
 // ESC 키로 모달 닫기
+// 🔑 ESC 로 열려있는 모달 닫기 — 전 모달 공통 (2026-07-25 Owen 요청)
+//   1) 열린 모달 오버레이(최상단) 탐지 → 자체 닫기버튼(✕/close 함수) 있으면 클릭(정리로직 포함)
+//   2) 없으면 표시 방식 역으로 닫기 (style.display / .show / .open / .hidden). 미래 모달도 자동 커버.
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (document.getElementById('cat-img-modal')?.style.display === 'flex') catImgClose();
-    if (document.getElementById('cat-rename-modal')?.style.display === 'flex') catRenameClose();
-    // 2026-05-21 — 새 모달 ESC 닫기
-    if (document.getElementById('cat-detail-modal')?.style.display === 'flex') catCloseDetail();
-    if (document.getElementById('cat-import-modal')?.style.display === 'flex') catCloseImportMeasurements();
-  }
+  if (e.key !== 'Escape' && e.keyCode !== 27) return;
+  const cand = Array.from(document.querySelectorAll('[id*="modal" i],[class*="modal" i],[id*="overlay" i],[class*="overlay" i]'));
+  const isVis = (el) => { const cs = getComputedStyle(el); return cs.display !== 'none' && cs.visibility !== 'hidden' && !el.classList.contains('hidden'); };
+  const looksOverlay = (el) => { const cs = getComputedStyle(el); if (cs.position === 'fixed') return true; return /overlay|modal-bg|-bg\b/i.test((el.id || '') + ' ' + (el.className || '')); };
+  const roots = cand.filter(el => isVis(el) && looksOverlay(el));
+  if (!roots.length) return;
+  roots.sort((a, b) => (parseInt(getComputedStyle(a).zIndex) || 0) - (parseInt(getComputedStyle(b).zIndex) || 0));
+  const top = roots[roots.length - 1];
+  e.preventDefault();
+  const btn = top.querySelector('[onclick*="lose("], .modal-close, .moq-modal-close, .su-bulk-x, [class*="-close"], [class*="-x"]');
+  if (btn) { btn.click(); return; }
+  if (top.style.display && top.style.display !== 'none') top.style.display = 'none';
+  else if (top.classList.contains('show')) top.classList.remove('show');
+  else if (top.classList.contains('open')) top.classList.remove('open');
+  else { top.classList.add('hidden'); top.style.display = 'none'; }
 });
 
 // 드래그 앤 드롭
