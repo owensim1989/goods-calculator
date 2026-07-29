@@ -4781,6 +4781,8 @@ function cpOnTargetInput(el){
   cpUpdateTargetVsAvg();
   cpRecalc();
   if (typeof cpRefreshPriceDistribBox === 'function') cpRefreshPriceDistribBox();
+  // 시장가 비교 요약의 '우리 가격'·갭%도 실시간 갱신 (조사 결과가 로드돼 있을 때만) (2026-07-29)
+  if (typeof cpRenderMarketPrice === 'function' && _cpMarketPriceCache) cpRenderMarketPrice(_cpMarketPriceCache);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -6079,7 +6081,9 @@ function cpRenderMarketPrice(data){
     showAvgHKD ? `<div class="lhs"><div class="lbl">🇭🇰 시장 평균</div><div class="val">${fmtHKD(showAvgHKD)}</div></div>` : '',
     showAvgTHB ? `<div class="lhs"><div class="lbl">🇹🇭 시장 평균</div><div class="val">${fmtTHB(showAvgTHB)}</div></div>` : ''
   ].join('') : '');
-  const ourP = data.ourPriceKRW;
+  // 우리 가격·갭%는 현재 입력된 한국 타겟(소비자)가를 실시간 반영 — 조사 시점 스냅샷(data.ourPriceKRW)은 폴백 (2026-07-29)
+  const _liveTargetKRW = cpParseNum(document.getElementById('cp-target-price')?.value);
+  const ourP = (_liveTargetKRW != null && _liveTargetKRW > 0) ? _liveTargetKRW : data.ourPriceKRW;
   let verdict = null, gap = null;
   if (showAvgKRW && ourP) { gap = ((ourP/showAvgKRW)-1)*100; verdict = gap<-15?'cheap':(gap>15?'expensive':'aligned'); }
   const adoptTag = (isSearchMode && (eff.nKR!=null)) ? ` <span style="font-size:10px;color:var(--text-muted);font-weight:400;">채택 🇰🇷${eff.nKR}·🇹🇼${eff.nTW}·🇭🇰${eff.nHK||0}·🇹🇭${eff.nTH||0}건</span>` : '';
@@ -6105,7 +6109,7 @@ function cpRenderMarketPrice(data){
         ${extraAvgHtml}
         <div class="lhs">
           <div class="lbl">우리 가격</div>
-          <div class="val">${cpFmtKRW(data.ourPriceKRW)}</div>
+          <div class="val">${cpFmtKRW(ourP)}</div>
         </div>
         <div class="lhs">
           <div class="lbl">갭 (🇰🇷 기준)</div>
