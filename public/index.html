@@ -1440,6 +1440,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-ghost" id="cp-btn-new" onclick="cpNewProject()">초기화</button>
       <button class="cp-btn cp-btn-danger" id="cp-btn-del" style="display:none;" onclick="cpDeleteCurrent()">삭제</button>
       <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
+      <button class="cp-btn" id="cp-btn-series-apply" style="background:linear-gradient(90deg,#7c5ec8,#60a5fa);display:none;" onclick="cpApplySeriesToSiblings()" title="이 제품의 원가·국가가격·타겟가를 같은 시리즈(같은 제품·다른 디자인) 변형들에 일괄 적용합니다. 디자인·이름·메모는 그대로 유지됩니다.">🔗 시리즈에 적용</button>
       <button class="cp-btn" id="cp-btn-publish" style="background:#f59e0b;display:none;" onclick="cpPublishToCatalog()">📋 제품 카탈로그 등록</button>
       <button class="cp-btn" id="cp-btn-payment" style="background:#7c3aed;display:none;" onclick="cpToPaymentRequest()" title="저장된 사업성 검토 데이터를 MyDesk 결제요청 신규 작성 폼에 자동 채워서 새 탭으로 열기">⚡ 결제요청으로 넘기기</button>
     </div>
@@ -4182,6 +4183,7 @@ async function cpRenderProjectList(allItems){
         <div style="font-size:11px;color:var(--text-muted);">▶</div>
       </div>`;
     }).join('');
+    if(typeof cpUpdateSeriesApplyBtn === 'function') cpUpdateSeriesApplyBtn();   // 🔗 시리즈 개수 변동 반영
   }catch(e){console.error('[CP] list 실패',e);}
 }
 
@@ -6396,6 +6398,56 @@ async function cpSave(){
   }catch(e){showToast('저장 실패: '+e.message); return false;}
 }
 
+// 🔗 시리즈(같은 제품·다른 디자인) 형제 변형 목록 — 현재 프로젝트 제외 (Owen 2026-07-29)
+function cpSeriesSiblings(){
+  if(!CP_CURRENT || !CP_CURRENT.id || !Array.isArray(CP_LIST_CACHE)) return [];
+  const me = CP_LIST_CACHE.find(it => it.id === CP_CURRENT.id);
+  const myRoot = (me && me.seriesRootId) ? me.seriesRootId : CP_CURRENT.id;
+  return CP_LIST_CACHE.filter(it => ((it.seriesRootId || it.id) === myRoot) && it.id !== CP_CURRENT.id);
+}
+// 🔗 "시리즈에 적용" 버튼 표시/숨김 — 저장된 프로젝트 + 형제 변형 1개 이상일 때만
+function cpUpdateSeriesApplyBtn(){
+  const btn = document.getElementById('cp-btn-series-apply');
+  if(!btn) return;
+  const sibs = cpSeriesSiblings();
+  if(CP_CURRENT && CP_CURRENT.id && sibs.length >= 1){
+    btn.style.display = 'inline-block';
+    btn.innerHTML = '🔗 시리즈 ' + sibs.length + '개에 적용';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+// 🔗 현재 프로젝트의 원가·국가가격·타겟가를 형제 변형에 일괄 적용 (디자인·이름·메모는 유지)
+async function cpApplySeriesToSiblings(){
+  const sibs = cpSeriesSiblings();
+  if(!CP_CURRENT || !CP_CURRENT.id){ showToast('먼저 저장된 프로젝트여야 합니다'); return; }
+  if(!sibs.length){ showToast('같은 시리즈의 다른 변형이 없습니다 (복제로 만든 변형만 대상)'); return; }
+  const names = sibs.map(s => '· ' + (s.프로젝트명 || '(무제)')).join('\n');
+  const ok = confirm(
+    '이 제품의 아래 값을 같은 시리즈 ' + sibs.length + '개 변형에 적용합니다:\n\n'
+    + '[적용됨] 생산단가·수량·부대비용·총원가 / HS·관세 / 국가별 확정현지가 / 타겟 소비자가 / 마진\n'
+    + '[유지됨] 프로젝트명 · 디자인 시안 · 메모 · 바코드\n\n'
+    + '대상 변형:\n' + names + '\n\n진행할까요?'
+  );
+  if(!ok) return;
+  const btn = document.getElementById('cp-btn-series-apply');
+  const orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '⏳ 적용 중…'; }
+  try {
+    // 원본을 먼저 저장(최신 값 반영) 후 전파
+    const saved = await cpSave();
+    if(saved === false){ showToast('원본 저장 실패 — 적용 취소'); return; }
+    const r = await fetch('/api/consumer-pricing/'+CP_CURRENT.id+'/apply-to-series', { method:'POST', headers:{'Content-Type':'application/json'} });
+    const data = await r.json();
+    if(!r.ok || data.error){ showToast('시리즈 적용 실패: '+(data.error||r.status)); return; }
+    showToast('✅ 시리즈 '+(data.count||0)+'개 변형에 적용 완료');
+    // 목록 즉시 반영(형제들의 타겟가·마진 낙관적 갱신) + 지연 재조회
+    (data.siblings||[]).forEach(s => cpOptimisticListPatch({ id: s.id, 타겟_소비자가_KRW: s.타겟_소비자가_KRW, 마진율: s.마진율, updatedAt: new Date().toISOString() }));
+    setTimeout(() => { try{ cpLoadList(); }catch(e){} }, 4000);
+  } catch(e){ showToast('시리즈 적용 실패: '+e.message); }
+  finally { if(btn){ btn.disabled = false; btn.innerHTML = orig; cpUpdateSeriesApplyBtn(); } }
+}
+
 async function cpDeleteCurrent(){
   if(!CP_CURRENT || !CP_CURRENT.id)return;
   if(!confirm('이 프로젝트를 삭제하시겠습니까?'))return;
@@ -7708,6 +7760,7 @@ function cpToggleCatalogBtn(){
   const show = (st === '승인' && CP_CURRENT && CP_CURRENT.id) ? 'inline-block' : 'none';
   if(btn) btn.style.display = show;
   if(payBtn) payBtn.style.display = show;
+  if(typeof cpUpdateSeriesApplyBtn === 'function') cpUpdateSeriesApplyBtn();   // 🔗 시리즈 적용 버튼 갱신 (2026-07-29)
   // 페이지 맨 아래 승인 박스: 저장된 프로젝트일 때만 보임. 상태 라벨 갱신 + 승인 시 버튼 숨김
   const box = document.getElementById('cp-approval-box');
   const lbl = document.getElementById('cp-approval-status-val');

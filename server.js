@@ -5848,6 +5848,60 @@ app.delete('/api/consumer-pricing/:id', async (req, res) => {
   }
 });
 
+// 🔗 시리즈 변형 일괄 적용 (2026-07-29) — 원본의 원가·국가가격·타겟가를 같은 seriesRoot 형제들에 전파.
+//   전파: 품목·HS·시장조사가·타겟가·생산단가/통화/수량·부대비용·총원가·매출·마진·국가별가격·경쟁사·원가상세(BREAKDOWN_META).
+//   유지: 프로젝트명·상태·작성자·디자인시안·메모텍스트·바코드, 그리고 각 형제의 seriesRootId.
+app.post('/api/consumer-pricing/:id/apply-to-series', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const norm = (s) => String(s || '').replace(/-/g, '');
+    // 전체 페이지 수집(페이지네이션) — 원본·형제 모두 여기서 찾음
+    const all = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({ database_id: CONSUMER_PRICING_DB_ID, page_size: 100, start_cursor: cursor });
+      resp.results.forEach(pg => all.push(pageToConsumerPricing(pg)));
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const src = all.find(it => norm(it.id) === norm(req.params.id));
+    if (!src) return res.status(404).json({ error: '원본 프로젝트를 찾을 수 없습니다' });
+    const srcMeta = extractBreakdownMeta(src.메모 || '');
+    const srcRoot = norm(src.seriesRootId || src.id);
+
+    const siblings = all.filter(it => (norm(it.seriesRootId || it.id) === srcRoot) && norm(it.id) !== norm(src.id));
+    if (!siblings.length) return res.json({ success: true, count: 0, siblings: [], root: srcRoot });
+
+    // 공유 필드 (배열은 값이 있을 때만 — 빈 배열로 형제 데이터 삭제 방지)
+    const shared = {
+      품목: src.품목, HS코드: src.HS코드,
+      시장조사_평균_KRW: src.시장조사_평균_KRW, 시장조사_최저_KRW: src.시장조사_최저_KRW, 시장조사_최고_KRW: src.시장조사_최고_KRW,
+      타겟_소비자가_KRW: src.타겟_소비자가_KRW,
+      생산_단가: src.생산_단가, 생산_통화: src.생산_통화, 생산_수량: src.생산_수량,
+      부대비용_KRW: src.부대비용_KRW, 총원가_KRW: src.총원가_KRW,
+      매출_KRW: src.매출_KRW, 마진_KRW: src.마진_KRW, 마진율: src.마진율
+    };
+    if (Array.isArray(src.countryPricing) && src.countryPricing.length) shared.countryPricing = src.countryPricing;
+    if (Array.isArray(src.competitors) && src.competitors.length) shared.competitors = src.competitors;
+
+    const updated = [];
+    for (const sib of siblings) {
+      // 형제 메모: 텍스트 유지 + BREAKDOWN_META 는 원본값으로 교체(단, 형제 자신의 seriesRootId 보존)
+      const sibMeta = extractBreakdownMeta(sib.메모 || '');
+      const sibText = String(sib.메모 || '').replace(/<!--BREAKDOWN_META:[\s\S]*?-->/g, '').replace(/\s+$/, '');
+      const newMeta = Object.assign({}, srcMeta, { seriesRootId: sibMeta.seriesRootId || sib.seriesRootId || null });
+      const newMemo = (sibText ? sibText + '\n\n' : '') + '<!--BREAKDOWN_META:' + JSON.stringify(newMeta) + '-->';
+      const body = Object.assign({}, shared, { 메모: newMemo });
+      await notion.pages.update({ page_id: sib.id, properties: consumerPricingToProps(body) });
+      updated.push({ id: sib.id, 프로젝트명: sib.프로젝트명, 타겟_소비자가_KRW: src.타겟_소비자가_KRW, 마진율: src.마진율 });
+    }
+    res.json({ success: true, count: updated.length, siblings: updated, root: srcRoot });
+  } catch (e) {
+    console.error('[시리즈 일괄 적용] 실패', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Notion page → 앱 객체
 // 메모 문자열에서 <!--BREAKDOWN_META:{...}--> 추출
 function extractBreakdownMeta(memo) {
