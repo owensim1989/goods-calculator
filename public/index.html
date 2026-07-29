@@ -4120,6 +4120,23 @@ async function cpLoadList(){
     // list 캐시도 같이 갱신 (검색 모달·자동 감지 배너 재사용) — 캐시는 전체 유지
     CP_LIST_CACHE = allItems;
     CP_LIST_CACHE_AT = Date.now();
+    await cpRenderProjectList(allItems);
+  }catch(e){console.error('[CP] list 실패',e);}
+}
+
+// 저장 직후 즉시 반영용 낙관적 갱신 — Notion 마진율은 formula라 재조회가 지연됨(읽기 지연) → 로컬 계산값으로 목록 먼저 갱신 (2026-07-29)
+function cpOptimisticListPatch(patch){
+  if(!patch || !patch.id) return;
+  if(!Array.isArray(CP_LIST_CACHE)) CP_LIST_CACHE = [];
+  const idx = CP_LIST_CACHE.findIndex(it => it.id === patch.id);
+  if(idx >= 0) CP_LIST_CACHE[idx] = Object.assign({}, CP_LIST_CACHE[idx], patch);
+  else CP_LIST_CACHE.unshift(patch);
+  CP_LIST_CACHE_AT = Date.now();
+  cpRenderProjectList(CP_LIST_CACHE);
+}
+
+async function cpRenderProjectList(allItems){
+  try{
     const listEl = document.getElementById('cp-list');
     const emptyEl = document.getElementById('cp-list-empty');
     cpRenderStatusFilter(allItems);
@@ -6362,7 +6379,19 @@ async function cpSave(){
       window._cpMultiQuote.registered.add(window._cpMultiQuote.pickedIdx);
       cpRefreshNextProductBtn();
     }
-    await cpLoadList();
+    // 저장 즉시 목록 반영 — 로컬 계산값으로 낙관적 갱신(Notion formula 재조회 지연 회피), 이후 지연 재조회로 정합성 보정
+    try {
+      cpOptimisticListPatch({
+        id: CP_CURRENT && CP_CURRENT.id,
+        프로젝트명: name,
+        품목: body.품목,
+        타겟_소비자가_KRW: target,
+        마진율: (typeof rate === 'number') ? rate : null,
+        상태: body.상태,
+        updatedAt: new Date().toISOString()
+      });
+    } catch(e){ /* 낙관적 갱신 실패는 무시 — 아래 재조회가 보정 */ }
+    setTimeout(() => { try { cpLoadList(); } catch(e){} }, 4000);   // Notion formula 재계산 후 정합성 보정
     return true;
   }catch(e){showToast('저장 실패: '+e.message); return false;}
 }
