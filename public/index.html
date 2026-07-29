@@ -1174,8 +1174,14 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
     <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:14px;">
       <div class="cp-field">
-        <label>① 프로젝트명 (제품명) *</label>
-        <input type="text" id="cp-name" placeholder="예: 네이버 콜라보 키링 2026" oninput="cpOnNameInput()">
+        <label>① 프로젝트명 (제품명) * <span style="font-weight:400;font-size:10px;color:var(--text-muted);">— 실제 제품명 + 영문 병기</span></label>
+        <input type="text" id="cp-name" placeholder="예: 손거울 키링 (Mirror Keychain)" oninput="cpOnNameInput()">
+        <div id="cp-name-guide" style="font-size:10.5px;color:var(--text-muted);margin-top:5px;line-height:1.6;">
+          ✅ <b>실제 판매될 제품명</b>으로 (임시 코드·약어·견적번호 X)<br>
+          🌐 <b>영문 병기 필수</b> <span style="opacity:.75;">— 예 "손거울 키링 (Mirror Keychain)". 해외 시장가 실검색·수출서류(인보이스·CIPL)·카탈로그에 영문이 그대로 쓰입니다</span><br>
+          🎨 디자인만 다른 변형은 뒤에 <b>" - 디자인명"</b> <span style="opacity:.75;">(예: Mirror Keychain - Cute enough) → 시리즈로 묶기 쉬움</span>
+        </div>
+        <div id="cp-name-warn" style="display:none;font-size:11px;color:#fbbf24;margin-top:5px;line-height:1.5;">⚠️ <b>영문명을 함께</b> 넣어주세요 — 예: "<span id="cp-name-warn-eg">제품명</span> (English Name)". 해외 시장가 실검색·수출서류·카탈로그에 영문이 필요합니다.</div>
       </div>
       <div class="cp-field">
         <label>작성자 *</label>
@@ -6534,9 +6540,16 @@ function cpOpenSeriesLink(){
   modal.innerHTML = `
     <div style="background:var(--bg);color:var(--text);border-radius:12px;padding:20px 22px;max-width:520px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--border);">
       <h3 style="margin:0 0 4px;font-size:16px;">🔗 시리즈 연결 — <span style="color:#a78bfa;">${meName}</span></h3>
-      <p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:0 0 14px;">
-        <b>${meName}</b> 를 아래에서 고른 제품과 <b>같은 시리즈</b>(같은 제품·다른 디자인)로 묶습니다.<br>묶은 뒤엔 <b>🔗 시리즈에 적용</b>으로 원가·국가가격·타겟가를 한 번에 맞출 수 있어요. 디자인·이름은 그대로 유지됩니다.
+      <p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:0 0 10px;">
+        <b>${meName}</b> 를 아래에서 고른 제품과 <b>같은 시리즈</b>(같은 제품·다른 디자인)로 묶습니다.
       </p>
+      <div style="font-size:12px;line-height:1.7;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.28);border-radius:9px;padding:11px 13px;margin:0 0 14px;">
+        <div style="font-weight:700;color:#a78bfa;margin-bottom:4px;">연결하면 이렇게 됩니다</div>
+        ⚡ <b>🔗 시리즈에 적용</b> 버튼으로 한 변형의 <b>원가·국가별 확정현지가·타겟가·마진</b>을 나머지에 <b>한 번에</b> 반영<br>
+        📋 저장 목록에서 <b>하나로 묶여</b> 보임 (<span style="color:#a78bfa;">🔗 시리즈 N개</span> 뱃지 · 대표 아래 들여쓰기)<br>
+        🎨 <b>유지되는 것</b>: 프로젝트명 · 디자인 시안 · 메모 · 바코드 · 승인상태 (변형별 고유)<br>
+        🔁 언제든 <b>연결 해제</b> 가능 · 값이 자동으로 덮어써지진 않음(적용 버튼 누를 때만)
+      </div>
       ${iHaveChildren ? `<div style="font-size:12px;color:#fbbf24;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:9px 12px;margin-bottom:12px;">⚠️ 이 프로젝트는 이미 다른 변형들의 <b>대표</b>입니다. 다른 시리즈에 편입하면 연결이 꼬일 수 있어 권장하지 않습니다.</div>` : ''}
       ${linked ? `<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12.5px;">이미 시리즈에 연결돼 있습니다.<button class="cp-btn cp-btn-ghost" style="font-size:11px;padding:5px 12px;" onclick="cpUnlinkSeries()">연결 해제</button></div>` : ''}
       <input id="cp-sl-search" type="text" placeholder="제품명으로 검색" oninput="cpSeriesLinkFilter(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;box-sizing:border-box;margin-bottom:12px;">
@@ -7442,6 +7455,18 @@ async function cpClonedHintRefresh(){
 let CP_HS_DEBOUNCE = null;
 let CP_HS_LAST_QUERY = '';
 function cpOnNameInput(){
+  // 🌐 영문 병기 안내 — 영문 2자 이상 없으면 경고 노출 (해외 실검색·수출서류·카탈로그용)
+  try {
+    const nmEl = document.getElementById('cp-name');
+    const warnEl = document.getElementById('cp-name-warn');
+    if (nmEl && warnEl){
+      const v = (nmEl.value || '').trim();
+      const hasEng = /[A-Za-z]{2,}/.test(v);
+      warnEl.style.display = (v.length >= 2 && !hasEng) ? 'block' : 'none';
+      const eg = document.getElementById('cp-name-warn-eg');
+      if (eg && v) eg.textContent = v.slice(0, 20);
+    }
+  } catch(e){}
   // 제품명이 바뀌면 HS 확정 상태 리셋 → 자동 재분석 허용
   if (window._cpHSConfirmed) {
     window._cpHSConfirmed = false;
