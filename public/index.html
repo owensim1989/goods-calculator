@@ -5745,9 +5745,15 @@ function cpRenderCountryTable(){
           const dp = ((myInLocal / benchVal) - 1) * 100;
           diffHtml = ` <span style="color:${cpPriceGapColor(dp)};font-size:9px;">(${dp>=0?'+':''}${dp.toFixed(0)}%)</span>`;
         }
+        // 🔍 실검색은 항상 해당 국가 마켓 검색 링크를 노출(Owen 2026-07-29) — 홍콩 등 항목 링크 없어도 직접 검색 가능
+        let linkHtml = '<span style="opacity:.6;">🔍</span>';
+        if (tag === '실검색') {
+          const su = cpMarketSearchUrl(c.code);
+          if (su) linkHtml = `<a href="${su}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${escapeHtml(c.name)} 마켓에서 직접 검색" style="text-decoration:none;cursor:pointer;">🔍</a>`;
+        }
         marketCell = `<td ${clickAttr} style="text-align:right;font-size:11px;cursor:pointer;white-space:nowrap;">`
           + `<span style="font-size:8px;padding:0 3px;border-radius:3px;background:rgba(127,127,127,0.14);color:${tagColor};">${tag}</span> `
-          + `≈ ${symbol}${fmtV(benchVal)}${diffHtml} <span style="opacity:.6;">🔍</span></td>`;
+          + `≈ ${symbol}${fmtV(benchVal)}${diffHtml} ${linkHtml}</td>`;
       }
     }
 
@@ -5763,13 +5769,43 @@ function cpRenderCountryTable(){
       <td title="${escapeHtml(recTitle)}" style="font-weight:600;">
         ${isKR ? cpFmtLocal(target, c.currency) : (recLocal != null ? cpFmtLocal(recLocal, c.currency) + ' ' + recApplyBtn : '-')}
       </td>
-      <td><input type="number" step="0.01" class="wide" value="${finalLocal!=null?finalLocal:''}" placeholder="${(isKR||recLocal==null)?'':recLocal}" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
+      <td><input type="number" step="0.01" class="wide cp-final-input" id="cp-final-${i}" value="${finalLocal!=null?finalLocal:''}" placeholder="${(isKR||recLocal==null)?'':recLocal}" onkeydown="cpFinalKeydown(event,${i})" onchange="cpCountryEdit(${i},'finalLocal',this.value)"></td>
       <td class="cp-final" style="${isLoss?'color:var(--danger);font-weight:700;':''}">${finalKRW!=null?(isLoss?'🔴 ':'')+cpFmtKRW(finalKRW):'-'}${isLoss?'<div style="font-size:10px;color:var(--danger);font-weight:400;">수익률 미달</div>':''}</td>
       ${marketCell}
       <td class="${diffCls}">${diffTxt}</td>
       ${marginCell}
     </tr>`;
   }).join('');
+  // 확정현지가 열 Tab 이동 후 재렌더 → 대상 입력에 포커스 복원 (2026-07-29)
+  if (_cpFocusFinalIdx != null) {
+    const _fel = document.getElementById('cp-final-' + _cpFocusFinalIdx);
+    _cpFocusFinalIdx = null;
+    if (_fel) { _fel.focus(); try { _fel.select(); } catch (e) {} }
+  }
+}
+
+// 확정현지가 열: Tab → 바로 아래(다음 국가) 확정현지가 입력으로 이동, Shift+Tab → 위로 (Owen 2026-07-29)
+let _cpFocusFinalIdx = null;
+function cpFinalKeydown(e, i){
+  if (e.key !== 'Tab') return;
+  const target = e.shiftKey ? i - 1 : i + 1;
+  if (!document.getElementById('cp-final-' + target)) return;   // 열 끝이면 기본 Tab 동작
+  e.preventDefault();
+  _cpFocusFinalIdx = target;                 // 재렌더 후 이 입력에 포커스 복원
+  cpCountryEdit(i, 'finalLocal', e.target.value);   // 현재 값 커밋 + 표 재계산(재렌더)
+}
+
+// 🔍 실검색 국가별 마켓 직접검색 URL — 제품명 키워드로 (Owen 2026-07-29)
+function cpMarketSearchUrl(code){
+  const kw = (document.getElementById('cp-name')?.value || '').trim();
+  const ascii = ((kw.match(/[A-Za-z0-9][A-Za-z0-9 ]*/g) || []).join(' ').replace(/\s+/g, ' ').trim());
+  const q  = encodeURIComponent(kw || '캐릭터 굿즈');
+  const qa = encodeURIComponent(ascii || kw || 'character goods');
+  if (code === 'KR') return 'https://search.shopping.naver.com/search/all?query=' + q;
+  if (code === 'TW') return 'https://shopee.tw/search?keyword=' + qa;
+  if (code === 'HK') return 'https://www.hktvmall.com/hktv/zh/search?q=' + qa;
+  if (code === 'TH') return 'https://shopee.co.th/search?keyword=' + qa;
+  return null;
 }
 
 function cpApplyRec(i, value){
