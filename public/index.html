@@ -1440,6 +1440,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-ghost" id="cp-btn-new" onclick="cpNewProject()">초기화</button>
       <button class="cp-btn cp-btn-danger" id="cp-btn-del" style="display:none;" onclick="cpDeleteCurrent()">삭제</button>
       <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
+      <button class="cp-btn cp-btn-ghost" id="cp-btn-series-link" style="display:none;" onclick="cpOpenSeriesLink()" title="이미 따로 만든 프로젝트를 같은 시리즈(같은 제품·다른 디자인)로 연결합니다. 연결하면 '시리즈에 적용'으로 원가·가격을 한 번에 맞출 수 있어요.">🔗 시리즈 연결</button>
       <button class="cp-btn" id="cp-btn-series-apply" style="background:linear-gradient(90deg,#7c5ec8,#60a5fa);display:none;" onclick="cpApplySeriesToSiblings()" title="이 제품의 원가·국가가격·타겟가를 같은 시리즈(같은 제품·다른 디자인) 변형들에 일괄 적용합니다. 디자인·이름·메모는 그대로 유지됩니다.">🔗 시리즈에 적용</button>
       <button class="cp-btn" id="cp-btn-publish" style="background:#f59e0b;display:none;" onclick="cpPublishToCatalog()">📋 제품 카탈로그 등록</button>
       <button class="cp-btn" id="cp-btn-payment" style="background:#7c3aed;display:none;" onclick="cpToPaymentRequest()" title="저장된 사업성 검토 데이터를 MyDesk 결제요청 신규 작성 폼에 자동 채워서 새 탭으로 열기">⚡ 결제요청으로 넘기기</button>
@@ -6405,16 +6406,92 @@ function cpSeriesSiblings(){
   const myRoot = (me && me.seriesRootId) ? me.seriesRootId : CP_CURRENT.id;
   return CP_LIST_CACHE.filter(it => ((it.seriesRootId || it.id) === myRoot) && it.id !== CP_CURRENT.id);
 }
-// 🔗 "시리즈에 적용" 버튼 표시/숨김 — 저장된 프로젝트 + 형제 변형 1개 이상일 때만
+// 🔗 시리즈 버튼(적용/연결) 표시·라벨 갱신 — 저장된 프로젝트 기준
 function cpUpdateSeriesApplyBtn(){
-  const btn = document.getElementById('cp-btn-series-apply');
-  if(!btn) return;
-  const sibs = cpSeriesSiblings();
-  if(CP_CURRENT && CP_CURRENT.id && sibs.length >= 1){
-    btn.style.display = 'inline-block';
-    btn.innerHTML = '🔗 시리즈 ' + sibs.length + '개에 적용';
-  } else {
-    btn.style.display = 'none';
+  const applyBtn = document.getElementById('cp-btn-series-apply');
+  const linkBtn = document.getElementById('cp-btn-series-link');
+  const saved = !!(CP_CURRENT && CP_CURRENT.id);
+  const sibs = saved ? cpSeriesSiblings() : [];
+  if(applyBtn){
+    if(saved && sibs.length >= 1){ applyBtn.style.display = 'inline-block'; applyBtn.innerHTML = '🔗 시리즈 ' + sibs.length + '개에 적용'; }
+    else applyBtn.style.display = 'none';
+  }
+  if(linkBtn){
+    // 연결 버튼: 저장된 프로젝트면 항상 노출(연결/추가 연결/해제 관리). 이미 시리즈면 라벨 변경
+    linkBtn.style.display = saved ? 'inline-block' : 'none';
+    linkBtn.innerHTML = sibs.length >= 1 ? '🔗 시리즈 관리' : '🔗 시리즈 연결';
+  }
+}
+
+// 🔗 이미 따로 만든 프로젝트를 시리즈로 연결/해제 (Owen 2026-07-29) — cpSave 의 seriesRootId 저장 경로 재사용
+function cpOpenSeriesLink(){
+  if(!CP_CURRENT || !CP_CURRENT.id){ showToast('먼저 저장된 프로젝트여야 합니다'); return; }
+  const me = (CP_LIST_CACHE||[]).find(it => it.id === CP_CURRENT.id);
+  const linked = !!(me && me.seriesRootId);
+  const iHaveChildren = (CP_LIST_CACHE||[]).some(it => it.seriesRootId === CP_CURRENT.id);
+  let modal = document.getElementById('cp-series-link-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'cp-series-link-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;align-items:center;justify-content:center;';
+    modal.addEventListener('click', e => { if(e.target === modal) cpCloseSeriesLink(); });
+    document.body.appendChild(modal);
+  }
+  const meName = escapeHtml((me && me.프로젝트명) || '(현재 프로젝트)');
+  // 후보: 자기 자신 제외 저장 프로젝트, 이름 기준
+  const rows = (CP_LIST_CACHE||[])
+    .filter(it => it.id !== CP_CURRENT.id)
+    .map(it => {
+      const root = it.seriesRootId || it.id;
+      const seriesTag = ((CP_LIST_CACHE||[]).some(x => (x.seriesRootId||x.id) === root && x.id !== it.id))
+        ? ' <span style="font-size:10px;color:#a78bfa;">🔗시리즈</span>' : '';
+      return `<div class="cp-sl-row" data-name="${escapeHtml((it.프로젝트명||'').toLowerCase())}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">
+        <div style="flex:1;min-width:0;"><div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.프로젝트명||'(무제)')}${seriesTag}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(it.품목||'')} · 🎯 ${cpFmtKRW(it.타겟_소비자가_KRW)}</div></div>
+        <button class="cp-btn cp-btn-primary" style="font-size:11px;padding:5px 12px;flex-shrink:0;" onclick="cpLinkToSeries('${it.id}')">이 제품과 묶기</button>
+      </div>`;
+    }).join('');
+  modal.innerHTML = `
+    <div style="background:var(--bg);color:var(--text);border-radius:12px;padding:20px 22px;max-width:520px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4);border:1px solid var(--border);">
+      <h3 style="margin:0 0 4px;font-size:16px;">🔗 시리즈 연결 — <span style="color:#a78bfa;">${meName}</span></h3>
+      <p style="font-size:12.5px;color:var(--text-muted);line-height:1.55;margin:0 0 14px;">
+        <b>${meName}</b> 를 아래에서 고른 제품과 <b>같은 시리즈</b>(같은 제품·다른 디자인)로 묶습니다.<br>묶은 뒤엔 <b>🔗 시리즈에 적용</b>으로 원가·국가가격·타겟가를 한 번에 맞출 수 있어요. 디자인·이름은 그대로 유지됩니다.
+      </p>
+      ${iHaveChildren ? `<div style="font-size:12px;color:#fbbf24;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:9px 12px;margin-bottom:12px;">⚠️ 이 프로젝트는 이미 다른 변형들의 <b>대표</b>입니다. 다른 시리즈에 편입하면 연결이 꼬일 수 있어 권장하지 않습니다.</div>` : ''}
+      ${linked ? `<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12.5px;">이미 시리즈에 연결돼 있습니다.<button class="cp-btn cp-btn-ghost" style="font-size:11px;padding:5px 12px;" onclick="cpUnlinkSeries()">연결 해제</button></div>` : ''}
+      <input id="cp-sl-search" type="text" placeholder="제품명으로 검색" oninput="cpSeriesLinkFilter(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;box-sizing:border-box;margin-bottom:12px;">
+      <div id="cp-sl-list">${rows || '<div style="font-size:12px;color:var(--text-muted);padding:14px;text-align:center;">연결할 다른 프로젝트가 없습니다.</div>'}</div>
+      <div style="text-align:right;margin-top:8px;"><button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpCloseSeriesLink()">닫기</button></div>
+    </div>`;
+  modal.style.display = 'flex';
+}
+function cpSeriesLinkFilter(q){
+  const s = String(q||'').toLowerCase();
+  document.querySelectorAll('#cp-sl-list .cp-sl-row').forEach(r => {
+    r.style.display = (!s || (r.getAttribute('data-name')||'').includes(s)) ? 'flex' : 'none';
+  });
+}
+function cpCloseSeriesLink(){ const m = document.getElementById('cp-series-link-modal'); if(m) m.style.display='none'; }
+async function cpLinkToSeries(targetId){
+  if(!CP_CURRENT || !CP_CURRENT.id) return;
+  const t = (CP_LIST_CACHE||[]).find(it => it.id === targetId);
+  if(!t){ showToast('대상 프로젝트를 찾을 수 없습니다'); return; }
+  const targetRoot = t.seriesRootId || t.id;
+  if(targetRoot === CP_CURRENT.id){ showToast('내 변형(자식)에는 연결할 수 없습니다 — 대표를 골라 편입하세요'); return; }
+  CP_CLONED_FROM = targetRoot;               // cpSave 가 seriesRootId 로 저장
+  const ok = await cpSave();
+  if(ok !== false){
+    cpOptimisticListPatch({ id: CP_CURRENT.id, seriesRootId: targetRoot });   // 캐시에 즉시 반영 → 버튼 갱신
+    showToast('✅ "'+(t.프로젝트명||'제품')+'" 시리즈에 연결됨'); cpCloseSeriesLink();
+  } else { showToast('연결 저장 실패'); }
+}
+async function cpUnlinkSeries(){
+  if(!CP_CURRENT || !CP_CURRENT.id) return;
+  CP_CLONED_FROM = null;
+  const ok = await cpSave();
+  if(ok !== false){
+    cpOptimisticListPatch({ id: CP_CURRENT.id, seriesRootId: null });
+    showToast('시리즈 연결을 해제했습니다'); cpCloseSeriesLink();
   }
 }
 // 🔗 현재 프로젝트의 원가·국가가격·타겟가를 형제 변형에 일괄 적용 (디자인·이름·메모는 유지)
