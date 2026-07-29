@@ -1157,6 +1157,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
 
   <div class="cp-input-section">
+    <!-- 🚀 파이프라인에서 시작된 검토 배너 (2026-07-29) — 저장 시 파이프라인 자동 역연결 안내 -->
+    <div id="cp-from-pipeline-banner" style="display:none;margin-bottom:14px;"></div>
     <!-- 🔍 기존 제품 복제 (2026-05-11 추가) — 사이즈/색상 변형·시즌 리뉴얼 등 비슷한 제품을 다시 등록할 때 -->
     <div id="cp-clone-bar" style="margin-bottom:14px;padding:10px 14px;background:var(--input-bg);border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpOpenCloneSearch()">🔍 기존 제품 복제로 시작</button>
@@ -1700,7 +1702,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 <div id="cp-clone-search-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--card);color:var(--text);border-radius:12px;padding:20px 24px;max-width:720px;width:92%;max-height:80vh;display:flex;flex-direction:column;border:1px solid var(--border);">
     <h3 style="margin:0 0 4px 0;font-size:15px;color:var(--text);">🔍 기존 제품 복제로 시작</h3>
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">제품 카탈로그에서 검색합니다. 선택한 제품의 카테고리·HS·원산지·소재·포장·관세 등 사업성 검토 정보가 자동으로 채워집니다. 프로젝트명·생산단가·수량은 비워둡니다.</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;"><b style="color:#34d399;">📋 사업성 검토 프로젝트(팬딩 포함)</b>는 원가·국가가격까지 <b>풀 prefill</b>, <b>📦 제품 카탈로그</b>는 카테고리·HS 등 제한 prefill. 선택하면 자동으로 채워지고(프로젝트명·생산단가·수량은 비움), 같은 시리즈로 자동 연결됩니다.</div>
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <input id="cp-clone-search-q" type="text" placeholder="제품명으로 검색 (예: 키링)" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;" oninput="cpCloneRenderList()">
       <select id="cp-clone-search-cat" onchange="cpCloneRenderList()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;">
@@ -4555,6 +4557,8 @@ function cpNewProject(){
   cpMpLoadExisting(null);   // 시장가 조사 결과·폴링 정리
   // 🔍 복제 / 시리즈 관계 리셋 (2026-05-11)
   CP_CLONED_FROM = null;
+  // 🚀 파이프라인 시작 플래그 리셋 (2026-07-29) — cpStartFromPipeline 은 이 리셋 뒤에 플래그를 다시 세움
+  if (typeof cpRenderFromPipelineBanner === 'function'){ window._cpFromPipeline = null; cpRenderFromPipelineBanner(); }
   if (typeof cpUpdateClonedFromTag === 'function') cpUpdateClonedFromTag();
   const _hint = document.getElementById('cp-clone-hint'); if (_hint) _hint.style.display = 'none';
   // 복수 제품 견적서 체인 리셋
@@ -4642,10 +4646,84 @@ async function cpRenderPipelineMirror(){
       + '<div style="font-weight:700;margin-bottom:6px;">🚀 제품 파이프라인 연동됨</div>'+parts+'</div>';
   }catch(e){ el.style.display='none'; }
 }
+// 🚀 파이프라인 → 사업성 검토 시작 워크플로 (2026-07-29)
+//   파이프라인 기획 단계 "새 검토 시작" → 제품명·목표판매가·업체 견적을 프리필하고,
+//   저장 성공 시 파이프라인에 consumerPricingId 자동 역연결 (기획 단계 불 켜짐 + 양방향 미러 갱신)
+window._cpFromPipeline = null;
+function cpRenderFromPipelineBanner(){
+  const el = document.getElementById('cp-from-pipeline-banner'); if(!el) return;
+  const fp = window._cpFromPipeline;
+  if(!fp){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='block';
+  el.innerHTML = '<div style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.45);border-radius:10px;padding:10px 14px;font-size:12.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+    + '<span>🚀 파이프라인 <b>'+escapeHtml(((fp.emoji||'')+' '+fp.name).trim())+'</b>에서 시작된 검토 — <b>저장하면 파이프라인에 자동 연결</b>되고 기획 단계에 불이 켜집니다.</span>'
+    + '<button type="button" onclick="window._cpFromPipeline=null;cpRenderFromPipelineBanner();" style="margin-left:auto;font-size:11px;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:8px;padding:3px 9px;cursor:pointer;" title="자동 연결만 취소합니다 (검토는 그대로 작성 가능)">연결 안 함 ✕</button>'
+    + '</div>';
+}
+async function cpStartFromPipeline(pid){
+  // 파이프라인 iframe(부모 직접 호출) 또는 ?cpFromPipeline= 새 탭 진입에서 호출
+  const btn = document.querySelector('.sidebar-item[data-page="consumer"]');
+  if(!window._cpInited){ window._cpInited = true; if(typeof cpInit==='function') await cpInit(); }
+  if(btn) switchPage(btn);
+  let p;
+  try{
+    const r = await fetch('/api/pipeline/'+encodeURIComponent(pid), {credentials:'same-origin'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    p = await r.json();
+  }catch(e){ showToast('파이프라인 제품 로드 실패: '+e.message); return; }
+  cpNewProject();
+  document.getElementById('cp-name').value = p.name || '';
+  // 목표 판매가 — 파이프라인 기획 단계 값
+  if(p.target && p.target.sell_price) document.getElementById('cp-target-price').value = Number(p.target.sell_price).toLocaleString();
+  // 업체 견적 → 수량 구간 칩 (견적서 업로드 tier UI 재사용) — 선정 업체 우선, 이후 수량 오름차순
+  const quotes = [];
+  (p.vendors||[]).filter(v=>v.status!=='dropped').forEach(v=>(v.quotes||[]).forEach(q=>{
+    const unit = Number(q.unit)||0; if(unit<=0) return;
+    quotes.push({ qty:Number(q.qty)||0, unitPrice:unit, currency:q.cur||'USD', _vendor:v.name||'', _selected:v.status==='selected', _lead:q.lead_days||null, _terms:q.terms||'' });
+  }));
+  quotes.sort((a,b)=>((b._selected?1:0)-(a._selected?1:0)) || ((a.qty||Infinity)-(b.qty||Infinity)));
+  window._cpQuotes = quotes; window._cpTierActive = 0;
+  if(quotes.length) cpApplyTier(0); else cpRenderTiers();
+  // 견적에 수량이 없으면 파이프라인 목표 수량으로
+  if(!(parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))>0) && p.target && p.target.qty)
+    document.getElementById('cp-qty').value = Number(p.target.qty).toLocaleString();
+  // 메모 — 출처 + 견적 요약 (담당자가 어떤 견적 기준인지 추적)
+  const qLines = quotes.slice(0,8).map(q=>'· '+q._vendor+(q._selected?'(선정)':'')+' — '+(q.qty?q.qty.toLocaleString()+'개 ':'')+q.unitPrice+' '+q.currency+(q._lead?' · 리드 '+q._lead+'일':'')+(q._terms?' · '+q._terms:''));
+  document.getElementById('cp-memo').value = '🚀 파이프라인 "'+((p.emoji||'')+' '+(p.name||'')).trim()+'"에서 시작'+(qLines.length?'\n업체 견적:\n'+qLines.join('\n'):'');
+  window._cpFromPipeline = { pid: p.id, name: p.name||'', emoji: p.emoji||'' };
+  cpRenderFromPipelineBanner();
+  cpRecalc();
+  showToast('🚀 파이프라인 데이터로 검토 시작 — 저장 시 자동 연결됩니다');
+  try{ document.getElementById('cp-from-pipeline-banner').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+}
+// 저장 성공 직후 파이프라인 자동 역연결 (cpSave 에서 호출)
+async function cpAutoLinkPipeline(){
+  const fp = window._cpFromPipeline;
+  if(!fp || !CP_CURRENT || !CP_CURRENT.id) return;
+  try{
+    const r = await fetch('/api/pipeline/'+encodeURIComponent(fp.pid), {method:'PATCH', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({consumerPricingId: CP_CURRENT.id})});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    window._cpFromPipeline = null;
+    cpRenderFromPipelineBanner();
+    showToast('🚀 파이프라인 "'+fp.name+'"에 자동 연결됨 — 기획 단계 완료');
+    cpRenderPipelineMirror();
+    // 이미 열려 있는 파이프라인 iframe 보드·상세도 즉시 갱신
+    try{
+      const ifr = document.getElementById('pipelineIframe');
+      if(ifr && ifr.contentWindow && ifr.src && !ifr.src.endsWith('about:blank'))
+        ifr.contentWindow.postMessage({type:'goods-cp-linked', pid: fp.pid, cpId: CP_CURRENT.id}, location.origin);
+    }catch(e){}
+  }catch(e){
+    showToast('⚠️ 파이프라인 자동 연결 실패 — 파이프라인 기획 단계에서 수동으로 연결하세요');
+  }
+}
 async function cpLoadProject(id){
   // 4-28 새 산식 — manual override 리셋
   CP_MANUAL_MODE = false;
   CP_MANUAL_CERT_PCT = null;
+  // 파이프라인 시작 플래그 해제 — 다른 프로젝트를 열어 저장할 때 오연결 방지 (2026-07-29)
+  window._cpFromPipeline = null;
+  cpRenderFromPipelineBanner();
   try{
     const r = await fetch('/api/consumer-pricing/'+id);
     const it = await r.json();
@@ -6372,6 +6450,8 @@ async function cpSave(){
     document.getElementById('cp-btn-del').style.display='inline-block';
     // pubBtn/payBtn/cp-approval-box 토글은 cpToggleCatalogBtn 가 일괄 처리
     cpToggleCatalogBtn();
+    // 🚀 파이프라인에서 시작된 검토면 자동 역연결 (2026-07-29, 논블로킹)
+    cpAutoLinkPipeline();
     // 신규 저장 시 대기 중인 제품 이미지 자동 업로드
     if(CP_PRODUCT_IMAGE && CP_PRODUCT_IMAGE.pendingLocal && CP_PRODUCT_IMAGE.dataUrl){
       await cpUploadProductImage();
@@ -7149,42 +7229,67 @@ function cpCloseCloneSearch(){
   const modal = document.getElementById('cp-clone-search-modal');
   if (modal) modal.style.display = 'none';
 }
-// 검색 결과 렌더링 — 카탈로그 list 사용
+// 검색 결과 렌더링 — 📋 사업성 검토 프로젝트(팬딩 포함, 풀 prefill) 우선 + 📦 카탈로그 (2026-07-29)
 function cpCloneRenderList(){
-  const q = document.getElementById('cp-clone-search-q').value || '';
+  const q = (document.getElementById('cp-clone-search-q').value || '').trim();
   const cat = document.getElementById('cp-clone-search-cat').value || '';
   const box = document.getElementById('cp-clone-search-results');
   if (!box) return;
-  const results = q.trim()
-    ? cpFindSimilar(q, {category:cat, source: CP_CATALOG_CACHE})
-    : (cat ? CP_CATALOG_CACHE.filter(x => (x.category||'') === cat) : CP_CATALOG_CACHE).slice(0, 50);
-  if (!results.length){
-    box.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px;">'
-      + (q.trim() ? '일치하는 제품 없음' : '등록된 제품이 없습니다')
-      + '</div>';
+  const ql = q.toLowerCase();
+
+  // ① 사업성 검토 프로젝트 (CP_LIST_CACHE) — 원가·국가가격까지 풀 prefill. 편집 중 자신은 제외.
+  let projects = (CP_LIST_CACHE || []).filter(p => !(CP_CURRENT && CP_CURRENT.id && p.id === CP_CURRENT.id));
+  if (cat) projects = projects.filter(p => (p.품목||'') === cat);
+  if (ql) projects = projects.filter(p => (String(p.프로젝트명||'')+' '+String(p.품목||'')).toLowerCase().includes(ql));
+  projects.sort((a,b)=> (Date.parse(b.updatedAt||'')||0) - (Date.parse(a.updatedAt||'')||0));
+  const projIds = new Set(projects.map(p => p.id));
+
+  // ② 카탈로그 — 위 사업성 검토와 cpId 중복 제거(풀 prefill 쪽이 우선)
+  let catItems = q ? cpFindSimilar(q, {category:cat, source: CP_CATALOG_CACHE})
+                   : (cat ? CP_CATALOG_CACHE.filter(x => (x.category||'') === cat) : CP_CATALOG_CACHE);
+  catItems = (catItems || []).filter(it => !(it.cpId && projIds.has(it.cpId)));
+
+  const esc = s => String(s==null?'':s).replace(/"/g,'&quot;');
+  const thumbOf = (url, fallback) => url
+    ? '<img src="'+esc(url)+'" alt="" style="width:36px;height:36px;border-radius:4px;object-fit:cover;flex-shrink:0;">'
+    : '<span style="width:36px;height:36px;border-radius:4px;background:var(--bg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:var(--text-muted);">'+fallback+'</span>';
+  const sectionHead = (t) => '<div style="font-size:10.5px;font-weight:700;color:var(--text-muted);letter-spacing:.3px;padding:9px 10px 5px;position:sticky;top:0;background:var(--input-bg);">'+t+'</div>';
+
+  // 사업성 검토 row
+  const projRows = projects.slice(0, 60).map(p => {
+    const isSeries = (CP_LIST_CACHE||[]).some(x => (x.seriesRootId||x.id) === (p.seriesRootId||p.id) && x.id !== p.id);
+    const seriesTag = isSeries ? ' <span style="font-size:9.5px;color:#a78bfa;">🔗시리즈</span>' : '';
+    const sub = [p.품목||'-',
+      p.타겟_소비자가_KRW ? '소비자가 ₩'+Math.round(p.타겟_소비자가_KRW).toLocaleString() : '',
+      p.총원가_KRW ? '원가 ₩'+Math.round(p.총원가_KRW).toLocaleString() : '',
+      (p.마진율!=null) ? '마진 '+(p.마진율*100).toFixed(0)+'%' : '',
+      p.상태||''].filter(Boolean).join(' · ');
+    return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="cpApplyClone(\''+p.id+'\')">'
+      + thumbOf(p.imageUrl, '📋')
+      + '<div style="flex:1;min-width:0;"><div style="font-size:13px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(p.프로젝트명||'(무제)')
+      + ' <span style="font-size:9px;background:rgba(52,211,153,0.16);color:#34d399;padding:1px 6px;border-radius:8px;">풀 prefill</span>'+seriesTag+'</div>'
+      + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+esc(sub)+'</div></div></div>';
+  }).join('');
+
+  // 카탈로그 row
+  const catRows = catItems.slice(0, 60).map(it => {
+    const sub = [it.category||'-',
+      it.retailKR ? '소비자가 ₩'+Math.round(it.retailKR).toLocaleString() : '',
+      it.costKRW ? '원가 ₩'+Math.round(it.costKRW).toLocaleString() : '',
+      it.작성자||'', it.등록일||''].filter(Boolean).join(' · ') + (!it.cpId ? ' · ⚠️ 제한 prefill' : '');
+    const thumb = it.imageUrl || (it.hasLocalImage && it.imageId ? '/api/catalog-image/'+encodeURIComponent(it.imageId) : '');
+    return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="cpApplyCloneFromCatalog(\''+it.id+'\')">'
+      + thumbOf(thumb, '📦')
+      + '<div style="flex:1;min-width:0;"><div style="font-size:13px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(it.productName||'-')+'</div>'
+      + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+esc(sub)+'</div></div></div>';
+  }).join('');
+
+  if (!projRows && !catRows){
+    box.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:12px;">'+(q ? '일치하는 항목 없음' : '항목이 없습니다')+'</div>';
     return;
   }
-  box.innerHTML = results.slice(0, 80).map(it => {
-    const catLbl = it.category || '-';
-    const retail = it.retailKR ? '소비자가 ₩' + Math.round(it.retailKR).toLocaleString() : '';
-    const cost = it.costKRW ? '원가 ₩' + Math.round(it.costKRW).toLocaleString() : '';
-    const author = it.작성자 || '';
-    const dt = it.등록일 || '';
-    const noCp = !it.cpId ? ' · ⚠️ 사업성 검토 없음 (제한 prefill)' : '';
-    const subline = [catLbl, retail, cost, author, dt].filter(Boolean).join(' · ') + noCp;
-    const safeName = (it.productName||'-').replace(/"/g,'&quot;');
-    const thumb = it.imageUrl || (it.hasLocalImage && it.imageId ? '/api/catalog-image/' + encodeURIComponent(it.imageId) : '');
-    const thumbHtml = thumb
-      ? '<img src="'+thumb.replace(/"/g,'&quot;')+'" alt="" style="width:36px;height:36px;border-radius:4px;object-fit:cover;flex-shrink:0;">'
-      : '<span style="width:36px;height:36px;border-radius:4px;background:var(--bg);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:var(--text-muted);">📦</span>';
-    return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'" onclick="cpApplyCloneFromCatalog(\''+it.id+'\')">'
-      + thumbHtml
-      + '<div style="flex:1;min-width:0;">'
-      + '<div style="font-size:13px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+safeName+'</div>'
-      + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+subline+'</div>'
-      + '</div>'
-      + '</div>';
-  }).join('');
+  box.innerHTML = (projRows ? sectionHead('📋 사업성 검토 프로젝트 · 원가·국가가격까지 복제') + projRows : '')
+                + (catRows ? sectionHead('📦 제품 카탈로그 · 등록 제품 (제한 prefill)') + catRows : '');
 }
 // 카탈로그 row 선택 → cpId 있으면 사업성 검토 페이지 retrieve + 거기서 prefill / 없으면 카탈로그 정보로만
 async function cpApplyCloneFromCatalog(catId){
@@ -10253,10 +10358,19 @@ window.addEventListener('DOMContentLoaded', () => {
 
 <script>
 // 페이지 진입 시 인증 확인 + 권한별 사이드바 노출
+function _goodsBoot(){
+  _initGoodsAuth().then(() => {
+    // 🚀 파이프라인 "새 검토 시작"을 새 탭으로 넘어온 경우 (?cpFromPipeline=<제품id>) — 인증 후 자동 프리필
+    try {
+      const pid = new URLSearchParams(location.search).get('cpFromPipeline');
+      if (pid && window._goodsUser && typeof cpStartFromPipeline === 'function') cpStartFromPipeline(pid);
+    } catch(e) {}
+  });
+}
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', _initGoodsAuth);
+  document.addEventListener('DOMContentLoaded', _goodsBoot);
 } else {
-  _initGoodsAuth();
+  _goodsBoot();
 }
 </script>
 </body>
