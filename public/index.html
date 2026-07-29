@@ -4176,14 +4176,17 @@ async function cpRenderProjectList(allItems){
         : '<span class="cp-badge" style="background:rgba(127,127,127,0.14);color:var(--text-muted);font-size:10px;padding:1px 7px;">💾 저장만</span>';
       const marginPct = (it.마진율!=null)?(it.마진율*100).toFixed(1)+'%':'-';
       const updated = it.updatedAt?new Date(it.updatedAt).toLocaleDateString('ko-KR'):'';
-      // 시리즈 표기: 그룹 N≥2 일 때만
+      // 시리즈 표기(2026-07-29 개편): 들여쓰기 대신 '같은 제품 N종' 라벨을 모든 멤버 행에 + 그룹 좌측 보라 액센트
       const isMultiSeries = groupSize >= 2;
+      const isRoot = isMultiSeries && indexInGroup === 0;
       const isChild = isMultiSeries && indexInGroup > 0;
-      const seriesBadge = (isMultiSeries && indexInGroup === 0)
-        ? ' <span class="cp-badge" style="background:rgba(167,139,250,0.18);color:#7c5ec8;font-size:10px;padding:1px 6px;margin-left:6px;">🔗 시리즈 '+groupSize+'개</span>'
-        : '';
-      const nameDisplay = (isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '') + escapeHtml(it.프로젝트명||'(무제)') + seriesBadge;
-      const rowStyle = isChild ? ' style="padding-left:18px;"' : '';
+      let seriesBadge = '';
+      if (isMultiSeries){
+        seriesBadge = ' <span class="cp-badge" style="background:rgba(167,139,250,0.20);color:#a78bfa;font-size:10px;padding:1px 7px;margin-left:6px;font-weight:600;" title="같은 제품·다른 디자인으로 묶인 시리즈입니다 (원가·가격 일괄 적용 가능). 판매·재고·바코드에서는 각각 별개 제품입니다.">🔗 같은 제품 '+groupSize+'종</span>';
+        if (isRoot) seriesBadge += ' <span class="cp-badge" style="background:rgba(167,139,250,0.10);color:#a78bfa;font-size:9px;padding:1px 6px;" title="이 시리즈의 대표 — 여기서 원가·가격을 잡고 시리즈에 적용하세요">대표</span>';
+      }
+      const nameDisplay = escapeHtml(it.프로젝트명||'(무제)') + seriesBadge;
+      const rowStyle = isMultiSeries ? ' style="border-left:3px solid rgba(167,139,250,0.6);background:rgba(167,139,250,0.05);padding-left:13px;"' : '';
       return `<div class="cp-list-item"${rowStyle} onclick="cpLoadProject('${it.id}')">
         <div><div class="cp-li-name">${nameDisplay}</div><div class="cp-li-meta">${escapeHtml(it.품목||'')} · ${updated}</div></div>
         <div>🎯 ${cpFmtKRW(it.타겟_소비자가_KRW)}</div>
@@ -9509,16 +9512,17 @@ function catRender(){
       groupedFlat.forEach(g => { if (g.rootId === _rootId && g.item._cpId !== undefined) _cpIdsHere.add(g.item.cpId); });
       for (const [cpKey, r] of _cpRootMap){ if (r === _rootId && cpKey !== _rootId && !_cpIdsHere.has(cpKey)) _totalVariants++; }
     }
-    const _seriesBadge = (_isRoot && _totalVariants >= 1)
-      ? ' <span style="background:rgba(167,139,250,0.18);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:500;">🔗 시리즈 '+(_totalVariants+1)+'</span>'
+    // 🔗 시리즈 표기(2026-07-29 개편): 같은 제품 표시를 root·child 모두에 라벨로. root 는 개수, child 는 대표명
+    const _isSeries = _isRoot || _isChild;
+    const _seriesBadge = _isRoot
+      ? ' <span style="background:rgba(167,139,250,0.20);color:#a78bfa;font-size:10px;padding:1px 7px;border-radius:6px;margin-left:4px;font-weight:600;" title="같은 제품·다른 디자인 시리즈. 판매·재고·바코드에서는 각각 별개 제품입니다.">🔗 같은 제품 '+(_totalVariants+1)+'종</span>'
       : (_isChild
-          ? ' <span style="background:rgba(167,139,250,0.10);color:#7c5ec8;font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-style:italic;">↳ ' + escapeHtml(_cpNameMap.get(_rootId) || '원본 미등록') + '</span>'
+          ? ' <span style="background:rgba(167,139,250,0.20);color:#a78bfa;font-size:10px;padding:1px 7px;border-radius:6px;margin-left:4px;font-weight:600;" title="같은 제품·다른 디자인 시리즈. 판매·재고·바코드에서는 각각 별개 제품입니다.">🔗 같은 제품 · ' + escapeHtml(_cpNameMap.get(_rootId) || '원본') + '</span>'
           : '');
     // 이름 자체를 클릭 트리거로 — 상세 모달 (event.stopPropagation 으로 row 체크박스 토글 차단). 2026-05-21
-    const _nameDisplay = (_isChild ? '<span style="color:var(--text-muted);font-size:11px;margin-right:4px;">└</span> ' : '')
-      + '<a href="javascript:void(0)" onclick="event.stopPropagation();catOpenDetail(\''+it.id+'\')" style="color:var(--text);text-decoration:none;" title="제품 상세 보기">'+escapeHtml(it.productName || '(이름없음)')+'</a>'
+    const _nameDisplay = '<a href="javascript:void(0)" onclick="event.stopPropagation();catOpenDetail(\''+it.id+'\')" style="color:var(--text);text-decoration:none;" title="제품 상세 보기">'+escapeHtml(it.productName || '(이름없음)')+'</a>'
       + _seriesBadge;
-    const _rowExtra = _isChild ? ' style="cursor:pointer;background:rgba(167,139,250,0.04);"' : ' style="cursor:pointer;"';
+    const _rowExtra = _isSeries ? ' style="cursor:pointer;border-left:3px solid rgba(167,139,250,0.6);background:rgba(167,139,250,0.05);"' : ' style="cursor:pointer;"';
     const _bcVal = it.barcode || '';
     return `
       <div class="cat-row${isSwapSource ? ' swap-source' : ''}${isSelected ? ' selected' : ''}" data-id="${it.id}" data-idx="${idx}" onclick="catRowClick(event, '${it.id}', ${idx})"${_rowExtra}>
