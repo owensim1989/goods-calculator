@@ -253,6 +253,8 @@ app.use(express.json({ limit: '20mb' }));
 
 // ━━━ 로그인 시스템 (MyDesk SSO 연동) ━━━
 const auth = require('./lib/auth');
+// 바이어 엑셀 대외 발송 정제 (내부 마커 제거 + 내부메모 차단 + 한글→영문) — 2026-08-01
+const { createExportSanitizer, seriesLabelForBuyer } = require('./lib/export-i18n');
 auth.mountRoutes(app);                    // /api/login, /api/logout, /api/me 등록
 app.use(auth.requireAuthMiddleware);       // 이후 모든 요청 인증 검사 (PUBLIC_PATHS 자동 통과)
 
@@ -5243,14 +5245,25 @@ const _buyerExcelHandler = async (req, res) => {
     let imagesEmbedded = 0;
     let imageErrors = [];
 
+    // 🌐 대외 발송 정제기 (2026-08-01) — 내부 마커 제거 + 내부메모 차단 + 한글→영문
+    // 1차 pass 로 한글 문자열을 모아 1회 배치 번역 (캐시 hit 면 AI 호출 0회)
+    const _san = createExportSanitizer({ cacheDir: PERSIST_DATA_DIR, callClaude });
+    const _txt = (pg, k) => ((pg.properties?.[k]?.rich_text || pg.properties?.[k]?.title) || []).map(t => t.plain_text || '').join('');
+    for (const pg of visiblePages) {
+      ['Packaging', 'Size_mm', 'Material', 'HS_Code', 'Product Name'].forEach(k => _san.scan(_txt(pg, k)));
+      _san.scan(_txt(pg, '비고'), { isNote: true });
+    }
+    await _san.translatePending();
+
     for (let idx = 0; idx < visiblePages.length; idx++) {
       const p = visiblePages[idx];
       const pr = p.properties || {};
       const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
-      const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+      const _rawText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
+      const getText = k => _san.clean(_rawText(k), { isNote: k === '비고' });
       const getSel = k => pr[k] && pr[k].select ? pr[k].select.name : null;
 
-      const barcode = getText('Barcode');
+      const barcode = _rawText('Barcode');   // 재고 lookup 키 — 정제기 통과 금지 (원문 그대로)
       const fobKRW = getNum('FOB_KRW');
       const 발주수량 = getNum('발주수량');
       const amount = (fobKRW && 발주수량) ? fobKRW * 발주수량 : null;
@@ -5281,19 +5294,18 @@ const _buyerExcelHandler = async (req, res) => {
         if (rootPage) rootName = prodName(rootPage);
         else if (_cpNameMap.has(rootId)) rootName = _cpNameMap.get(rootId);
       }
-      // Series 컬럼 값:
-      //  - 자식 (isRoot=false 이면서 root id 가 자기 cpId 와 다름): "↳ variant of: {rootName}"
-      //  - root + 변형 N≥1: "Series Master (N variants)"
+      // Series 컬럼 값 (2026-08-01 — 대외 발송용 자연 영문으로 교체):
+      //  - 자식: "{rootName}"                          (기존 "↳ variant of: X" — 화살표가 코드처럼 읽힘)
+      //  - root + 변형 N≥1: "{rootName} — N variants"  (기존 "Series Master (N variants)")
       //  - 단독 (변형 0): 빈칸
-      let seriesLabel = '';
       const isChild = !isRoot && rootId && rootId !== cpId && rootId !== p.id;
-      if (isChild){
-        seriesLabel = '↳ variant of: ' + (rootName || '(원본 미등록)');
-      } else if (isRoot && totalVariants >= 1){
-        seriesLabel = `Series Master (${totalVariants + 1} variants)`;
-      }
-      // Product Name — 자식 row 는 "  └ " prefix
-      const productNameDisplay = (isChild ? '  └ ' : '') + getText('Product Name');
+      const seriesLabel = seriesLabelForBuyer({
+        isChild, isRoot, totalVariants,
+        rootName: _san.clean(rootName),
+        ownName: _san.clean(_rawText('Product Name')),
+      });
+      // Product Name — 기존 자식 row "  └ " prefix 제거 (Series 컬럼이 관계를 표현)
+      const productNameDisplay = getText('Product Name');
 
       const rowNum = idx + 3;
       const rowValues = [
@@ -5406,6 +5418,11 @@ const _buyerExcelHandler = async (req, res) => {
     }
 
     console.log(`[바이어 엑셀${includeStock ? '+재고' : ''}] 이미지 임베드: ${imagesEmbedded}/${visiblePages.length}, 에러: ${imageErrors.length} (전체 ${allPages.length} 중 단종/품절 ${allPages.length - visiblePages.length} 제외)`);
+    const _sanRep = _san.report();
+    console.log(`[바이어 엑셀] 대외 정제 — ${_sanRep.summary}`);
+    if (_sanRep.untranslated.length) {
+      console.warn('[바이어 엑셀] ⚠️ 영문화 못한 한글 (노션 원본 수정 권장):', _sanRep.untranslated.map(s => s.replace(/\n/g, ' | ').slice(0, 60)));
+    }
     const buf = await workbook.xlsx.writeBuffer();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const filename = includeStock
