@@ -253,8 +253,6 @@ app.use(express.json({ limit: '20mb' }));
 
 // ━━━ 로그인 시스템 (MyDesk SSO 연동) ━━━
 const auth = require('./lib/auth');
-// 바이어 엑셀 대외 발송 정제 (내부 마커 제거 + 내부메모 차단 + 한글→영문) — 2026-08-01
-const { createExportSanitizer, seriesLabelForBuyer } = require('./lib/export-i18n');
 auth.mountRoutes(app);                    // /api/login, /api/logout, /api/me 등록
 app.use(auth.requireAuthMiddleware);       // 이후 모든 요청 인증 검사 (PUBLIC_PATHS 자동 통과)
 
@@ -479,6 +477,21 @@ function extractProp(page, name, type) {
 }
 
 function parsePage(page) {
+  // ━━ 총제작비 = 제작비 + 몰드비 + 샘플링비 (2026-07-19 신설) ━━
+  // 배경: 워크북(원가계산_수익률.xlsx)은 제작비를 공정1 / 공정2(몰드비) / 샘플링 3칸으로 나눠 적는데
+  //       통합DB엔 `제작비` 한 칸뿐이라, 임포트 때 몰드비·샘플링이 통째로 빠진 행이 6건 있었음
+  //       (총 3,033만원 누락 → 블랭킷 원가가 11,027 대신 6,324 로 표시되던 사고).
+  // 노션 `개당단가` formula 는 제작비÷수량 이라 새 두 칸을 못 봄 → 여기서 총제작비 기준으로 덮어씀.
+  const _몰드비 = extractProp(page, '몰드비', 'number');
+  const _샘플링비 = extractProp(page, '샘플링비', 'number');
+  const _제작비 = extractProp(page, '제작비', 'number');
+  const _수량 = extractProp(page, '수량', 'number');
+  const _추가제작비 = (_몰드비 || 0) + (_샘플링비 || 0);
+  const _총제작비 = (_제작비 || 0) + _추가제작비;
+  const _개당단가F = extractProp(page, '개당단가', 'formula');
+  // 몰드비·샘플링비가 실제로 입력된 행만 재계산 (미입력 행은 formula 그대로 — 회귀 방지)
+  const _개당단가 = (_추가제작비 > 0 && _수량 > 0) ? _총제작비 / _수량 : _개당단가F;
+
   return {
     id: page.id,
     프로젝트명: extractProp(page, '프로젝트명', 'title'),
@@ -486,11 +499,14 @@ function parsePage(page) {
     품명: extractProp(page, '품명', 'multi_select'),
     거래처: extractProp(page, '거래처', 'select'),
     국가: extractProp(page, '국가', 'select'),
-    수량: extractProp(page, '수량', 'number'),
+    수량: _수량,
     디자인종수: extractProp(page, '디자인종수', 'number'),
-    제작비: extractProp(page, '제작비', 'number'),
+    제작비: _제작비,
+    몰드비: _몰드비,
+    샘플링비: _샘플링비,
+    총제작비: _총제작비 || null,
     견적가: extractProp(page, '견적가', 'number'),
-    개당단가: extractProp(page, '개당단가', 'formula'),
+    개당단가: _개당단가,
     마진: extractProp(page, '마진', 'formula'),
     마진율: extractProp(page, '마진율', 'formula'),
     유효수량: extractProp(page, '유효수량', 'formula'),
@@ -700,6 +716,29 @@ app.post('/api/products/demand-source-bulk', async (req, res) => {
   res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 20) });
 });
 
+// 분류 일괄 저장 (2026-06-15) — 분류 점검 화면에서 품목/품명 확정. 품명 multi_select 새 옵션은 서버가 자동생성.
+app.post('/api/products/classify-bulk', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion 미설정' });
+  const updates = Array.isArray(req.body && req.body.updates) ? req.body.updates : [];
+  if (!updates.length) return res.json({ ok: true, updated: 0, failed: 0 });
+  let updated = 0; const errors = [];
+  for (const u of updates) {
+    const id = u && u.id; if (!id || String(id).startsWith('parsed:')) continue;
+    const props = {};
+    if (u.품목) props['품목'] = { select: { name: String(u.품목).substring(0, 100) } };
+    if (Array.isArray(u.품명)) props['품명'] = { multi_select: u.품명.filter(Boolean).map(n => ({ name: String(n).substring(0, 100) })) };
+    if (!Object.keys(props).length) continue;
+    try {
+      await notion.pages.update({ page_id: id, properties: props });
+      const ci = (cache.items || []).find(x => x.id === id);
+      if (ci) { if (u.품목) ci.품목 = u.품목; if (Array.isArray(u.품명)) ci.품명 = u.품명; }
+      updated++;
+    } catch (e) { errors.push({ id, error: e.message }); }
+  }
+  if (updated) { try { saveCache(cache); } catch (e) {} }
+  res.json({ ok: true, updated, failed: errors.length, errors: errors.slice(0, 20) });
+});
+
 // 견적 채택 토글 (2026-06-09) — 제품단가 표에서 건별로 발주확정/미채택 설정
 app.post('/api/quote-status', async (req, res) => {
   if (!notion) return res.status(503).json({ error: 'notion 미설정' });
@@ -738,7 +777,9 @@ app.get('/api/products', (req, res) => {
     const 개당단가_KRW = 원본단가 != null ? Math.round(원본단가 * fxRate) : null;
 
     // 제작비도 KRW 환산 (Notion 제작비는 원래 통화 기준)
-    const 제작비_KRW = it.제작비 != null ? Math.round(it.제작비 * fxRate) : null;
+    // 2026-07-19: 몰드비·샘플링비 포함한 총제작비 기준 (parsePage 에서 합산)
+    const 제작비원본 = it.총제작비 != null ? it.총제작비 : it.제작비;
+    const 제작비_KRW = 제작비원본 != null ? Math.round(제작비원본 * fxRate) : null;
 
     // ② 부대비용(개당): 확정이면 실제 금액, 아니면 % 추정
     const 부대비용합계 = (it.해외운송비 || 0) + (it.관세 || 0) + (it.부가세 || 0) + (it.기타부대비용 || 0);
@@ -937,6 +978,9 @@ app.post('/api/items', async (req, res) => {
     if (d.수량 != null) properties['수량'] = { number: d.수량 };
     if (d.디자인종수 != null) properties['디자인종수'] = { number: d.디자인종수 };
     if (d.제작비 != null) properties['제작비'] = { number: d.제작비 };
+    // 2026-07-19: 몰드비·샘플링비 분리 입력 (제작비에 합쳐 넣다 누락되던 사고 방지)
+    if (d.몰드비 != null) properties['몰드비'] = { number: d.몰드비 };
+    if (d.샘플링비 != null) properties['샘플링비'] = { number: d.샘플링비 };
     if (d.견적가 != null) properties['견적가'] = { number: d.견적가 };
     if (d.상세스펙) properties['상세스펙'] = { rich_text: [{ text: { content: d.상세스펙 } }] };
     if (d.스펙태그?.length) properties['스펙태그'] = { multi_select: d.스펙태그.map(n => ({ name: n })) };
@@ -2699,11 +2743,19 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
     const fname = `${imgId}.${decoded.ext}`;
     const fpath = path.join(CATALOG_IMAGE_DIR, fname);
     fs.writeFileSync(fpath, decoded.buf);
-    const url = (process.env.PUBLIC_BASE_URL || '') + '/api/catalog-image/' + imgId;
+    // ?v= 캐시버스트 — 썸네일 교체 시 URL 자체가 바뀌어야 inventory/브라우저가 새 이미지를 인식
+    // (catalog-image GET 은 1주일 캐시라 고정 URL이면 옛 이미지가 계속 보임)
+    // ⚠️ 절대 URL(PUBLIC_BASE_URL 상수, 미설정 시 https://goods.jeisha.kr) 사용 필수.
+    //    process.env.PUBLIC_BASE_URL 직접 쓰면 env 미설정 환경에서 상대경로가 나와
+    //    inventory 가 자기 도메인으로 풀어 이미지 404 (publish 경로와 불일치). 2026-06-30 실측 확인.
+    const v = Date.now();
+    const url = PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v;
     await notion.pages.update({
       page_id: req.params.id,
       properties: { 'Image_URL': { url } }
     });
+    // 2026-06-30 회계팀 요청: 굿즈 썸네일 변경도 inventory 제품목록에 즉시 반영 (best-effort)
+    syncCatalogPageToInventory(req.params.id, 'image-update').catch(() => {});
     res.json({ success: true, imageUrl: url, imageId: imgId });
   } catch (e) {
     console.error('[카탈로그 이미지 업로드 실패]', e.message);
@@ -3063,6 +3115,9 @@ app.post('/api/consumer-pricing/catalog/swap-images', async (req, res) => {
       notion.pages.update({ page_id: idA, properties: { 'Image_URL': { url: urlB } } }),
       notion.pages.update({ page_id: idB, properties: { 'Image_URL': { url: urlA } } })
     ]);
+    // 2026-06-30: swap 도 inventory 양쪽에 반영 (best-effort)
+    syncCatalogPageToInventory(idA, 'image-swap').catch(() => {});
+    syncCatalogPageToInventory(idB, 'image-swap').catch(() => {});
     res.json({ success: true, swapped: { [idA]: urlB, [idB]: urlA } });
   } catch (e) {
     console.error('[카탈로그 swap-images 실패]', e.message);
@@ -3299,67 +3354,52 @@ async function _runPricingAudit(jobId, filepath) {
     // 4) 각 제품 처리
     const aiFails = [];
     const krMissing = [];
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-      job.progress = i;
-
+    // Pass 1: 최저가 계산 + AI 추정 대상 수집 (🖥️ AI 호출은 맥미니 데몬 정액제로 위임, 2026-07-25)
+    const aiProducts = [];
+    for (const p of products) {
       if (p.krwPrice == null) {
         krMissing.push(p);
-        p.aiPrices = null;
-        p.minSafe = {}; p.classified = {}; p.recommended = {};
-        for (const c of COUNTRIES) {
-          p.minSafe[c.code] = null;
-          p.classified[c.code] = p.current[c.code] == null ? 'EMPTY' : 'OK';
-          p.recommended[c.code] = null;
-        }
+        p.aiPrices = null; p.minSafe = {}; p.classified = {}; p.recommended = {};
+        for (const c of COUNTRIES) { p.minSafe[c.code] = null; p.classified[c.code] = p.current[c.code] == null ? 'EMPTY' : 'OK'; p.recommended[c.code] = null; }
         continue;
       }
-
-      // 수익률 최저가
       p.minSafe = {};
       for (const c of COUNTRIES) p.minSafe[c.code] = calcMinSafe(c, p.krwPrice, p.category);
+      p.aiPrices = null;
+      aiProducts.push(p);
+    }
 
-      // AI 호출
-      try {
-        const prompt = `Mr.Donothing is a Korean character IP brand selling licensed character goods (figures, plush, keyrings, apparel, stationery, home & living, prints) globally. Reference brands: Line Friends, Kakao Friends, Sanrio, Pop Mart, MINISO.
-
-Product:
-- Name: ${p.name}
-- Category: ${p.category}
-- Korea retail (anchor): ${p.krwPrice} KRW
-- Size: ${p.size || 'n/a'}
-- Material: ${p.material || 'n/a'}
-- Origin: ${p.origin || 'n/a'}
-
-Estimate typical local consumer retail price in 7 markets for this product, considering local character-goods pricing norms and purchasing power.
-
-Output strict JSON only, exact keys (local currency, integer or decimal):
-{"KR": 12000, "TW": 280, "HK": 78, "CN": 70, "TH": 320, "US": 8.5, "JP": 1100}
-
-Rounding hint: KR multiples of 100; JP/TH/TW multiples of 10; HK/CN integer; US 0.5 step.`;
-
-        const resp = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 400 });
-        const ai = extractJSON(resp);
-        if (!ai || typeof ai !== 'object') throw new Error('JSON parse fail');
-        p.aiPrices = ai;
-      } catch (e) {
-        aiFails.push({ name: p.name, error: e.message });
-        p.aiPrices = null;
+    // 🖥️ 맥미니 데몬(정액제)에 청크 위임 → 청크별 결과 대기
+    const paStore = require('./lib/pricing-audit-store');
+    const CHUNK = 15;
+    const chunks = [];
+    for (let i = 0; i < aiProducts.length; i += CHUNK) {
+      chunks.push({ chunkIndex: chunks.length, products: aiProducts.slice(i, i + CHUNK).map(p => ({ id: p.id, name: p.name, category: p.category, krwPrice: p.krwPrice, size: p.size || '', material: p.material || '', origin: p.origin || '' })) });
+    }
+    if (chunks.length) {
+      paStore.startJob(jobId, chunks);
+      console.log(`[audit ${jobId}] 맥미니 데몬에 ${chunks.length}청크(${aiProducts.length}제품) 위임 — 결과 대기`);
+      const deadline = Date.now() + 55 * 60 * 1000;
+      let jrec = paStore.getJob(jobId);
+      while (jrec && jrec.status !== 'done' && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 15000));
+        jrec = paStore.getJob(jobId);
+        const remain = jrec ? (jrec.remainingChunks != null ? jrec.remainingChunks : jrec.totalChunks) : 0;
+        job.progress = Math.max(0, aiProducts.length - remain * CHUNK);
       }
+      const results = (jrec && jrec.results) || {};
+      for (const p of aiProducts) { p.aiPrices = results[p.id] || null; if (!p.aiPrices) aiFails.push({ name: p.name, error: 'no_ai_result' }); }
+      paStore.finish(jobId);
+    }
 
-      // 분류 + 추천
-      p.classified = {};
-      p.recommended = {};
+    // Pass 2: 분류 + 추천 (aiPrices 채워진 뒤)
+    for (const p of aiProducts) {
+      p.classified = {}; p.recommended = {};
       for (const c of COUNTRIES) {
-        const cur = p.current[c.code];
-        const ms = p.minSafe[c.code];
-        const ai = p.aiPrices ? p.aiPrices[c.code] : null;
+        const cur = p.current[c.code]; const ms = p.minSafe[c.code]; const ai = p.aiPrices ? p.aiPrices[c.code] : null;
         p.classified[c.code] = classify(cur, ms, ai);
         p.recommended[c.code] = recommend(c, p.krwPrice, ms, ai);
       }
-
-      if (i < products.length - 1) await new Promise(r => setTimeout(r, 150));
-      if ((i+1) % 20 === 0) console.log(`[audit ${jobId}] ${i+1}/${products.length}`);
     }
 
     // 5) 엑셀 생성
@@ -3638,7 +3678,7 @@ app.get('/api/admin/pricing-audit/run', async (req, res) => {
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 미설치' });
-  if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정' });
+  // 🖥️ AI 추정은 맥미니 데몬(정액제)이 수행 — goods 는 ANTHROPIC_API_KEY 불필요 (2026-07-25)
 
   // 동시 실행 1개 제한
   const running = Object.values(_pricingAuditJobs).find(j => j.status === 'running');
@@ -5203,25 +5243,14 @@ const _buyerExcelHandler = async (req, res) => {
     let imagesEmbedded = 0;
     let imageErrors = [];
 
-    // 🌐 대외 발송 정제기 (2026-08-01) — 내부 마커 제거 + 내부메모 차단 + 한글→영문
-    // 1차 pass 로 한글 문자열을 모아 1회 배치 번역 (캐시 hit 면 AI 호출 0회)
-    const _san = createExportSanitizer({ cacheDir: PERSIST_DATA_DIR, callClaude });
-    const _txt = (pg, k) => ((pg.properties?.[k]?.rich_text || pg.properties?.[k]?.title) || []).map(t => t.plain_text || '').join('');
-    for (const pg of visiblePages) {
-      ['Packaging', 'Size_mm', 'Material', 'HS_Code', 'Product Name'].forEach(k => _san.scan(_txt(pg, k)));
-      _san.scan(_txt(pg, '비고'), { isNote: true });
-    }
-    await _san.translatePending();
-
     for (let idx = 0; idx < visiblePages.length; idx++) {
       const p = visiblePages[idx];
       const pr = p.properties || {};
       const getNum = k => pr[k] && pr[k].number != null ? pr[k].number : null;
-      const _rawText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
-      const getText = k => _san.clean(_rawText(k), { isNote: k === '비고' });
+      const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t => t.plain_text || '').join('');
       const getSel = k => pr[k] && pr[k].select ? pr[k].select.name : null;
 
-      const barcode = _rawText('Barcode');   // 재고 lookup 키 — 정제기 통과 금지 (원문 그대로)
+      const barcode = getText('Barcode');
       const fobKRW = getNum('FOB_KRW');
       const 발주수량 = getNum('발주수량');
       const amount = (fobKRW && 발주수량) ? fobKRW * 발주수량 : null;
@@ -5252,18 +5281,19 @@ const _buyerExcelHandler = async (req, res) => {
         if (rootPage) rootName = prodName(rootPage);
         else if (_cpNameMap.has(rootId)) rootName = _cpNameMap.get(rootId);
       }
-      // Series 컬럼 값 (2026-08-01 — 대외 발송용 자연 영문으로 교체):
-      //  - 자식: "{rootName}"                      (기존 "↳ variant of: X" — 화살표가 코드처럼 읽힘)
-      //  - root + 변형 N≥1: "{rootName} — N variants"  (기존 "Series Master (N variants)")
+      // Series 컬럼 값:
+      //  - 자식 (isRoot=false 이면서 root id 가 자기 cpId 와 다름): "↳ variant of: {rootName}"
+      //  - root + 변형 N≥1: "Series Master (N variants)"
       //  - 단독 (변형 0): 빈칸
+      let seriesLabel = '';
       const isChild = !isRoot && rootId && rootId !== cpId && rootId !== p.id;
-      const seriesLabel = seriesLabelForBuyer({
-        isChild, isRoot, totalVariants,
-        rootName: _san.clean(rootName),
-        ownName: _san.clean(_rawText('Product Name')),
-      });
-      // Product Name — 기존 자식 row "  └ " prefix 제거 (Series 컬럼이 관계를 표현)
-      const productNameDisplay = getText('Product Name');
+      if (isChild){
+        seriesLabel = '↳ variant of: ' + (rootName || '(원본 미등록)');
+      } else if (isRoot && totalVariants >= 1){
+        seriesLabel = `Series Master (${totalVariants + 1} variants)`;
+      }
+      // Product Name — 자식 row 는 "  └ " prefix
+      const productNameDisplay = (isChild ? '  └ ' : '') + getText('Product Name');
 
       const rowNum = idx + 3;
       const rowValues = [
@@ -5376,11 +5406,6 @@ const _buyerExcelHandler = async (req, res) => {
     }
 
     console.log(`[바이어 엑셀${includeStock ? '+재고' : ''}] 이미지 임베드: ${imagesEmbedded}/${visiblePages.length}, 에러: ${imageErrors.length} (전체 ${allPages.length} 중 단종/품절 ${allPages.length - visiblePages.length} 제외)`);
-    const _sanRep = _san.report();
-    console.log(`[바이어 엑셀] 대외 정제 — ${_sanRep.summary}`);
-    if (_sanRep.untranslated.length) {
-      console.warn('[바이어 엑셀] ⚠️ 영문화 못한 한글 (노션 원본 수정 권장):', _sanRep.untranslated.map(s => s.replace(/\n/g, ' | ').slice(0, 60)));
-    }
     const buf = await workbook.xlsx.writeBuffer();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const filename = includeStock
@@ -5823,6 +5848,60 @@ app.delete('/api/consumer-pricing/:id', async (req, res) => {
   }
 });
 
+// 🔗 시리즈 변형 일괄 적용 (2026-07-29) — 원본의 원가·국가가격·타겟가를 같은 seriesRoot 형제들에 전파.
+//   전파: 품목·HS·시장조사가·타겟가·생산단가/통화/수량·부대비용·총원가·매출·마진·국가별가격·경쟁사·원가상세(BREAKDOWN_META).
+//   유지: 프로젝트명·상태·작성자·디자인시안·메모텍스트·바코드, 그리고 각 형제의 seriesRootId.
+app.post('/api/consumer-pricing/:id/apply-to-series', async (req, res) => {
+  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
+  try {
+    const norm = (s) => String(s || '').replace(/-/g, '');
+    // 전체 페이지 수집(페이지네이션) — 원본·형제 모두 여기서 찾음
+    const all = [];
+    let cursor = undefined;
+    do {
+      const resp = await notion.databases.query({ database_id: CONSUMER_PRICING_DB_ID, page_size: 100, start_cursor: cursor });
+      resp.results.forEach(pg => all.push(pageToConsumerPricing(pg)));
+      cursor = resp.has_more ? resp.next_cursor : undefined;
+    } while (cursor);
+
+    const src = all.find(it => norm(it.id) === norm(req.params.id));
+    if (!src) return res.status(404).json({ error: '원본 프로젝트를 찾을 수 없습니다' });
+    const srcMeta = extractBreakdownMeta(src.메모 || '');
+    const srcRoot = norm(src.seriesRootId || src.id);
+
+    const siblings = all.filter(it => (norm(it.seriesRootId || it.id) === srcRoot) && norm(it.id) !== norm(src.id));
+    if (!siblings.length) return res.json({ success: true, count: 0, siblings: [], root: srcRoot });
+
+    // 공유 필드 (배열은 값이 있을 때만 — 빈 배열로 형제 데이터 삭제 방지)
+    const shared = {
+      품목: src.품목, HS코드: src.HS코드,
+      시장조사_평균_KRW: src.시장조사_평균_KRW, 시장조사_최저_KRW: src.시장조사_최저_KRW, 시장조사_최고_KRW: src.시장조사_최고_KRW,
+      타겟_소비자가_KRW: src.타겟_소비자가_KRW,
+      생산_단가: src.생산_단가, 생산_통화: src.생산_통화, 생산_수량: src.생산_수량,
+      부대비용_KRW: src.부대비용_KRW, 총원가_KRW: src.총원가_KRW,
+      매출_KRW: src.매출_KRW, 마진_KRW: src.마진_KRW, 마진율: src.마진율
+    };
+    if (Array.isArray(src.countryPricing) && src.countryPricing.length) shared.countryPricing = src.countryPricing;
+    if (Array.isArray(src.competitors) && src.competitors.length) shared.competitors = src.competitors;
+
+    const updated = [];
+    for (const sib of siblings) {
+      // 형제 메모: 텍스트 유지 + BREAKDOWN_META 는 원본값으로 교체(단, 형제 자신의 seriesRootId 보존)
+      const sibMeta = extractBreakdownMeta(sib.메모 || '');
+      const sibText = String(sib.메모 || '').replace(/<!--BREAKDOWN_META:[\s\S]*?-->/g, '').replace(/\s+$/, '');
+      const newMeta = Object.assign({}, srcMeta, { seriesRootId: sibMeta.seriesRootId || sib.seriesRootId || null });
+      const newMemo = (sibText ? sibText + '\n\n' : '') + '<!--BREAKDOWN_META:' + JSON.stringify(newMeta) + '-->';
+      const body = Object.assign({}, shared, { 메모: newMemo });
+      await notion.pages.update({ page_id: sib.id, properties: consumerPricingToProps(body) });
+      updated.push({ id: sib.id, 프로젝트명: sib.프로젝트명, 타겟_소비자가_KRW: src.타겟_소비자가_KRW, 마진율: src.마진율 });
+    }
+    res.json({ success: true, count: updated.length, siblings: updated, root: srcRoot });
+  } catch (e) {
+    console.error('[시리즈 일괄 적용] 실패', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Notion page → 앱 객체
 // 메모 문자열에서 <!--BREAKDOWN_META:{...}--> 추출
 function extractBreakdownMeta(memo) {
@@ -5949,6 +6028,7 @@ function _callClaudeOnce(messages, opts = {}) {
     const body = JSON.stringify({
       model: opts.model || 'claude-haiku-4-5-20251001',
       max_tokens: opts.max_tokens || 1800,
+      ...(opts.tools ? { tools: opts.tools } : {}),   // 서버 도구 (예: web_search) 패스스루 (2026-07-24)
       messages
     });
     const req = https.request({
@@ -5973,7 +6053,9 @@ function _callClaudeOnce(messages, opts = {}) {
             const statusHint = res.statusCode ? ` [HTTP ${res.statusCode}]` : '';
             return reject(new Error((j.error.message || j.error.type || 'claude error') + statusHint));
           }
-          const text = (j.content && j.content[0] && j.content[0].text) || '';
+          if (opts.raw) return resolve(j);   // 전체 응답 필요 시 (web_search pause_turn 처리 등)
+          // 웹서치 등 서버 도구 사용 시 content 가 여러 블록(text/server_tool_use/…) — text 블록 전체 join (기존 단일 text 호환)
+          const text = (j.content || []).filter(b => b && b.type === 'text').map(b => b.text || '').join('\n');
           if (!text) {
             console.warn('[Claude] 빈 응답. stop_reason=', j.stop_reason, 'usage=', JSON.stringify(j.usage || {}));
           }
@@ -6353,13 +6435,249 @@ JSON만 반환. 설명 금지:
 // body: { productName, category, size, material, hsCode, ourTargetKRW }
 // 응답: { success, brands: [{brand, productExample, estimatedKRW, lowKRW, highKRW, reason}], avgKRW, ourPriceKRW, gapPct, verdict }
 // verdict: 'cheap' | 'aligned' | 'expensive' (우리 가격 vs 3브랜드 평균 비교)
+// ━━━ 웹서치 기반 Claude 호출 — pause_turn(장기 검색 턴 일시정지) 이어받기 포함 (2026-07-24) ━━━
+async function _claudeWebSearchText(prompt, opts = {}) {
+  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: opts.maxSearches || 10 }];
+  // 시안 미디어(이미지 또는 제작가이드 PDF document) 블록 + 텍스트 (2026-07-25: 시안 구조 인식 후 동일 스펙 검색)
+  const media = (opts.mediaBlocks && opts.mediaBlocks.length) ? opts.mediaBlocks : (opts.imageBlock ? [opts.imageBlock] : []);
+  const userContent = media.length ? [...media, { type: 'text', text: prompt }] : prompt;
+  let messages = [{ role: 'user', content: userContent }];
+  for (let hop = 0; hop < 4; hop++) {
+    const j = await callClaude(messages, { ...opts, tools, raw: true });
+    if (j.stop_reason === 'pause_turn') {
+      messages = messages.concat([{ role: 'assistant', content: j.content }]);
+      continue;
+    }
+    const searches = (j.usage && j.usage.server_tool_use && j.usage.server_tool_use.web_search_requests) || 0;
+    const text = (j.content || []).filter(b => b && b.type === 'text').map(b => b.text || '').join('\n');
+    return { text, searches };
+  }
+  throw new Error('web search pause_turn 반복 초과');
+}
+
+// Drive URL 에서 folder/file id 추출
+function _driveIdFromUrl(u) {
+  const s = String(u || '');
+  let m = s.match(/\/folders\/([\w-]+)/);       if (m) return { kind: 'folder', id: m[1] };
+  m = s.match(/\/file\/d\/([\w-]+)/);            if (m) return { kind: 'file', id: m[1] };
+  m = s.match(/[?&]id=([\w-]+)/);                if (m) return { kind: 'file', id: m[1] };
+  m = s.match(/\/document\/d\/([\w-]+)/);        if (m) return { kind: 'file', id: m[1] };
+  return null;
+}
+
+// 🚀 연동된 제품 파이프라인의 드라이브 링크에서 시안(이미지 또는 제작가이드 PDF) 자동 로드
+//   Owen(2026-07-25): "시안 링크는 항상 파이프라인에 있다" → 사업성 검토 시장가 조사가 그 링크를 직접 사용.
+//   서비스계정(getDriveClient, 공유드라이브 지원)으로 폴더 내 이미지>PDF 우선 1개 다운로드. 실패 시 null(무해).
+const DRIVE_ALL = { supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives' };
+async function _pipelineDesignMedia(cpId) {
+  if (!cpId) return null;
+  try {
+    const pipelineStore = require('./lib/pipeline-store');
+    const linked = pipelineStore.listProjects({}).filter(p => p.consumerPricingId && String(p.consumerPricingId) === String(cpId));
+    if (!linked.length) return null;
+    // 후보 드라이브 링크 수집: 첨부(kind:drive) → design.files → ref_links
+    const urls = [];
+    for (const p of linked) {
+      for (const a of (p.attachments || [])) if (a.kind === 'drive' && a.url) urls.push(a.url);
+      for (const f of ((p.design && p.design.files) || [])) if (typeof f === 'string' && /drive\.google/.test(f)) urls.push(f);
+      for (const rl of (p.ref_links || [])) if (rl && rl.url && /drive\.google/.test(rl.url)) urls.push(rl.url);
+    }
+    if (!urls.length) return null;
+    const { getDriveClient } = require('./lib/backup-to-drive');
+    const drive = await getDriveClient();
+    for (const url of urls) {
+      const ref = _driveIdFromUrl(url);
+      if (!ref) continue;
+      let file = null;
+      if (ref.kind === 'folder') {
+        const q = `'${ref.id}' in parents and trashed = false and (mimeType contains 'image/' or mimeType = 'application/pdf')`;
+        const list = await drive.files.list({ q, fields: 'files(id,name,mimeType,size)', pageSize: 30, orderBy: 'name', ...DRIVE_ALL });
+        const files = (list.data.files || []);
+        // 이미지 우선, 없으면 PDF
+        file = files.find(f => (f.mimeType || '').startsWith('image/')) || files.find(f => f.mimeType === 'application/pdf') || null;
+      } else {
+        const meta = await drive.files.get({ fileId: ref.id, fields: 'id,name,mimeType,size', supportsAllDrives: true });
+        const mt = meta.data.mimeType || '';
+        if (mt.startsWith('image/') || mt === 'application/pdf') file = meta.data;
+      }
+      if (!file) continue;
+      const isPdf = file.mimeType === 'application/pdf';
+      if (isPdf && Number(file.size) > 28 * 1024 * 1024) continue; // 너무 큰 PDF skip
+      const dl = await drive.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+      const buf = Buffer.from(dl.data);
+      if (!buf || !buf.length) continue;
+      if (isPdf) {
+        return { block: { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') } }, source: 'pipeline-pdf', fileName: file.name };
+      }
+      if (sharp) {
+        const resized = await sharp(buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+        return { block: { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } }, source: 'pipeline-image', fileName: file.name };
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn('[market-price] 파이프라인 시안 로드 실패(무시):', e.message);
+    return null;
+  }
+}
+
+// ━━━ 🖥️ 시장가 조사 — 맥미니 데몬(정액제) 경유 큐 (2026-07-25 Owen: 유료 API 대신 맥미니 경로로만) ━━━
+// /request 는 /:cpId 보다 먼저 등록 (경로 충돌 방지)
+app.post('/api/consumer-pricing/market-research/request', async (req, res) => {
+  try {
+    const mrStore = require('./lib/market-research-store');
+    const b = req.body || {};
+    const cpId = String(b.cpId || '').trim();
+    if (!cpId) return res.status(400).json({ error: 'cpId 필요 — 프로젝트를 먼저 저장하세요' });
+    const rec = mrStore.request(cpId, {
+      cpId,
+      productName: String(b.productName || '').slice(0, 200),
+      category: String(b.category || '').slice(0, 60),
+      size: String(b.size || '').slice(0, 60),
+      material: String(b.material || '').slice(0, 60),
+      ourTargetKRW: (Number(b.ourTargetKRW) > 0) ? Number(b.ourTargetKRW) : null,
+      specText: String(b.specText || '').slice(0, 400)   // 사용자가 지정/편집한 구조 (있으면 우선)
+    });
+    res.json({ ok: true, status: rec.status, requestedAt: rec.requestedAt });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/consumer-pricing/market-research/:cpId', async (req, res) => {
+  try {
+    const mrStore = require('./lib/market-research-store');
+    const rec = mrStore.get(req.params.cpId);
+    if (!rec) return res.json({ status: 'none' });
+    res.json(rec);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY 미설정 — Railway Variables 등록 필요' });
-  const { productName, category, size, material, hsCode, ourTargetKRW } = req.body || {};
+  const { productName, category, size, material, hsCode, ourTargetKRW, cpId, imageDataUrl } = req.body || {};
+  const specOverride = String((req.body && req.body.specOverride) || '').trim().slice(0, 400);  // 사용자가 직접 지정한 구조 (AI 해석 대신 우선, 2026-07-25)
   if (!productName) return res.status(400).json({ error: '제품명(productName) 필수' });
+  const ourKRW = Number(ourTargetKRW) || null;
+
+  // 🖼️ 제품 시안 로드 → Claude vision/document 블록 (2026-07-25 Owen: 시안 구조 보고 동일 스펙 비교)
+  //   우선순위: ① 세션 신규 업로드(imageDataUrl) → ② 연동 파이프라인 드라이브 링크의 시안(PDF/이미지) → ③ 저장된 카탈로그 이미지(cpId)
+  let mediaBlock = null, hasImage = false, imageSource = 'none', sourceFile = null;
   try {
-    const ourKRW = Number(ourTargetKRW) || null;
-    const prompt = `당신은 한국의 캐릭터 굿즈 시장 가격 분석 전문가입니다. 아래 제품과 비교 가능한 라인프렌즈·카카오프렌즈·산리오 동일 카테고리 굿즈의 한국 시장 일반적 소비자가(권장소비자가/온라인 정상가 기준)를 추정하세요.
+    if (imageDataUrl && /^data:image\//.test(imageDataUrl)) {
+      const dec = decodeImagePayload(imageDataUrl);
+      if (dec && dec.buf && sharp) {
+        const resized = await sharp(dec.buf).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+        mediaBlock = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } };
+        imageSource = 'upload';
+      }
+    }
+    if (!mediaBlock) {
+      const pm = await _pipelineDesignMedia(cpId);   // 🚀 파이프라인 링크 직접 사용
+      if (pm) { mediaBlock = pm.block; imageSource = pm.source; sourceFile = pm.fileName; }
+    }
+    if (!mediaBlock && cpId) {
+      const imgId = cpImageId(cpId);
+      const found = imgId ? findCatalogImage(imgId) : null;
+      if (found && sharp) {
+        const resized = await sharp(fs.readFileSync(found.path)).rotate().resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+        mediaBlock = { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: resized.toString('base64') } };
+        imageSource = 'cp-file';
+      }
+    }
+    hasImage = !!mediaBlock;
+  } catch (imgErr) { console.warn('[market-price] 시안 로드 실패(무시):', imgErr.message); }
+  const mediaBlocks = mediaBlock ? [mediaBlock] : [];
+  const isPdfDesign = imageSource === 'pipeline-pdf';
+  let _searchErrMsg = null;
+
+  // ── 1차: 🔍 실검색 모드 (Claude 웹서치) — 조구만·카카오프렌즈·라인프렌즈 3사 고정 (2026-07-24 Owen 확정)
+  try {
+    const searchPrompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 조사원입니다. 웹 검색으로 아래 제품과 **구조·형태가 동일한** 실제 판매 중인 상품의 실제 가격을 조사하세요.
+${specOverride ? `
+[⚠️⚠️ 최우선 — 사용자가 직접 지정한 비교 기준 구조]
+"${specOverride}"
+→ 시안 이미지보다 이 지정 구조를 **우선**합니다. observedSpec 에 이 구조를 반영하고, **이 구조와 동일한 유형의 상품만** 검색·수집하세요. 지정 구조와 다른 형태는 structMatch=false 로 표시하거나 제외.
+` : ''}
+${hasImage ? `[⚠️ 가장 중요 — 먼저 첨부된 제품 시안(${isPdfDesign ? '제작가이드 PDF — 디자인·사이즈·소재·구조 페이지 포함' : '제품 이미지'})을 보고 구조를 파악]
+첨부 자료가 우리가 만들려는 실제 제품의 시안입니다. 제품명만 보고 흔한 품목(예: 그냥 프린팅된 볼펜)으로 착각하지 말고, **자료에 보이는 실제 구조·사이즈·소재**를 정확히 파악하세요.
+예: "볼펜"이라도 (a) 몸통에 캐릭터가 인쇄만 된 볼펜과 (b) 2D/입체 캐릭터 피규어·아크릴 조형물이 펜 상단/몸통에 부착된 '캐릭터 조형 볼펜'은 전혀 다른 제품·가격대입니다.
+${isPdfDesign ? 'PDF 제작가이드의 Design/Info/Package 페이지에서 부착 조형물 유무·2D/3D·치수(mm)·재질을 읽으세요. ' : ''}관찰한 형태(부착물 유무·2D/3D·소재감·조형 복잡도 등)를 observedSpec 에 한 줄로 적고, **그 구조와 동일한 유형의 상품만** 검색·수집하세요. 단순 인쇄 제품은 구조가 다르면 제외.` : `[제품 정보만으로 판단 — 시안 자료 없음]
+observedSpec 은 제품명·카테고리 기반 추정으로 채우고, 이미지가 없으니 구조 매칭은 텍스트 정보 범위에서만.`}
+
+[조사 대상 브랜드 — 이 3개만, 다른 브랜드 금지]
+1. JOGUMAN STUDIO (조구만 스튜디오)
+2. KakaoFriends (카카오프렌즈)
+3. LineFriends (라인프렌즈)
+
+[우리 제품]
+- 제품명: ${productName}
+- 카테고리: ${category || '미정'}
+- 사이즈(mm): ${size || '미정'}
+- 소재: ${material || '미정'}
+
+[조사 방법]
+1. ${hasImage ? '위에서 파악한 실제 구조와 **동일 유형**의 상품을 검색 (예: 캐릭터 조형 부착형이면 "피규어 볼펜"·"마스코트 볼펜"·"入体 造型 原子筆" 등으로, 단순 인쇄형과 구분).' : '유사 품목을 검색.'} 검색어에 구조 키워드를 반드시 포함
+2. ⚠️ 커버리지 우선: 6개 조합(3브랜드 × 한국/대만)을 **각 1회씩 먼저** 검색해 전 조합 커버 후 보강. 한국에만 몰아쓰지 말 것
+3. 한국 = 공식몰·네이버 스마트스토어·네이버쇼핑 / 대만 = Shopee TW·PChome·誠品 (대만은 "site:shopee.tw joguman 造型 原子筆" 등 사이트 한정·중국어 병용이 효과적)
+4. 실제 판매 상품을 시장별 최대 3개씩 — 실제 상품명·판매가·URL만 기록(추측 금지). **검색 결과 스니펫/제목의 가격도 유효**하니 페이지 못 열어도 포기 말 것. 각 상품의 구조가 우리 제품과 같은지 structMatch(true/false)로 표시
+5. 한국은 KRW, 대만은 TWD. 못 찾은 조합은 items 빈 배열 + note 사유. 검색 총 14회 이내
+
+JSON만 반환. 설명 금지:
+{
+  "observedSpec": "시안에서 파악한 제품 구조 한 줄 (예: 2D 아크릴 캐릭터가 펜 상단에 부착된 캐릭터 조형 볼펜)",
+  "brands": [
+    {"brand": "JOGUMAN STUDIO", "kr": {"items": [{"name": "실제 상품명", "price": 6500, "url": "https://실제URL", "seller": "판매처", "structMatch": true}]}, "tw": {"items": []}, "note": "대만 공식 유통 미확인"},
+    {"brand": "KakaoFriends", "kr": {"items": []}, "tw": {"items": []}, "note": ""},
+    {"brand": "LineFriends", "kr": {"items": []}, "tw": {"items": []}, "note": ""}
+  ],
+  "summary": "조사 요약 1~2문장"
+}`;
+    // sonnet 사용: haiku 는 "페이지 접근 불가"라며 가격 추출을 소극적으로 포기하는 경향 (2026-07-24 실측)
+    const { text, searches } = await _claudeWebSearchText(searchPrompt, { model: 'claude-sonnet-5', max_tokens: 3200, maxSearches: 14, mediaBlocks });
+    const parsed = extractJSON(text);
+    if (!parsed || !Array.isArray(parsed.brands)) throw new Error('search_parse_failed: ' + String(text).slice(0, 200));
+    const normItem = (it, cur) => ({
+      name: String(it.name || '').slice(0, 120),
+      price: Number(it.price) > 0 ? Number(it.price) : null,
+      url: (typeof it.url === 'string' && /^https?:\/\//.test(it.url)) ? it.url : null,
+      seller: String(it.seller || '').slice(0, 60),
+      structMatch: it.structMatch === true,
+      currency: cur
+    });
+    const brands = parsed.brands.map(b => {
+      const krItems = (Array.isArray(b.kr?.items) ? b.kr.items : []).map(it => normItem(it, 'KRW')).filter(it => it.price);
+      const twItems = (Array.isArray(b.tw?.items) ? b.tw.items : []).map(it => normItem(it, 'TWD')).filter(it => it.price);
+      const avg = arr => arr.length ? Math.round(arr.reduce((a, x) => a + x.price, 0) / arr.length) : null;
+      return { brand: b.brand || '', note: b.note || '', kr: { items: krItems, avg: avg(krItems) }, tw: { items: twItems, avg: avg(twItems) } };
+    });
+    const krAll = brands.flatMap(b => b.kr.items.map(i => i.price));
+    const twAll = brands.flatMap(b => b.tw.items.map(i => i.price));
+    if (!krAll.length && !twAll.length) throw new Error('search_no_prices — 실가격 0건, 추정 모드 폴백');
+    const avgKRW = krAll.length ? Math.round(krAll.reduce((a, b2) => a + b2, 0) / krAll.length) : null;
+    const avgTWD = twAll.length ? Math.round(twAll.reduce((a, b2) => a + b2, 0) / twAll.length) : null;
+    let gapPct = null, verdict = null;
+    if (avgKRW && ourKRW) {
+      gapPct = ((ourKRW / avgKRW) - 1) * 100;
+      verdict = gapPct < -15 ? 'cheap' : (gapPct > 15 ? 'expensive' : 'aligned');
+    }
+    console.log('[estimate-market-price] 실검색 모드 성공 — 검색', searches, '회, KR', krAll.length, '건 / TW', twAll.length, '건');
+    return res.json({
+      success: true, mode: 'search', searches, brands,
+      observedSpec: String(parsed.observedSpec || '').slice(0, 200),
+      usedImage: hasImage,
+      imageSource, sourceFile,
+      summary: parsed.summary || '',
+      avgKRW, avgTWD, ourPriceKRW: ourKRW,
+      gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,
+      verdict, generatedAt: new Date().toISOString()
+    });
+  } catch (searchErr) {
+    _searchErrMsg = String(searchErr.message).slice(0, 300);
+    console.warn('[estimate-market-price] 실검색 실패 → AI 추정 폴백:', _searchErrMsg);
+  }
+
+  // ── 2차 폴백: AI 추정 모드 (웹서치 미가용·파싱 실패 시)
+  try {
+    const prompt = `당신은 한국·대만 캐릭터 굿즈 시장 가격 분석 전문가입니다. 아래 제품과 비교 가능한 동일 카테고리 굿즈의 (a) 한국 시장 소비자가(KRW)와 (b) 대만 시장 소비자가(TWD)를 각각 추정하세요.
+비교 축 3개: ① JOGUMAN STUDIO(조구만 스튜디오) ② KakaoFriends(카카오프렌즈) ③ LineFriends(라인프렌즈).
 
 [비교 대상 제품]
 - 제품명: ${productName}
@@ -6370,30 +6688,48 @@ app.post('/api/consumer-pricing/estimate-market-price', async (req, res) => {
 ${ourKRW ? `- 우리 한국 타겟가: ${ourKRW.toLocaleString()}원 (참고용 — 추정에 직접 반영 X)` : ''}
 
 [추정 원칙]
-1. 각 브랜드(LineFriends / KakaoFriends / Sanrio) 한국 공식몰·온라인몰의 동급 카테고리 제품 가격대를 기준
-2. 비슷한 사이즈·소재·기능의 제품을 골라 대표 가격 1개 + 일반 범위(low~high) 제시
-3. 라이선스 비용·마케팅 비용 차이를 감안한 합리적 추정 (정확한 동일 제품 매칭 불가능 — 카테고리 평균 가격대)
-4. 산리오는 한국 정발 가격 기준 (산리오코리아 또는 산리오 공식 몰 기준). 일본 가격 X
-5. 캐릭터 굿즈 시장 일반 가격 인지: PVC키링 8,000~15,000원 / 아크릴키링 5,000~10,000원 / 봉제인형 소형 15,000~25,000원·중형 25,000~45,000원·대형 50,000~120,000원 / 머그컵 12,000~20,000원 / 의류 20,000~50,000원 / 폰케이스 15,000~28,000원 / 스티커 3,000~7,000원
+1. 한국: 각 브랜드 한국 공식몰·온라인몰(네이버쇼핑 정상가)의 동급 카테고리 가격대 기준
+2. 대만: LINE FRIENDS 대만 유통가·Shopee TW·PChome·誠品 등 대만 온라인 정상가(TWD) 기준. 대만은 수입 캐릭터 굿즈가 한국 대비 10~30% 비싼 경향 반영
+3. 비슷한 사이즈·소재·기능의 제품 대표가 1개 + 일반 범위(low~high). 정확한 동일 제품 매칭 불가 시 카테고리 평균 가격대
+4. 캐릭터 굿즈 한국 일반가 인지: PVC키링 8,000~15,000원 / 아크릴키링 5,000~10,000원 / 볼펜·문구 3,000~12,000원 / 봉제 소형 15,000~25,000·중형 25,000~45,000 / 머그 12,000~20,000 / 의류 20,000~50,000 / 스티커 3,000~7,000원
+5. TWD 환산 참고: 1 TWD ≈ 42~45 KRW
 
 JSON만 반환. 설명 금지:
 {
   "brands": [
-    {"brand": "LineFriends", "productExample": "BT21 미니 인형 (15cm급)", "estimatedKRW": 22000, "lowKRW": 18000, "highKRW": 28000, "reason": "BT21 공식몰 미니 인형 카테고리 평균"},
-    {"brand": "KakaoFriends", "productExample": "라이언 미니 피규어", "estimatedKRW": 19000, "lowKRW": 15000, "highKRW": 25000, "reason": "카카오프렌즈 스토어 동급 사이즈 인형/피규어 평균"},
-    {"brand": "Sanrio", "productExample": "마이멜로디 봉제 인형 S", "estimatedKRW": 20000, "lowKRW": 16000, "highKRW": 26000, "reason": "산리오코리아 공식몰 소형 봉제 평균"}
+    {"brand": "LineFriends", "productExample": "브라운 볼펜 (동급)", "kr": {"estimated": 6000, "low": 4500, "high": 9000}, "tw": {"estimated": 160, "low": 120, "high": 220}, "reason": "라인프렌즈 공식몰 문구 카테고리 평균 · 대만 정발가"},
+    {"brand": "KakaoFriends", "productExample": "라이언 볼펜 (동급)", "kr": {"estimated": 5500, "low": 4000, "high": 8000}, "tw": {"estimated": 150, "low": 110, "high": 200}, "reason": "카카오프렌즈 스토어 동급 평균 · Shopee TW 시세"},
+    {"brand": "JOGUMAN STUDIO", "productExample": "조구만 볼펜 (동급)", "kr": {"estimated": 5000, "low": 3500, "high": 7500}, "tw": {"estimated": 140, "low": 100, "high": 190}, "reason": "조구만 공식 스마트스토어 문구 평균 · 대만 수입가"}
   ],
-  "summary": "동급 캐릭터 봉제 인형 한국 시장 평균 18,000~28,000원 구간"
+  "summary": "동급 캐릭터 볼펜 한국 4,000~9,000원 · 대만 NT$110~220 구간"
 }`;
-    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 1200 });
+    const out = await callClaude([{ role: 'user', content: prompt }], { max_tokens: 1600 });
     const parsed = extractJSON(out);
     if (!parsed || !Array.isArray(parsed.brands)) {
       console.error('[estimate-market-price] 파싱 실패. Claude 원문:\n', out.slice(0, 1500));
       return res.status(500).json({ error: '파싱 실패', raw: out.slice(0, 1200) });
     }
-    // 평균/갭 계산
-    const validEstimates = parsed.brands.map(b => Number(b.estimatedKRW)).filter(n => n > 0);
-    const avgKRW = validEstimates.length ? Math.round(validEstimates.reduce((a, b) => a + b, 0) / validEstimates.length) : null;
+    // 브랜드별 KR/TW 정규화 (구형 estimatedKRW 응답도 호환)
+    const brands = parsed.brands.map(b => ({
+      brand: b.brand || '',
+      productExample: b.productExample || '',
+      reason: b.reason || '',
+      kr: {
+        estimated: Number(b.kr?.estimated ?? b.estimatedKRW) || null,
+        low: Number(b.kr?.low ?? b.lowKRW) || null,
+        high: Number(b.kr?.high ?? b.highKRW) || null
+      },
+      tw: {
+        estimated: Number(b.tw?.estimated) || null,
+        low: Number(b.tw?.low) || null,
+        high: Number(b.tw?.high) || null
+      }
+    }));
+    // 시장별 평균/갭 계산
+    const krVals = brands.map(b => b.kr.estimated).filter(n => n > 0);
+    const twVals = brands.map(b => b.tw.estimated).filter(n => n > 0);
+    const avgKRW = krVals.length ? Math.round(krVals.reduce((a, b) => a + b, 0) / krVals.length) : null;
+    const avgTWD = twVals.length ? Math.round(twVals.reduce((a, b) => a + b, 0) / twVals.length) : null;
     let gapPct = null, verdict = null;
     if (avgKRW && ourKRW) {
       gapPct = ((ourKRW / avgKRW) - 1) * 100;
@@ -6403,12 +6739,15 @@ JSON만 반환. 설명 금지:
     }
     res.json({
       success: true,
-      brands: parsed.brands,
+      mode: 'estimate',   // 실검색 실패 폴백 — 숫자는 AI 추정값
+      brands,
       summary: parsed.summary || '',
       avgKRW,
+      avgTWD,
       ourPriceKRW: ourKRW,
       gapPct: gapPct != null ? Math.round(gapPct * 10) / 10 : null,
       verdict,
+      imageSource, sourceFile, usedImage: hasImage,
       generatedAt: new Date().toISOString()
     });
   } catch (e) {
@@ -6485,6 +6824,10 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
     const categoryName = pr.Category?.select?.name || null;
     const imageUrl = pr.Image_URL?.url || null;
     const packaging = getText('1박스당_갯수') || null;   // 2026-05-31: 포장단위(박스당 갯수) inventory 전달
+    // 2026-07-19: 원가도 함께 전달 — inventory 는 products.cost_price 컬럼이 이미 있는데 값이 비어 있었음.
+    // 채우면 재고 화면에서 원가 확인 + 재고자산 평가(재고수량 × 원가)가 가능해짐.
+    // ⚠️ inventory 는 사내 전용. 원가는 바이어 엑셀·쇼핑몰 API 로는 절대 나가지 않는다(2026-07-19 감사).
+    const costPrice = (typeof pr['원가_KRW']?.number === 'number') ? pr['원가_KRW'].number : null;
 
     const url = INVENTORY_API_URL.replace(/\/$/, '') + '/api/hooks/catalog-sync-from-goods';
     const ctrl = new AbortController();
@@ -6497,6 +6840,7 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
         body: JSON.stringify({
           barcode, name,
           sale_price: salePrice,
+          cost_price: costPrice,
           image_url: imageUrl,
           category_name: categoryName,
           packaging,
@@ -6520,25 +6864,31 @@ async function syncCatalogPageToInventory(catalogPageId, reason = 'manual') {
 }
 
 // 2026-05-31: 카탈로그 전체 → inventory 재sync (box_unit 등 신규 필드 backfill 용). requireAuthMiddleware 자동 보호.
+// 2026-07-07: 수동 라우트 + 야간 자동 cron 공용 함수로 분리 — Notion 에서 직접 수정한 건이
+//             이벤트 push(publish/patch 훅)를 안 타서 inventory 와 어긋나던 갭을 매일 자동 보정.
+async function resyncAllCatalogToInventory(reason = 'backfill-resync') {
+  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) throw Object.assign(new Error('INVENTORY_API_URL / INVENTORY_API_KEY 미설정'), { status: 503 });
+  if (!notion) throw Object.assign(new Error('notion_unavailable'), { status: 503 });
+  const ids = [];
+  let cursor;
+  do {
+    const resp = await notion.databases.query({ database_id: PRODUCT_CATALOG_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) });
+    for (const p of resp.results) if (!p.archived) ids.push(p.id);
+    cursor = resp.has_more ? resp.next_cursor : null;
+  } while (cursor);
+  let synced = 0, skipped = 0, failed = 0;
+  for (const id of ids) {
+    const r = await syncCatalogPageToInventory(id, reason);
+    if (r && r.ok) synced++; else if (r && r.skipped) skipped++; else failed++;
+  }
+  return { total: ids.length, synced, skipped, failed };
+}
+
 app.post('/api/admin/resync-all-catalog-to-inventory', async (req, res) => {
-  if (!INVENTORY_API_URL || !INVENTORY_API_KEY) return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 미설정' });
-  if (!notion) return res.status(503).json({ error: 'notion_unavailable' });
   try {
-    const ids = [];
-    let cursor;
-    do {
-      const resp = await notion.databases.query({ database_id: PRODUCT_CATALOG_DB_ID, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) });
-      for (const p of resp.results) if (!p.archived) ids.push(p.id);
-      cursor = resp.has_more ? resp.next_cursor : null;
-    } while (cursor);
-    let synced = 0, skipped = 0, failed = 0;
-    for (const id of ids) {
-      const r = await syncCatalogPageToInventory(id, 'backfill-resync');
-      if (r && r.ok) synced++; else if (r && r.skipped) skipped++; else failed++;
-    }
-    res.json({ ok: true, total: ids.length, synced, skipped, failed });
+    res.json({ ok: true, ...(await resyncAllCatalogToInventory('backfill-resync')) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -6849,6 +7199,32 @@ try {
   console.error('[orders] 라우터 등록 실패:', err.message);
 }
 
+// ━━━ 🚀 제품 파이프라인 (MVP, 2026-07-16) ━━━
+// 신제품·재발주 워크플로우 — 기획→디자인→업체선정(견적비교)→샘플→발주·대금→입고→등록·출시
+// 대금은 기록 전용 (입출금 관리는 granter·Notion — business 연동 안 함, Owen 확정)
+try {
+  const pipelineRoutes = require('./lib/pipeline-routes');
+  app.use('/api/pipeline', pipelineRoutes.router({
+    getFx: () => fxCache,   // fxCache 는 refreshFx 가 재할당하므로 getter 로 전달
+    INVENTORY_API_URL,      // ③ 입고 대사 PULL 용
+    INVENTORY_API_KEY
+  }));
+  console.log('[pipeline] /api/pipeline 라우터 등록 완료');
+} catch (err) {
+  console.error('[pipeline] 라우터 등록 실패:', err.message);
+}
+
+// ━━━ 🤖 Claude 잡 데몬 읽기전용 피드 (2026-07-17) ━━━
+// 맥미니 claude-jobs 데몬이 폴링 — 파이프라인 단계전환 이벤트를 잡 데이터 소스로 사용
+// 가드: X-Claude-Feed-Key === CLAUDE_FEED_KEY (env 미설정 시 403 fail-closed), 읽기 전용
+try {
+  const claudeFeedRoutes = require('./lib/claude-feed-routes');
+  app.use('/api/claude-feed', claudeFeedRoutes.router());
+  console.log('[claude-feed] /api/claude-feed 라우터 등록 완료');
+} catch (err) {
+  console.error('[claude-feed] 라우터 등록 실패:', err.message);
+}
+
 // SPA 폴백
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -6891,12 +7267,17 @@ try {
   const localJson = [
     CACHE_PATH,                 // 영속 볼륨 (/data) — goods-cache.json
     PARSED_DB_PATH,             // 영속 볼륨 (/data) — parsed-quotes.json (AI 검수 인박스, Drive 백업으로 3중 보호)
-    path.join(__dirname, 'data', 'quote-adoption.json')
+    path.join(__dirname, 'data', 'quote-adoption.json'),
+    require('./lib/orders-store').ORDERS_FILE,      // 수출주문 (/data/orders.json)
+    require('./lib/pipeline-store').PIPELINE_FILE,  // 제품 파이프라인 (/data/pipeline.json)
+    require('./lib/pipeline-store').REFS_FILE,      // 제조 레퍼런스 라이브러리 (/data/pipeline-refs.json)
+    require('./lib/pipeline-store').MFR_FILE,       // 제조사 소싱 후보 (/data/pipeline-manufacturers.json)
+    require('./lib/pipeline-store').OUTREACH_FILE   // 소싱 문의 기록 (/data/pipeline-outreach.json)
   ];
   driveBackup.scheduleDailyBackup({
     projectName: 'goods-calculator',
     extraJsonFiles: localJson,
-    imageDirs: [CATALOG_IMAGE_DIR],
+    imageDirs: [CATALOG_IMAGE_DIR, require('./lib/pipeline-routes').ATTACH_DIR],  // 파이프라인 첨부(바이너리) 주1회 백업
     notion: process.env.NOTION_TOKEN ? {
       token: process.env.NOTION_TOKEN,
       dbIds: [
@@ -6910,14 +7291,24 @@ try {
   driveBackup.mountAdminRoutes(app, { projectName: 'goods-calculator', extraJsonFiles: localJson, imageDirs: [CATALOG_IMAGE_DIR], requireAdmin: (req,res,next)=>next() });
 } catch (err) { console.error('[backup-to-drive] mount 실패:', err.message); }
 
-// ── Drive 견적 인박스 watcher (2026-04-25) ──
+// ── Drive 견적 인박스 watcher — 🖥️ 정액제 전환(2026-07-25): 스캔·파일이동은 goods, AI 파싱은 맥미니 데몬 큐로 위임 ──
 try {
-  inboxWatcher.scheduleHourly({
-    folderId: process.env.INBOX_DRIVE_FOLDER_ID || '',
-    parsedDbPath: PARSED_DB_PATH,
-    anthropicKey: ANTHROPIC_API_KEY,
-    intervalMinutes: parseInt(process.env.INBOX_INTERVAL_MINUTES, 10) || 30
-  });
+  const quoteParseStore = require('./lib/quote-parse-store');
+  const inboxFolderId = process.env.INBOX_DRIVE_FOLDER_ID || '';
+  const inboxMs = Math.max(5, parseInt(process.env.INBOX_INTERVAL_MINUTES, 10) || 30) * 60 * 1000;
+  if (!inboxFolderId) {
+    console.warn('[inbox-watcher] INBOX_DRIVE_FOLDER_ID 미설정 — 비활성');
+  } else {
+    const scanInbox = async () => {
+      try {
+        const r = await inboxWatcher.runOnceQueued({ folderId: inboxFolderId, parsedDbPath: PARSED_DB_PATH, enqueueFn: (item) => quoteParseStore.enqueue(item) });
+        if (r.scanned > 0 || r.failed > 0) console.log(`[inbox-queued] scanned=${r.scanned} queued=${r.queued} skip=${r.skipped} fail=${r.failed}`);
+        if (r.queued > 0) parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH); // placeholder 반영
+      } catch (e) { console.error('[inbox-queued] 실행 실패:', e.message); }
+    };
+    setTimeout(() => { scanInbox(); setInterval(scanInbox, inboxMs); }, 60 * 1000);
+    console.log('[inbox-watcher] 🖥️ 정액제 큐 모드 활성 (' + (inboxMs / 60000) + '분 주기, AI파싱=맥미니 데몬)');
+  }
 } catch (err) { console.error('[inbox-watcher] 시작 실패:', err.message); }
   console.log(`[제품원가 계산기] http://localhost:${PORT}`);
   // 시작 시 동기화 + 환율
@@ -6927,4 +7318,17 @@ try {
   // 30분마다 자동 동기화, 6시간마다 환율 갱신 (한국수출입은행은 영업일 1회 발표 — 6시간이면 평일 오전 갱신 보장)
   setInterval(syncFromNotion, 30 * 60 * 1000);
   setInterval(refreshFx, 6 * 60 * 60 * 1000);
+  // 24시간마다 카탈로그 전체 → inventory 백필 (Notion 직접 수정분 보정, CATALOG_INVENTORY_BACKFILL=0 으로 끔)
+  // 이벤트 push 가 놓치는 건만 잡는 안전망이라 야간 1회면 충분. 부팅 직후엔 10분 지연 후 1회.
+  if (process.env.CATALOG_INVENTORY_BACKFILL !== '0' && INVENTORY_API_URL && INVENTORY_API_KEY) {
+    const _backfillTick = async (label) => {
+      try {
+        const r = await resyncAllCatalogToInventory('nightly-backfill');
+        console.log(`[catalog-backfill:${label}] total=${r.total} synced=${r.synced} skipped=${r.skipped} failed=${r.failed}`);
+      } catch (e) { console.warn(`[catalog-backfill:${label}] 실패:`, e.message); }
+    };
+    setTimeout(() => _backfillTick('boot'), 10 * 60 * 1000);
+    setInterval(() => _backfillTick('daily'), 24 * 60 * 60 * 1000);
+    console.log('[catalog-backfill] inventory 야간 백필 스케줄러 활성 (24시간 간격)');
+  }
 });
