@@ -1482,9 +1482,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-primary" onclick="cpExportBuyerExcelWithStock()" title="제품 리스트 + 창고별(한국/대만/태국) 실시간 재고. 사내 영업·생산팀용" style="background:#10b981;">📦 제품 리스트(재고 포함)</button>
     </div>
     <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:2px;">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none;" title="체크 시 FOB(Won)·FOB(discount rate)·CIF(Asia avg) 3개 컬럼 제거. 외부 바이어 발송용">
-        <input type="checkbox" id="cpExportHideFobChk" style="cursor:pointer;" onchange="_cpRememberHideFob(this)">
-        🔒 FOB·CIF 원가 숨김 (외부 공유용)
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none;" title="기본 ON (2026-08-01) — 체크 시 FOB(Won)·FOB(discount rate)·CIF(Asia avg) 3개 컬럼 제거. 체크를 풀어야만 원가가 포함됩니다 (내부용)">
+        <input type="checkbox" id="cpExportHideFobChk" style="cursor:pointer;" checked onchange="_cpRememberHideFob(this)">
+        🔒 FOB·CIF 원가 숨김 <span style="opacity:.7;">(기본 ON — 풀면 원가 포함)</span>
       </label>
     </div>
 
@@ -4298,19 +4298,25 @@ async function cpRunAssign(overwrite){
   }
 }
 
-// 🔒 FOB·CIF 숨김 옵션 (2026-05-22) — 체크박스 → localStorage 영속 + URL query 부착
+// 🔒 FOB·CIF 숨김 옵션 (2026-05-22 / 2026-08-01 기본값 ON 전환)
+//   원가가 실수로 바이어에게 나가는 사고는 되돌릴 수 없으므로 "숨김"이 기본.
+//   원가를 보려면 체크를 명시적으로 풀어야 함. 서버도 동일하게 default hide 라
+//   URL 직접 호출·북마크로도 원가가 새지 않음 (?hideFob=0 을 붙여야만 포함).
 function _cpHideFobQS(){
-  try { const c = document.getElementById('cpExportHideFobChk'); return (c && c.checked) ? '?hideFob=1' : ''; }
-  catch(e) { return ''; }
+  try { const c = document.getElementById('cpExportHideFobChk'); return (c && !c.checked) ? '?hideFob=0' : '?hideFob=1'; }
+  catch(e) { return '?hideFob=1'; }   // 실패 시에도 안전한 쪽(숨김)
 }
 function _cpRememberHideFob(chk){
   try { localStorage.setItem('cpExportHideFob', chk.checked ? '1' : '0'); } catch(e) {}
+  if (chk && !chk.checked && typeof showToast === 'function') {
+    showToast('⚠️ 원가(FOB·CIF) 포함으로 전환됐습니다 — 외부 발송 금지', 'warn');
+  }
 }
-// 페이지 진입 시 체크박스 상태 복원
+// 페이지 진입 시 체크박스 상태 복원 — 저장값이 명시적 '0' 일 때만 해제 (미설정=숨김)
 document.addEventListener('DOMContentLoaded', ()=>{
   try {
     const c = document.getElementById('cpExportHideFobChk');
-    if (c) c.checked = (localStorage.getItem('cpExportHideFob') === '1');
+    if (c) c.checked = (localStorage.getItem('cpExportHideFob') !== '0');
   } catch(e) {}
 });
 

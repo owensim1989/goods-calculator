@@ -254,7 +254,7 @@ app.use(express.json({ limit: '20mb' }));
 // ━━━ 로그인 시스템 (MyDesk SSO 연동) ━━━
 const auth = require('./lib/auth');
 // 바이어 엑셀 대외 발송 정제 (내부 마커 제거 + 내부메모 차단 + 한글→영문) — 2026-08-01
-const { createExportSanitizer, seriesLabelForBuyer } = require('./lib/export-i18n');
+const { createExportSanitizer } = require('./lib/export-i18n');
 auth.mountRoutes(app);                    // /api/login, /api/logout, /api/me 등록
 app.use(auth.requireAuthMiddleware);       // 이후 모든 요청 인증 검사 (PUBLIC_PATHS 자동 통과)
 
@@ -5016,7 +5016,9 @@ const _buyerExcelHandler = async (req, res) => {
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 모듈 미설치 — 서버 재배포 필요 (npm install exceljs sharp)' });
   const includeStock = req.path.includes('with-stock');
   // 🔒 FOB·CIF 원가 숨김 옵션 (2026-05-22) — ?hideFob=1 시 FOB(Won)·FOB(discount rate)·CIF(Asia) 3컬럼 제거. 외부 바이어 발송용
-  const hideFob = req.query.hideFob === '1' || req.query.hideFob === 'true';
+  // 🔒 기본값 = 숨김 (2026-08-01 Owen 결정). 원가 유출은 되돌릴 수 없어 안전한 쪽을 default 로.
+  //    원가를 포함하려면 명시적으로 ?hideFob=0 (내부용). UI 체크박스도 기본 ON.
+  const hideFob = !(req.query.hideFob === '0' || req.query.hideFob === 'false');
   if (includeStock && (!INVENTORY_API_URL || !INVENTORY_API_KEY)) {
     return res.status(503).json({ error: 'INVENTORY_API_URL / INVENTORY_API_KEY 환경변수 미설정 — 재고 포함 엑셀 사용 불가' });
   }
@@ -5198,9 +5200,11 @@ const _buyerExcelHandler = async (req, res) => {
       properties: { defaultRowHeight: 80 }
     });
 
-    // Series 컬럼 추가 (2026-05-11) — 같은 시리즈 묶음 표시
+    // Series 컬럼 제거 (2026-08-01, Owen 결정) — 내부 시리즈 묶음 정보는 바이어에게 불필요
+    //   (2026-05-11 추가됐다가 "Series Master (N variants)"·"↳ variant of:" 표기가
+    //    코드처럼 읽힌다는 피드백 → 표기 정리보다 컬럼 자체 삭제가 낫다고 판단)
     const headers = [
-      'no.', 'Image', 'Category', 'Product Name', 'Series', 'Barcode', 'Packaging',
+      'no.', 'Image', 'Category', 'Product Name', 'Barcode', 'Packaging',
       'Retail Price\n(South Korea)', 'Retail Price\n(Taiwan)', 'Retail Price\n(US)',
       'Retail Price\n(Thailand)', 'Retail Price\n(HK)', 'Retail Price\n(China)',
       'Retail Price\n(Indonesia)',
@@ -5208,12 +5212,14 @@ const _buyerExcelHandler = async (req, res) => {
       'HS CODE', 'Size\n(mm)', 'Material', 'Country of\nOrigin',
       'Order Qty', 'Total (KRW)', 'Note'
     ];
-    // 컬럼 너비 — Series 컬럼 (E) 18 추가
-    const widths = [5, 14, 14, 32, 18, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
-    // 🔒 hideFob=1 — FOB(Won)·FOB(discount rate)·CIF(Asia) 3컬럼 splice (index 14~16, 0-based)
-    if (hideFob) {
-      headers.splice(14, 3);
-      widths.splice(14, 3);
+    // 컬럼 너비 (Series 컬럼 제거로 index 4 의 18 삭제)
+    const widths = [5, 14, 14, 32, 15, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 15, 18, 15, 12, 8, 12, 25];
+    // 🔒 hideFob=1 — FOB(Won)·FOB(discount rate)·CIF(Asia) 3컬럼 splice
+    //    Series 제거로 FOB(Won) 위치가 index 14 → 13 으로 당겨짐. 하드코딩 대신 이름으로 찾음
+    const _fobIdx = headers.indexOf('FOB\n(Won)');
+    if (hideFob && _fobIdx >= 0) {
+      headers.splice(_fobIdx, 3);
+      widths.splice(_fobIdx, 3);
     }
 
     // 재고 컬럼 추가 (includeStock=true 일 때) — 총합 + 창고별 (영문)
@@ -5298,18 +5304,12 @@ const _buyerExcelHandler = async (req, res) => {
       //  - 자식: "{rootName}"                          (기존 "↳ variant of: X" — 화살표가 코드처럼 읽힘)
       //  - root + 변형 N≥1: "{rootName} — N variants"  (기존 "Series Master (N variants)")
       //  - 단독 (변형 0): 빈칸
-      const isChild = !isRoot && rootId && rootId !== cpId && rootId !== p.id;
-      const seriesLabel = seriesLabelForBuyer({
-        isChild, isRoot, totalVariants,
-        rootName: _san.clean(rootName),
-        ownName: _san.clean(_rawText('Product Name')),
-      });
-      // Product Name — 기존 자식 row "  └ " prefix 제거 (Series 컬럼이 관계를 표현)
+      // Series 컬럼 삭제 (2026-08-01) — 라벨·트리기호 모두 미출력. 제품명은 원본 그대로
       const productNameDisplay = getText('Product Name');
 
       const rowNum = idx + 3;
       const rowValues = [
-        idx + 1, '', (CATEGORY_EN[getSel('Category')] || 'Others'), productNameDisplay, seriesLabel, barcode, getText('Packaging'),
+        idx + 1, '', (CATEGORY_EN[getSel('Category')] || 'Others'), productNameDisplay, barcode, getText('Packaging'),
         getNum('Retail_KR_KRW'), getNum('Retail_TW_TWD'), getNum('Retail_US_USD'),
         getNum('Retail_TH_THB'), getNum('Retail_HK_HKD'), getNum('Retail_CN_CNY'),
         getNum('Retail_ID_IDR'),
@@ -5318,7 +5318,7 @@ const _buyerExcelHandler = async (req, res) => {
         getSel('원산지') || '', 발주수량, amount, getText('비고')
       ];
       // hideFob=1 — FOB·CIF 3컬럼 splice (headers·widths 와 동일 index)
-      if (hideFob) rowValues.splice(14, 3);
+      if (hideFob && _fobIdx >= 0) rowValues.splice(_fobIdx, 3);
       // 재고 컬럼 추가 (includeStock=true) — 총합 + 창고별
       if (includeStock) {
         const stockByWh = (barcode && stockMap[barcode]) || {};
@@ -5334,33 +5334,25 @@ const _buyerExcelHandler = async (req, res) => {
       sheet.getRow(rowNum).values = rowValues;
       sheet.getRow(rowNum).height = 80;
       sheet.getRow(rowNum).alignment = { vertical: 'middle', wrapText: true };
-      // Series 셀 (E) 스타일 — 자식 row 는 보라 + italic / root + 변형 ≥1 은 보라 bold
-      if (isChild) {
-        sheet.getCell(`E${rowNum}`).font = { color: { argb: 'FF7C5EC8' }, italic: true, size: 10 };
-      } else if (isRoot && totalVariants >= 1) {
-        sheet.getCell(`E${rowNum}`).font = { color: { argb: 'FF7C5EC8' }, bold: true, size: 10 };
-      }
-      // Series 컬럼 추가로 모든 numFmt 컬럼 키 한 칸씩 우측 이동:
-      //   기존 G/H/J/K/L/M/N/P/U/V → 신규 H/I/K/L/M/N/O/Q/V/W
-      //   기존 I (US 소수점) → 신규 J
-      //   기존 O (FOB %) → 신규 P
-      // hideFob=1 일 때는 FOB(O)·FOB%(P)·CIF(Q) 3컬럼 사라져서 그 뒤가 모두 3칸 좌측 이동:
-      //   V(OrderQty)→S / W(Total)→T
-      if (!hideFob) {
-        sheet.getCell(`P${rowNum}`).numFmt = '0%';   // FOB_discount_rate
-        ['H','I','K','L','M','N','O','Q','V','W'].forEach(col => {
-          sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
-        });
-      } else {
-        // FOB 3컬럼 제거 후 OrderQty=S / Total=T
-        ['H','I','K','L','M','N','S','T'].forEach(col => {
-          sheet.getCell(`${col}${rowNum}`).numFmt = '#,##0';
-        });
-      }
-      sheet.getCell(`J${rowNum}`).numFmt = '#,##0.0';   // US 0.5 라운딩 (FOB 앞이라 hideFob 와 무관)
+      // numFmt — 컬럼 문자 하드코딩 금지 (2026-08-01)
+      //   Series 컬럼 추가(5/11)·삭제(8/1)·hideFob splice 때마다 A/B/C 문자가 통째로 밀려서
+      //   그때마다 손으로 다시 세다 어긋나기 쉬움 → headers 배열에서 이름으로 위치를 계산한다.
+      //   headers 는 이 시점에 hideFob splice 까지 반영된 최종 상태.
+      const _fmt = (headerName, fmt) => {
+        const i = headers.indexOf(headerName);
+        if (i >= 0) sheet.getCell(`${_colIndexToLetter(i + 1)}${rowNum}`).numFmt = fmt;
+      };
+      [
+        'Retail Price\n(South Korea)', 'Retail Price\n(Taiwan)', 'Retail Price\n(Thailand)',
+        'Retail Price\n(HK)', 'Retail Price\n(China)', 'Retail Price\n(Indonesia)',
+        'FOB\n(Won)', 'CIF\n(Est, Asia avg)', 'Order Qty', 'Total (KRW)'
+      ].forEach(h => _fmt(h, '#,##0'));
+      _fmt('FOB\n(discount rate)', '0%');
+      _fmt('Retail Price\n(US)', '#,##0.0');   // US 0.5 라운딩
       // 재고 컬럼 numFmt — base 컬럼 수 (!hideFob=24 / hideFob=21) + 1 부터 동적
       if (includeStock) {
-        const baseColCount = hideFob ? 21 : 24;
+        // 재고 컬럼은 headers 뒤에 push 된 것이라, base = 재고 제외 컬럼 수
+        const baseColCount = headers.length - 1 - stockWarehouses.length;
         const totalColIdx = baseColCount + 1;
         const totalColLetter = _colIndexToLetter(totalColIdx);
         sheet.getCell(`${totalColLetter}${rowNum}`).numFmt = '#,##0';
