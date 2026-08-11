@@ -1252,7 +1252,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     </div>
     <div id="cp-quote-upload-collapsed" style="display:none;margin-top:12px;padding:8px 12px;background:var(--bg);border:1px dashed var(--border);border-radius:8px;font-size:11.5px;color:var(--text-muted);align-items:center;gap:8px;flex-wrap:wrap;">
       <span>📄 견적서 업로드 <b id="cp-quote-collapsed-why">— 파이프라인 견적이 이미 연동되어 생략됐습니다</b></span>
-      <button type="button" class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:10.5px;padding:3px 10px;" onclick="cpExpandQuoteUpload()">그래도 직접 올리기 ▾</button>
+      <button type="button" class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:10.5px;padding:3px 10px;" onclick="cpExpandQuoteUpload()" title="추가로 받은 견적서를 여기서 올리면, 이 검토의 원가에 반영되는 동시에 파이프라인 해당 제품의 업체·견적으로도 자동 등록됩니다">➕ 추가 견적서 올리기 ▾</button>
+      <span style="flex-basis:100%;font-size:10.5px;opacity:.85;">➕ 새로 받은 견적서를 여기 올리면 <b>파이프라인에 추가 견적으로 자동 등록</b>됩니다 (중복은 건너뜀)</span>
     </div>
   </div>
 
@@ -8142,6 +8143,86 @@ function cpApplyParsedQuote(d, pickedProductIdx){
     }
   }
   cpRecalc();
+  // 🚀 파이프라인 연동 검토면 이 견적을 파이프라인 "추가 견적"으로 자동 등록 (2026-08-11 Owen)
+  setTimeout(() => { try { cpPipelineRegisterQuote(d); } catch(e){ console.warn('[파이프라인 견적 등록]', e.message); } }, 300);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🚀 사업성 검토에서 올린 견적서 → 파이프라인 제품의 업체·견적으로 자동 등록 (2026-08-11 Owen)
+//   그동안 여기 올린 견적서는 이 검토의 원가 필드만 덮어쓰고 파이프라인엔 아무 기록도 남지 않았음.
+//   → 파이프라인이 견적의 단일 출처가 되도록 자동 반영. 중복(수량·단가·통화 동일)은 건너뜀.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function cpExtractQuoteLines(d){
+  const out = [];
+  const push = (qty, unit, cur, terms) => {
+    const u = Number(unit);
+    if(!(u > 0)) return;
+    out.push({ qty: Number(qty) || 0, unit: u, cur: cur || 'USD', lead_days: null, terms: terms || '' });
+  };
+  const items = Array.isArray(d.lineItems) ? d.lineItems.filter(i => i && i.type === 'product') : [];
+  if(items.length){
+    items.forEach(p => push(p.qty, p.unitPrice, p.currency, p.name ? ('제품: ' + p.name) : ''));
+  } else if(Array.isArray(d.quotes) && d.quotes.length){
+    d.quotes.filter(q => q && q.qty && q.unitPrice).forEach(q => push(q.qty, q.unitPrice, q.currency, ''));
+  } else if(d.cost != null){
+    push(d.qty, d.cost, d.currency, '');
+  }
+  return out;
+}
+async function cpPipelineRegisterQuote(parsed){
+  if(!parsed) return;
+  // 대상 파이프라인 제품 찾기 — ① 파이프라인에서 시작한 검토 ② 저장된 검토의 역연결
+  let pid = (window._cpFromPipeline && window._cpFromPipeline.pid) || null;
+  let pname = (window._cpFromPipeline && window._cpFromPipeline.name) || '';
+  if(!pid && CP_CURRENT && CP_CURRENT.id){
+    const r = await fetch('/api/pipeline/by-consumer-pricing/' + encodeURIComponent(CP_CURRENT.id), { credentials:'same-origin' });
+    if(!r.ok) return;
+    const d = await r.json();
+    if(!d.linked || !(d.products||[]).length) return;                 // 미연동 → 조용히 패스
+    if(d.products.length > 1){
+      showToast('⚠️ 연동된 파이프라인 제품이 ' + d.products.length + '개라 자동 등록을 건너뜁니다 — 파이프라인에서 직접 등록하세요');
+      return;
+    }
+    pid = d.products[0].id; pname = d.products[0].name || '';
+  }
+  if(!pid) return;
+  const lines = cpExtractQuoteLines(parsed);
+  if(!lines.length) return;
+  const vname = String(parsed.vendor || '').trim() || '(업체명 미상)';
+  const preview = lines.slice(0,5).map(q => '· ' + (q.qty ? q.qty.toLocaleString() + '개 ' : '') + q.unit + ' ' + q.cur).join('\n');
+  if(!confirm('🚀 이 견적을 파이프라인 "' + (pname || pid) + '" 의 추가 견적으로 등록할까요?\n\n업체: ' + vname + '\n'
+    + preview + (lines.length > 5 ? '\n· 외 ' + (lines.length-5) + '건' : '')
+    + '\n\n[예] 파이프라인 업체·견적에 기록 (같은 수량·단가는 중복 등록 안 함)\n[아니오] 이 검토의 원가만 반영하고 파이프라인엔 남기지 않음')) return;
+  try{
+    const p = await fetch('/api/pipeline/' + encodeURIComponent(pid), { credentials:'same-origin' }).then(r => r.json());
+    if(!p || p.error) throw new Error(p && p.error ? p.error : '제품 조회 실패');
+    const vendors = (Array.isArray(p.vendors) ? p.vendors : []).map(v => ({ ...v, quotes: [...(v.quotes || [])] }));
+    let v = vendors.find(x => String(x.name||'').trim().toLowerCase() === vname.toLowerCase());
+    if(!v){
+      v = { name: vname, contact:'', status:'quoted', memo:'사업성 검토 견적서 업로드에서 자동 등록', quotes: [] };
+      vendors.push(v);
+    }
+    let added = 0;
+    lines.forEach(q => {
+      const dup = v.quotes.some(o => Number(o.qty) === Number(q.qty) && Number(o.unit) === Number(q.unit) && String(o.cur||'') === String(q.cur||''));
+      if(dup) return;
+      v.quotes.push(q); added++;
+    });
+    if(v.status === 'contacted') v.status = 'quoted';
+    if(!added){ showToast('이미 같은 견적이 등록돼 있어 파이프라인에 추가하지 않았습니다'); return; }
+    const pr = await fetch('/api/pipeline/' + encodeURIComponent(pid), {
+      method:'PATCH', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ vendors })
+    });
+    if(!pr.ok) throw new Error('HTTP ' + pr.status);
+    fetch('/api/pipeline/' + encodeURIComponent(pid) + '/log', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ detail: '사업성 검토 견적서 업로드 → "' + vname + '" 견적 ' + added + '건 자동 등록' })
+    }).catch(()=>{});
+    showToast('🚀 파이프라인에 "' + vname + '" 견적 ' + added + '건 등록됨');
+    if(typeof cpRenderPipelineMirror === 'function') cpRenderPipelineMirror();
+  }catch(e){
+    showToast('파이프라인 견적 등록 실패: ' + e.message + ' — 파이프라인에서 직접 입력해 주세요');
+  }
 }
 
 // ━━━ 복수 제품 선택 UI ━━━
