@@ -1205,15 +1205,24 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </div>
     </div>
 
+    <!-- 📊 시장가 비교 (2026-08-11 Owen) — 가격을 정하기 전에 바로 조회하고 그 값으로 타겟가 설정 -->
+    <div id="cp-target-market" style="margin-top:10px;margin-bottom:12px;padding:11px 13px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <span style="font-weight:700;font-size:12px;">📊 시장가 비교</span>
+        <span style="font-size:10.5px;color:var(--text-muted);">가격을 정하기 전에 확인 — 자체 카탈로그는 즉시, 외부 시장은 실검색</span>
+        <button class="cp-btn cp-btn-primary" id="cp-target-mp-btn" style="margin-left:auto;font-size:11px;padding:5px 12px;"
+                onclick="cpQuickMarketResearch()"
+                title="맥미니 Claude(정액제)가 조구만·카카오프렌즈·라인프렌즈 3사를 웹서치로 실검색 → 🇰🇷🇹🇼🇭🇰🇹🇭 실판매가 수집. 별도 API 비용 없음. 결과 2~5분">🖥️ 외부 시장가 조사</button>
+      </div>
+      <div id="cp-target-mp-summary" style="font-size:11.5px;line-height:1.6;"></div>
+      <!-- 🆕 카테고리 실제 등록 제품 미니 카드 (B) — 2026-08-11 타겟가 바로 아래로 이동 -->
+      <div id="cp-price-distrib-box" style="display:none;margin-top:9px;padding:9px 11px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:11px;line-height:1.5;"></div>
+    </div>
+
     <!-- 🚀 제품 파이프라인 상태 미러 (2026-07-01: 사업성 검토 ↔ 파이프라인 미러링, 읽기 전용) -->
     <div id="cp-pipeline-mirror" style="display:none;margin-bottom:10px;"></div>
 
-    <button class="cp-upload-btn" onclick="cpOpenQuoteUpload()">
-      <span style="font-size:20px;">📄</span>
-      <span>④ 견적서 업로드 (PDF·이미지·엑셀) → AI가 단가·수량·부대비용 자동 추출</span>
-    </button>
-
-    <!-- ⑤ 제품 이미지 업로드 -->
+    <!-- ③ 제품 이미지 업로드 (2026-08-11: 견적서 업로드보다 위로 — 이미지→설정→변형 복제 순서) -->
     <div id="cp-product-image-wrap" style="margin-top:10px;display:grid;grid-template-columns:132px 1fr;gap:14px;align-items:center;">
       <div id="cp-product-image-preview" style="width:132px;height:132px;border:2px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--card);overflow:hidden;cursor:pointer;transition:all .15s;"
            onclick="if(!CP_PRODUCT_IMAGE) document.getElementById('cp-product-image-input').click()"
@@ -1223,14 +1232,27 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
         <span style="color:var(--text-muted);font-size:11px;text-align:center;line-height:1.5;">📷<br>제품 이미지<br>드래그/클릭</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
-        <div style="font-weight:600;font-size:13px;">⑤ 📷 제품 이미지 <span style="color:var(--text-muted);font-size:11px;font-weight:400;">— 카탈로그 등록 시 Image_URL 자동 연결</span></div>
+        <div style="font-weight:600;font-size:13px;">③ 📷 제품 이미지 <span style="color:var(--text-muted);font-size:11px;font-weight:400;">— 카탈로그 등록 시 Image_URL 자동 연결</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button type="button" class="cp-btn cp-btn-ghost" style="font-size:11px;padding:4px 12px;" onclick="document.getElementById('cp-product-image-input').click()">📤 파일 선택</button>
           <button type="button" class="cp-btn cp-btn-ghost" id="cp-product-image-remove" style="font-size:11px;padding:4px 12px;display:none;color:#c0392b;border-color:#c0392b;" onclick="cpRemoveProductImage()">🗑️ 제거</button>
         </div>
         <div style="color:var(--text-muted);font-size:11px;line-height:1.4;">JPG · PNG · WebP, 최대 20MB<br>신규 프로젝트는 <b>저장 시 자동 업로드</b>, 기존 프로젝트는 즉시 반영</div>
+        <div style="color:#a78bfa;font-size:11px;line-height:1.4;">🎨 <b>디자인만 다른 변형</b>은 여기서 대표 이미지 1장 + 설정을 끝내고 <b>저장</b> → 하단 <b>“🎨 디자인 변형 추가”</b>로 이미지·디자인명만 넣어 한 번에 등록</div>
         <input type="file" id="cp-product-image-input" accept="image/*" style="display:none;" onchange="cpOnProductImageFile(this.files[0])">
       </div>
+    </div>
+
+    <!-- ④ 견적서 업로드 — 파이프라인 연동 시 자동 접힘 (2026-08-11) -->
+    <div id="cp-quote-upload-wrap" style="margin-top:12px;">
+      <button class="cp-upload-btn" onclick="cpOpenQuoteUpload()">
+        <span style="font-size:20px;">📄</span>
+        <span>④ 견적서 업로드 (PDF·이미지·엑셀) → AI가 단가·수량·부대비용 자동 추출</span>
+      </button>
+    </div>
+    <div id="cp-quote-upload-collapsed" style="display:none;margin-top:12px;padding:8px 12px;background:var(--bg);border:1px dashed var(--border);border-radius:8px;font-size:11.5px;color:var(--text-muted);align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>📄 견적서 업로드 <b id="cp-quote-collapsed-why">— 파이프라인 견적이 이미 연동되어 생략됐습니다</b></span>
+      <button type="button" class="cp-btn cp-btn-ghost" style="margin-left:auto;font-size:10.5px;padding:3px 10px;" onclick="cpExpandQuoteUpload()">그래도 직접 올리기 ▾</button>
     </div>
   </div>
 
@@ -1264,8 +1286,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       </select></div>
       <div class="cp-field"><label>HS 참조 일치</label><input type="text" id="cp-hs-match" readonly style="background:var(--bg);" placeholder="AI 분석 후 표시"></div>
     </div>
-    <!-- 🆕 카테고리 가격 분포 박스 (B) — 품목 선택 직후 이 자리에 표시 (2026-07-24 위→아래 흐름 순서로 이동, Owen 요청) -->
-    <div id="cp-price-distrib-box" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px;line-height:1.5;"></div>
+    <!-- 🆕 카테고리 가격 분포 박스 (B) — 2026-08-11 ② 타겟 소비자가 바로 아래(📊 시장가 비교)로 이동 -->
   </div>
 
   <div class="cp-auto-section">
@@ -1448,6 +1469,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="cp-btn cp-btn-ghost" id="cp-btn-new" onclick="cpNewProject()">초기화</button>
       <button class="cp-btn cp-btn-danger" id="cp-btn-del" style="display:none;" onclick="cpDeleteCurrent()">삭제</button>
       <button class="cp-btn-save" id="cp-btn-save" onclick="cpSave()">💾 저장</button>
+      <button class="cp-btn" id="cp-btn-variants" style="background:linear-gradient(90deg,#a78bfa,#f472b6);display:none;" onclick="cpOpenVariantModal()" title="같은 제품인데 디자인·옵션명만 다른 변형들을 한 번에 등록합니다. 원가·HS·사이즈·국가별 가격·타겟가는 그대로 복제되고, 디자인명과 이미지만 넣으면 됩니다.">🎨 디자인 변형 추가</button>
       <button class="cp-btn cp-btn-ghost" id="cp-btn-series-link" style="display:none;" onclick="cpOpenSeriesLink()" title="이미 따로 만든 프로젝트를 같은 시리즈(같은 제품·다른 디자인)로 연결합니다. 연결하면 '시리즈에 적용'으로 원가·가격을 한 번에 맞출 수 있어요.">🔗 시리즈 연결</button>
       <button class="cp-btn" id="cp-btn-series-apply" style="background:linear-gradient(90deg,#7c5ec8,#60a5fa);display:none;" onclick="cpApplySeriesToSiblings()" title="이 제품의 원가·국가가격·타겟가를 같은 시리즈(같은 제품·다른 디자인) 변형들에 일괄 적용합니다. 디자인·이름·메모는 그대로 유지됩니다.">🔗 시리즈에 적용</button>
       <button class="cp-btn" id="cp-btn-publish" style="background:#f59e0b;display:none;" onclick="cpPublishToCatalog()">📋 제품 카탈로그 등록</button>
@@ -4570,6 +4592,7 @@ function cpNewProject(){
   CP_CURRENT = null;
   cpRenderPipelineMirror(); // 신규 프로젝트 → 파이프라인 미러 숨김
   cpMpLoadExisting(null);   // 시장가 조사 결과·폴링 정리
+  if (typeof cpResetQuoteUploadState === 'function') cpResetQuoteUploadState();   // 📄 견적서 업로드 다시 펼침 (2026-08-11)
   // 🔍 복제 / 시리즈 관계 리셋 (2026-05-11)
   CP_CLONED_FROM = null;
   // 🚀 파이프라인 시작 플래그 리셋 (2026-07-29) — cpStartFromPipeline 은 이 리셋 뒤에 플래그를 다시 세움
@@ -4643,6 +4666,7 @@ async function cpRenderPipelineMirror(){
     if(!d.linked){
       el.style.display='block';
       el.innerHTML = '<div style="background:rgba(127,127,127,0.08);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:12px;color:var(--text-muted);">🚀 제품 파이프라인 미연동 <span style="opacity:.8">— 파이프라인에서 이 사업성 검토를 연결하면 견적 수령 현황이 여기 표시됩니다</span></div>';
+      if(typeof cpExpandQuoteUpload === 'function') cpExpandQuoteUpload(false);   // 미연동 → 견적서 업로드 필요
       return;
     }
     const parts = (d.products||[]).map(p=>{
@@ -4659,6 +4683,14 @@ async function cpRenderPipelineMirror(){
     el.style.display='block';
     el.innerHTML = '<div style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);border-radius:10px;padding:10px 12px;font-size:12.5px;">'
       + '<div style="font-weight:700;margin-bottom:6px;">🚀 제품 파이프라인 연동됨</div>'+parts+'</div>';
+    // 📄 파이프라인 견적이 이미 들어와 있으면 견적서 업로드는 불필요 → 접기 (2026-08-11 Owen)
+    if(typeof cpCollapseQuoteUpload === 'function'){
+      const qc = (d.products||[]).reduce((s,p)=>s+(Number(p.quoteLineCount)||0), 0);
+      const vc = (d.products||[]).reduce((s,p)=>s+(Number(p.quoteVendorCount)||0), 0);
+      cpCollapseQuoteUpload(qc > 0
+        ? '— 파이프라인 견적 ' + qc + '건(' + vc + '개 업체)이 연동돼 생략됐습니다'
+        : '— 파이프라인 연동됨 (견적은 파이프라인에서 관리)');
+    }
   }catch(e){ el.style.display='none'; }
 }
 // 🚀 파이프라인 → 사업성 검토 시작 워크플로 (2026-07-29)
@@ -4707,6 +4739,13 @@ async function cpStartFromPipeline(pid){
   document.getElementById('cp-memo').value = '🚀 파이프라인 "'+((p.emoji||'')+' '+(p.name||'')).trim()+'"에서 시작'+(qLines.length?'\n업체 견적:\n'+qLines.join('\n'):'');
   window._cpFromPipeline = { pid: p.id, name: p.name||'', emoji: p.emoji||'' };
   cpRenderFromPipelineBanner();
+  // 📄 파이프라인 견적을 그대로 물고 들어왔으면 견적서 업로드 접기 (2026-08-11 Owen)
+  if(typeof cpCollapseQuoteUpload === 'function'){
+    window._cpQuoteUploadForced = false;
+    cpCollapseQuoteUpload(quotes.length
+      ? '— 파이프라인 견적 ' + quotes.length + '건이 이미 들어와 생략됐습니다'
+      : '— 파이프라인에서 시작된 검토 (견적은 파이프라인에서 관리)');
+  }
   cpRecalc();
   showToast('🚀 파이프라인 데이터로 검토 시작 — 저장 시 자동 연결됩니다');
   try{ document.getElementById('cp-from-pipeline-banner').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
@@ -4744,6 +4783,7 @@ async function cpLoadProject(id){
     const it = await r.json();
     if(!it || it.error){showToast('불러오기 실패');return;}
     CP_CURRENT = it;
+    if (typeof cpResetQuoteUploadState === 'function') cpResetQuoteUploadState();  // 📄 기본 펼침 → 파이프라인 연동이면 미러가 접음 (2026-08-11)
     cpRenderPipelineMirror(); // 🚀 파이프라인 연동 상태 미러 (비동기, 논블로킹)
     cpMpLoadExisting(it.id);  // 🖥️ 저장된 시장가 조사 결과 있으면 표시 / pending이면 폴링 재개
     // 저장 프로젝트 로드 시 분포박스·유사패널 자동 갱신 — 필드 세팅(동기) 완료 후 (2026-07-24)
@@ -4896,6 +4936,7 @@ function cpOnTargetInput(el){
   if (typeof cpRefreshPriceDistribBox === 'function') cpRefreshPriceDistribBox();
   // 시장가 비교 요약의 '우리 가격'·갭%도 실시간 갱신 (조사 결과가 로드돼 있을 때만) (2026-07-29)
   if (typeof cpRenderMarketPrice === 'function' && _cpMarketPriceCache) cpRenderMarketPrice(_cpMarketPriceCache);
+  else if (typeof cpRenderTargetMpSummary === 'function') cpRenderTargetMpSummary();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -6022,6 +6063,9 @@ function cpMpShowPending(msg){
       <span style="font-size:11px;">정액제로 4개 시장(한국·대만·홍콩·태국) 실검색(웹서치)합니다 — 보통 2~5분. 이 화면을 떠나도 결과는 저장됩니다.</span>
     </div>`;
   }
+  // ② 타겟가 아래 요약 박스에도 같은 진행 상태 (2026-08-11)
+  const sm = document.getElementById('cp-target-mp-summary');
+  if(sm) sm.innerHTML = '<span style="color:var(--text-muted);">🖥️⏳ ' + escapeHtml(msg||'맥미니에서 시장가 조사 중…') + ' (보통 2~5분)</span>';
 }
 async function cpEstimateMarketPrice(opts){
   opts = opts || {};
@@ -6084,6 +6128,7 @@ async function cpMpLoadExisting(cpId){
   if(wrap){ wrap.style.display='none'; wrap.innerHTML=''; }
   if(empty) empty.style.display='block';
   _cpMarketPriceCache = null; _cpMpExcluded = new Set(); _cpMpManual = [];
+  if(typeof cpRenderTargetMpSummary === 'function') cpRenderTargetMpSummary();
   if(!cpId) return;
   try {
     const rec = await fetch('/api/consumer-pricing/market-research/'+encodeURIComponent(cpId), {credentials:'include'}).then(r=>r.json());
@@ -6091,6 +6136,97 @@ async function cpMpLoadExisting(cpId){
     if(rec && rec.status === 'done' && rec.result){ _cpMarketPriceCache = rec.result; cpRenderMarketPrice(rec.result); if(typeof cpRenderCountryTable==='function') cpRenderCountryTable(); }
     else if(rec && rec.status === 'pending'){ cpMpShowPending('맥미니에서 시장가 조사 중…'); cpMpStartPoll(cpId); }
   } catch(e){ /* 무시 */ }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📊 ② 타겟 소비자가 바로 아래 시장가 요약 (2026-08-11 Owen)
+//    "가격을 정하기 전에 바로 조회하고, 그 값으로 타겟가를 세팅" 하는 자리.
+//    상세(채택/제외·직접 추가)는 기존 📊 시장가 비교 섹션 그대로 — 여기는 요약 + 원클릭 적용.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function cpRoundPrice(v){                    // 소비자가 반올림 — 5천 미만은 500원, 이상은 1,000원 단위
+  if(!(v>0)) return 0;
+  const unit = v < 5000 ? 500 : 1000;
+  return Math.round(v/unit)*unit;
+}
+function cpRenderTargetMpSummary(){
+  const el = document.getElementById('cp-target-mp-summary');
+  if(!el) return;
+  if(!_cpMarketPriceCache){
+    const saved = !!(CP_CURRENT && CP_CURRENT.id);
+    el.innerHTML = '<span style="color:var(--text-muted);">🖥️ 외부 시장가(조구만·카카오프렌즈·라인프렌즈 / 🇰🇷🇹🇼🇭🇰🇹🇭) 아직 조사 안 함 — 오른쪽 버튼을 누르면 2~5분 뒤 평균가가 여기 뜨고, 클릭 한 번으로 타겟가에 넣을 수 있어요.'
+      + (saved ? '' : ' <b>(저장 안 된 검토는 자동 저장 후 조사합니다)</b>') + '</span>';
+    return;
+  }
+  const c = (typeof cpMpCollect === 'function') ? cpMpCollect() : null;
+  if(!c){ el.innerHTML = ''; return; }
+  const target = cpParseNum(document.getElementById('cp-target-price')?.value) || 0;
+  const chip = (flag, label, val, n, cur) => (!(val > 0)) ? '' :
+    `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;background:var(--card);border:1px solid var(--border);margin:0 5px 5px 0;">
+       <b>${flag} ${label}</b><span style="font-variant-numeric:tabular-nums;">${cur === 'KRW' ? cpFmtKRW(val) : (Number(val).toLocaleString() + ' ' + cur)}</span>
+       <span style="color:var(--text-muted);font-size:10px;">${n}건</span></span>`;
+  let verdict = '';
+  if(target > 0 && c.avgKRW > 0){
+    const d = ((target / c.avgKRW) - 1) * 100;
+    const col = (typeof cpPriceGapColor === 'function') ? cpPriceGapColor(d) : 'var(--text)';
+    const sign = d >= 0 ? '+' : '';
+    const face = d > 8 ? '🔴 시장가 대비 비쌈' : (d < -8 ? '🟢 시장가 대비 저렴' : '🔵 시장가와 적정');
+    verdict = `<div style="margin-top:2px;">내 타겟가 <b>${cpFmtKRW(target)}</b> · 🇰🇷 평균 대비 <b style="color:${col}">${sign}${d.toFixed(1)}%</b> <span style="margin-left:4px;">${face}</span></div>`;
+  }
+  const btns = (c.avgKRW > 0) ? `<div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:10.5px;color:var(--text-muted);">이 값으로 타겟가 설정 →</span>
+      <button type="button" class="cp-btn cp-btn-ghost" style="font-size:10.5px;padding:3px 10px;" onclick="cpApplyMarketPriceToTarget(1)">🇰🇷 평균가 ${cpFmtKRW(cpRoundPrice(c.avgKRW))}</button>
+      <button type="button" class="cp-btn cp-btn-ghost" style="font-size:10.5px;padding:3px 10px;" onclick="cpApplyMarketPriceToTarget(0.9)">평균 −10% ${cpFmtKRW(cpRoundPrice(c.avgKRW * 0.9))}</button>
+      <button type="button" class="cp-btn cp-btn-ghost" style="font-size:10.5px;padding:3px 10px;" onclick="document.getElementById('cp-market-price-section').scrollIntoView({behavior:'smooth',block:'start'})">상세·채택/제외 ↓</button>
+    </div>` : '';
+  el.innerHTML = `<div>${chip('🇰🇷','한국',c.avgKRW,c.nKR,'KRW')}${chip('🇹🇼','대만',c.avgTWD,c.nTW,'TWD')}${chip('🇭🇰','홍콩',c.avgHKD,c.nHK,'HKD')}${chip('🇹🇭','태국',c.avgTHB,c.nTH,'THB')}</div>${verdict}${btns}`;
+}
+function cpApplyMarketPriceToTarget(ratio){
+  const c = (typeof cpMpCollect === 'function') ? cpMpCollect() : null;
+  if(!c || !(c.avgKRW > 0)){ showToast('적용할 시장 평균가가 없습니다'); return; }
+  const v = cpRoundPrice(c.avgKRW * (ratio || 1));
+  const el = document.getElementById('cp-target-price');
+  if(!el) return;
+  el.value = cpFmtNum(v);
+  cpOnTargetInput(el);
+  showToast('🎯 타겟 소비자가 ' + cpFmtKRW(v) + ' 적용 — 마진율 확인하세요');
+}
+// 요약 박스의 조사 버튼 — 미저장이면 자동 저장 후 조사 요청 (기존 버튼은 "먼저 저장하세요"로 끝났음)
+async function cpQuickMarketResearch(){
+  const nm = (document.getElementById('cp-name')?.value || '').trim();
+  if(!nm){ showToast('제품명을 먼저 입력하세요'); return; }
+  if(!(CP_CURRENT && CP_CURRENT.id)){
+    showToast('조사에는 저장이 필요해 먼저 저장합니다…');
+    const ok = await cpSave();
+    if(ok === false) return;
+  }
+  const el = document.getElementById('cp-target-mp-summary');
+  if(el) el.innerHTML = '<span style="color:var(--text-muted);">🖥️⏳ 맥미니에서 4개 시장 실검색 중… 보통 2~5분. 이 화면을 떠나도 결과는 저장됩니다.</span>';
+  await cpEstimateMarketPrice();
+}
+
+// ━━ 📄 견적서 업로드 접기/펴기 (2026-08-11) — 파이프라인 견적이 연동되면 불필요하므로 자동 접힘 ━━
+window._cpQuoteUploadForced = false;   // 사용자가 "그래도 직접 올리기"로 편 상태
+function cpCollapseQuoteUpload(why){
+  if(window._cpQuoteUploadForced) return;
+  const w = document.getElementById('cp-quote-upload-wrap');
+  const c = document.getElementById('cp-quote-upload-collapsed');
+  if(!w || !c) return;
+  w.style.display = 'none';
+  c.style.display = 'flex';
+  const lbl = document.getElementById('cp-quote-collapsed-why');
+  if(lbl && why) lbl.textContent = why;
+}
+function cpExpandQuoteUpload(userAction){
+  const w = document.getElementById('cp-quote-upload-wrap');
+  const c = document.getElementById('cp-quote-upload-collapsed');
+  if(!w || !c) return;
+  w.style.display = 'block';
+  c.style.display = 'none';
+  if(userAction !== false) window._cpQuoteUploadForced = true;
+}
+function cpResetQuoteUploadState(){
+  window._cpQuoteUploadForced = false;
+  cpExpandQuoteUpload(false);
 }
 
 // ── 큐레이션 헬퍼 (2026-07-25): 채택/제외 → 평균 자동 재계산, 수동 추가 ──
@@ -6125,6 +6261,8 @@ async function cpMpResearch(){ await cpEstimateMarketPrice({ specOverride: (docu
 function cpRenderMarketPrice(data){
   const wrap = document.getElementById('cp-market-price-result');
   const empty = document.getElementById('cp-market-price-empty');
+  // ② 타겟가 아래 요약 박스 동기화 (2026-08-11) — 채택/제외·수동추가 결과까지 그대로 반영
+  setTimeout(()=>{ try{ cpRenderTargetMpSummary(); }catch(e){} }, 0);
   if(!wrap || !data) return;
   empty.style.display = 'none';
   wrap.style.display = 'block';
@@ -6348,6 +6486,75 @@ function cpRenderMarketPrice(data){
 
 
 // ━━━ 저장/삭제 ━━━
+// 💾 저장 payload 빌더 (2026-08-11 분리) — cpSave 와 🎨 디자인 변형 일괄 생성이 같은 로직을 공유
+//    opts.seriesRootId : 지정 시 시리즈 root 를 갈아끼움 (변형 생성)
+//    opts.memoExtra    : 메모 뒤에 붙일 문구 (변형 출처 기록)
+function cpBuildSaveBody(name, target, opts){
+  opts = opts || {};
+  // 콤마 회귀 fix (2026-05-15) — cp-qty 는 type=text + cpFmtInput 콤마 포맷 input.
+  // parseFloat("3,600") === 3 으로 잘림 → 노션에 3 저장 → 재로딩 시 3 표시 버그 (Owen 보고)
+  const cost = parseFloat(document.getElementById('cp-cost-price').value)||null;
+  const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||null;
+  const surcharge = parseFloat(document.getElementById('cp-surcharge').value)||0;
+  const unit = cpUnitCostKRW();
+  const totalCost = (unit*(qty||0))+surcharge;
+  const revenue = (target||0)*(qty||0);
+  const profit = revenue-totalCost;
+  const rate = revenue>0?profit/revenue:null;
+  const compPrices = CP_COMPETITORS.map(c=>c.priceKRW).filter(p=>p!=null&&p>0);
+  const compAvg = compPrices.length?compPrices.reduce((a,b)=>a+b,0)/compPrices.length:null;
+  const compMin = compPrices.length?Math.min(...compPrices):null;
+  const compMax = compPrices.length?Math.max(...compPrices):null;
+
+  const breakdownMeta = {
+    sampleFee: parseFloat(String(document.getElementById('cp-sample-fee').value).replace(/,/g,''))||null,
+    sampleCur: document.getElementById('cp-sample-cur').value,
+    moldFee: parseFloat(String(document.getElementById('cp-mold-fee').value).replace(/,/g,''))||null,
+    moldCur: document.getElementById('cp-mold-cur').value,
+    includeInitial: document.getElementById('cp-include-initial').checked,
+    origin: document.getElementById('cp-origin').value,
+    shipping: parseFloat(String(document.getElementById('cp-sur-shipping').value).replace(/,/g,''))||0,
+    customsPct: parseFloat(document.getElementById('cp-sur-customs').value)||0,
+    vatPct: parseFloat(document.getElementById('cp-sur-vat').value)||0,
+    misc: parseFloat(String(document.getElementById('cp-sur-misc').value).replace(/,/g,''))||0,
+    packaging: (()=>{ const el=document.getElementById('cp-sur-packaging'); return el?(parseFloat(String(el.value).replace(/,/g,''))||0):0; })(),
+    // 🏷️ 제품 스펙 (04-23 추가)
+    size: (document.getElementById('cp-size')?.value||'').trim(),
+    material: (document.getElementById('cp-material')?.value||'').trim(),
+    packagingType: (document.getElementById('cp-packaging-type')?.value||'').trim(),
+    fobDiscountRate: (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })(),
+    // 🔍 시리즈 관계 (2026-05-11) — 복제로 만들어진 row 만 root id 보존 (자기 자신이 root 이면 null)
+    seriesRootId: (opts.seriesRootId !== undefined)
+      ? (opts.seriesRootId || null)
+      : ((typeof CP_CLONED_FROM === 'string' && CP_CLONED_FROM) ? CP_CLONED_FROM : null)
+  };
+  const memoText = document.getElementById('cp-memo').value + (opts.memoExtra || '');
+  const memoWithMeta = memoText + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(breakdownMeta) + '-->';
+  const body = {
+    프로젝트명: name,
+    품목: document.getElementById('cp-category').value || null,
+    상태: document.getElementById('cp-status').value,
+    작성자: document.getElementById('cp-author').value || null,
+    HS코드: document.getElementById('cp-hs').value,
+    시장조사_평균_KRW: compAvg,
+    시장조사_최저_KRW: compMin,
+    시장조사_최고_KRW: compMax,
+    타겟_소비자가_KRW: target,
+    competitors: CP_COMPETITORS.filter(c=>c.brand||c.product||c.priceKRW),
+    생산_단가: cost,
+    생산_통화: document.getElementById('cp-cost-currency').value,
+    생산_수량: qty,
+    부대비용_KRW: surcharge,
+    총원가_KRW: totalCost || null,
+    매출_KRW: revenue || null,
+    마진_KRW: revenue>0?profit:null,
+    마진율: rate,
+    countryPricing: CP_COUNTRIES,
+    메모: memoWithMeta
+  };
+  return { body, rate };
+}
+
 async function cpSave(){
   const name = document.getElementById('cp-name').value.trim();
   if(!name){showToast('프로젝트명을 입력하세요');return false;}
@@ -6394,65 +6601,9 @@ async function cpSave(){
     }
   } catch(e) { console.warn('[유사 제품 가격 비교]', e.message); }
 
-  // 콤마 회귀 fix (2026-05-15) — cp-qty 는 type=text + cpFmtInput 콤마 포맷 input.
-  // parseFloat("3,600") === 3 으로 잘림 → 노션에 3 저장 → 재로딩 시 3 표시 버그 (Owen 보고)
-  const cost = parseFloat(document.getElementById('cp-cost-price').value)||null;
-  const qty = parseFloat(String(document.getElementById('cp-qty').value).replace(/,/g,''))||null;
-  const surcharge = parseFloat(document.getElementById('cp-surcharge').value)||0;
-  const unit = cpUnitCostKRW();
-  const totalCost = (unit*(qty||0))+surcharge;
-  const revenue = (target||0)*(qty||0);
-  const profit = revenue-totalCost;
-  const rate = revenue>0?profit/revenue:null;
-  const compPrices = CP_COMPETITORS.map(c=>c.priceKRW).filter(p=>p!=null&&p>0);
-  const compAvg = compPrices.length?compPrices.reduce((a,b)=>a+b,0)/compPrices.length:null;
-  const compMin = compPrices.length?Math.min(...compPrices):null;
-  const compMax = compPrices.length?Math.max(...compPrices):null;
-
-  const breakdownMeta = {
-    sampleFee: parseFloat(String(document.getElementById('cp-sample-fee').value).replace(/,/g,''))||null,
-    sampleCur: document.getElementById('cp-sample-cur').value,
-    moldFee: parseFloat(String(document.getElementById('cp-mold-fee').value).replace(/,/g,''))||null,
-    moldCur: document.getElementById('cp-mold-cur').value,
-    includeInitial: document.getElementById('cp-include-initial').checked,
-    origin: document.getElementById('cp-origin').value,
-    shipping: parseFloat(String(document.getElementById('cp-sur-shipping').value).replace(/,/g,''))||0,
-    customsPct: parseFloat(document.getElementById('cp-sur-customs').value)||0,
-    vatPct: parseFloat(document.getElementById('cp-sur-vat').value)||0,
-    misc: parseFloat(String(document.getElementById('cp-sur-misc').value).replace(/,/g,''))||0,
-    packaging: (()=>{ const el=document.getElementById('cp-sur-packaging'); return el?(parseFloat(String(el.value).replace(/,/g,''))||0):0; })(),
-    // 🏷️ 제품 스펙 (04-23 추가)
-    size: (document.getElementById('cp-size')?.value||'').trim(),
-    material: (document.getElementById('cp-material')?.value||'').trim(),
-    packagingType: (document.getElementById('cp-packaging-type')?.value||'').trim(),
-    fobDiscountRate: (()=>{ const v=parseFloat(document.getElementById('cp-fob-discount')?.value); return isNaN(v)?0.45:v; })(),
-    // 🔍 시리즈 관계 (2026-05-11) — 복제로 만들어진 row 만 root id 보존 (자기 자신이 root 이면 null)
-    seriesRootId: (typeof CP_CLONED_FROM === 'string' && CP_CLONED_FROM) ? CP_CLONED_FROM : null
-  };
-  const memoText = document.getElementById('cp-memo').value;
-  const memoWithMeta = memoText + '\n\n<!--BREAKDOWN_META:' + JSON.stringify(breakdownMeta) + '-->';
-  const body = {
-    프로젝트명: name,
-    품목: document.getElementById('cp-category').value || null,
-    상태: document.getElementById('cp-status').value,
-    작성자: document.getElementById('cp-author').value || null,
-    HS코드: document.getElementById('cp-hs').value,
-    시장조사_평균_KRW: compAvg,
-    시장조사_최저_KRW: compMin,
-    시장조사_최고_KRW: compMax,
-    타겟_소비자가_KRW: target,
-    competitors: CP_COMPETITORS.filter(c=>c.brand||c.product||c.priceKRW),
-    생산_단가: cost,
-    생산_통화: document.getElementById('cp-cost-currency').value,
-    생산_수량: qty,
-    부대비용_KRW: surcharge,
-    총원가_KRW: totalCost || null,
-    매출_KRW: revenue || null,
-    마진_KRW: revenue>0?profit:null,
-    마진율: rate,
-    countryPricing: CP_COUNTRIES,
-    메모: memoWithMeta
-  };
+  const _built = cpBuildSaveBody(name, target);
+  const body = _built.body;
+  const rate = _built.rate;
 
   try{
     const url = CP_CURRENT ? '/api/consumer-pricing/'+CP_CURRENT.id : '/api/consumer-pricing';
@@ -6510,6 +6661,12 @@ function cpUpdateSeriesApplyBtn(){
   if(applyBtn){
     if(saved && sibs.length >= 1){ applyBtn.style.display = 'inline-block'; applyBtn.innerHTML = '🔗 시리즈 ' + sibs.length + '개에 적용'; }
     else applyBtn.style.display = 'none';
+  }
+  // 🎨 디자인 변형 추가 — 저장된 프로젝트에서만 (2026-08-11)
+  const varBtn = document.getElementById('cp-btn-variants');
+  if(varBtn){
+    varBtn.style.display = saved ? 'inline-block' : 'none';
+    varBtn.innerHTML = sibs.length >= 1 ? '🎨 디자인 변형 추가 (' + sibs.length + ')' : '🎨 디자인 변형 추가';
   }
   if(linkBtn){
     // 연결 버튼: 저장된 프로젝트면 항상 노출(연결/추가 연결/해제 관리). 이미 시리즈면 라벨 변경
@@ -6625,6 +6782,180 @@ async function cpApplySeriesToSiblings(){
     setTimeout(() => { try{ cpLoadList(); }catch(e){} }, 4000);
   } catch(e){ showToast('시리즈 적용 실패: '+e.message); }
   finally { if(btn){ btn.disabled = false; btn.innerHTML = orig; cpUpdateSeriesApplyBtn(); } }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🎨 디자인 변형 일괄 추가 (2026-08-11 Owen)
+//   대표 제품 1건(이미지·원가·HS·국가가격)을 끝낸 뒤,
+//   "디자인·옵션명·이미지만 다른" 변형들을 한 화면에서 한 번에 등록. 자동으로 같은 시리즈로 묶임.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let _cpVariantRows = [];     // [{design, designEn, dataUrl, ext, fileName, status, newId, imgOk}]
+let _cpVariantBusy = false;
+
+function cpVariantBaseName(){ return (document.getElementById('cp-name')?.value || '').trim(); }
+// "액자테이블 (Photo Table)" + "Cute" → "액자테이블 - Cute (Photo Table - Cute)"
+function cpVariantFinalName(design, designEn){
+  const base = cpVariantBaseName();
+  const d = String(design || '').trim();
+  if(!d) return base;
+  const m = base.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if(m){
+    const ko = m[1].trim(), en = m[2].trim();
+    const de = String(designEn || '').trim() || (/^[\x20-\x7E]+$/.test(d) ? d : '');
+    return de ? `${ko} - ${d} (${en} - ${de})` : `${ko} - ${d} (${en})`;
+  }
+  return `${base} - ${d}`;
+}
+function cpOpenVariantModal(){
+  if(!(CP_CURRENT && CP_CURRENT.id)){ showToast('먼저 대표 제품을 저장하세요 — 저장 후 변형을 복제할 수 있습니다'); return; }
+  if(!cpVariantBaseName()){ showToast('프로젝트명(제품명)을 먼저 입력하세요'); return; }
+  _cpVariantRows = [{ design:'', designEn:'', dataUrl:null, ext:null, fileName:'', status:'' }];
+  _cpVariantBusy = false;
+  cpRenderVariantModal();
+}
+function cpCloseVariantModal(){
+  if(_cpVariantBusy){ showToast('생성 중입니다 — 잠시만요'); return; }
+  const m = document.getElementById('cp-variant-modal'); if(m) m.style.display = 'none';
+}
+function cpVariantAddRow(){ _cpVariantRows.push({ design:'', designEn:'', dataUrl:null, ext:null, fileName:'', status:'' }); cpRenderVariantModal(); }
+function cpVariantRemoveRow(i){ _cpVariantRows.splice(i,1); if(!_cpVariantRows.length) cpVariantAddRow(); else cpRenderVariantModal(); }
+function cpVariantSetField(i, key, v){
+  if(!_cpVariantRows[i]) return;
+  _cpVariantRows[i][key] = v;
+  const prev = document.getElementById('cp-var-preview-'+i);
+  if(prev) prev.textContent = cpVariantFinalName(_cpVariantRows[i].design, _cpVariantRows[i].designEn);
+  // 만들기 버튼 개수만 갱신 (전체 리렌더는 입력 포커스가 튀므로 안 함)
+  const cbtn = document.getElementById('cp-var-create-btn');
+  if(cbtn) cbtn.textContent = '🎨 ' + _cpVariantRows.filter(r => (r.design||'').trim() || r.dataUrl).length + '개 변형 만들기';
+}
+// 이미지 여러 장 선택 → 파일명이 디자인명 기본값 (빈 행부터 채우고 모자라면 행 추가)
+function cpVariantPickImages(files, rowIdx){
+  const list = Array.from(files || []);
+  if(!list.length) return;
+  let idx = (typeof rowIdx === 'number') ? rowIdx : 0;
+  const readOne = (file) => new Promise((res) => {
+    if(!file.type || !file.type.startsWith('image/')){ showToast('이미지 파일만 가능합니다: '+file.name); return res(null); }
+    if(file.size > 20*1024*1024){ showToast('20MB 초과 — 건너뜀: '+file.name); return res(null); }
+    const rd = new FileReader();
+    rd.onload = e => {
+      const mExt = (file.name||'').split('.').pop();
+      res({ dataUrl: e.target.result, ext: ((mExt && mExt.length<=5) ? mExt : 'jpg').toLowerCase(), fileName: file.name || '' });
+    };
+    rd.onerror = () => res(null);
+    rd.readAsDataURL(file);
+  });
+  (async () => {
+    for(const f of list){
+      const got = await readOne(f);
+      if(!got) continue;
+      if(typeof rowIdx === 'number' && list.length === 1){
+        Object.assign(_cpVariantRows[rowIdx], got);
+        if(!_cpVariantRows[rowIdx].design) _cpVariantRows[rowIdx].design = got.fileName.replace(/\.[^.]+$/,'').trim();
+      } else {
+        while(_cpVariantRows[idx] && _cpVariantRows[idx].dataUrl) idx++;
+        if(!_cpVariantRows[idx]) _cpVariantRows[idx] = { design:'', designEn:'', dataUrl:null, ext:null, fileName:'', status:'' };
+        Object.assign(_cpVariantRows[idx], got);
+        if(!_cpVariantRows[idx].design) _cpVariantRows[idx].design = got.fileName.replace(/\.[^.]+$/,'').trim();
+        idx++;
+      }
+    }
+    cpRenderVariantModal();
+  })();
+}
+function cpRenderVariantModal(){
+  let modal = document.getElementById('cp-variant-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'cp-variant-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:20px;';
+    document.body.appendChild(modal);
+  }
+  const base = cpVariantBaseName();
+  const target = cpParseNum(document.getElementById('cp-target-price')?.value) || 0;
+  const cost = parseFloat(document.getElementById('cp-cost-price')?.value) || 0;
+  const rows = _cpVariantRows.map((r,i) => {
+    const thumb = r.dataUrl
+      ? `<img src="${r.dataUrl}" style="width:46px;height:46px;border-radius:6px;object-fit:cover;flex-shrink:0;">`
+      : `<span style="width:46px;height:46px;border-radius:6px;border:1px dashed var(--border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;color:var(--text-muted);cursor:pointer;" onclick="document.getElementById('cp-var-file-${i}').click()">📷</span>`;
+    return `<div style="display:flex;align-items:center;gap:9px;padding:8px;border:1px solid var(--border);border-radius:9px;background:var(--input-bg);margin-bottom:7px;">
+      ${thumb}
+      <input type="file" id="cp-var-file-${i}" accept="image/*" style="display:none;" onchange="cpVariantPickImages(this.files, ${i})">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" value="${escapeHtml(r.design||'')}" placeholder="디자인·옵션명 (예: 벚꽃)" oninput="cpVariantSetField(${i},'design',this.value)"
+                 style="flex:1;min-width:0;padding:5px 9px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);">
+          <input type="text" value="${escapeHtml(r.designEn||'')}" placeholder="영문 (예: Cherry)" oninput="cpVariantSetField(${i},'designEn',this.value)"
+                 style="width:130px;padding:5px 9px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);">
+        </div>
+        <div id="cp-var-preview-${i}" style="font-size:10.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(cpVariantFinalName(r.design, r.designEn))}</div>
+      </div>
+      <div style="width:96px;text-align:right;font-size:11px;color:var(--text-muted);">${escapeHtml(r.status||'')}${r.newId&&r.dataUrl?(r.imgOk?' 🖼':' ⚠️이미지'):''}</div>
+      <button type="button" class="cp-btn cp-btn-ghost" style="font-size:11px;padding:3px 8px;" onclick="cpVariantRemoveRow(${i})" ${_cpVariantBusy?'disabled':''}>✕</button>
+    </div>`;
+  }).join('');
+  modal.innerHTML = `
+    <div style="background:var(--card);color:var(--text);border-radius:12px;padding:20px 24px;max-width:720px;width:94%;max-height:86vh;display:flex;flex-direction:column;border:1px solid var(--border);">
+      <h3 style="margin:0 0 4px 0;font-size:15px;">🎨 디자인 변형 추가 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— 같은 제품, 디자인·옵션명만 다른 것들</span></h3>
+      <div style="font-size:11.5px;color:var(--text-muted);line-height:1.6;margin-bottom:10px;">
+        대표 제품 <b style="color:var(--text);">${escapeHtml(base)}</b> 의
+        <b>원가 ${cost?cpFmtNum(cost):'-'} · 타겟가 ${target?cpFmtKRW(target):'-'} · HS·사이즈·소재·국가별 가격</b>이 그대로 복제됩니다.
+        여기서는 <b>디자인명 + 이미지</b>만 넣으세요 · 생성된 변형은 <b>자동으로 같은 시리즈</b>로 묶여 “🔗 시리즈에 적용”으로 가격을 한 번에 맞출 수 있습니다.
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap;">
+        <button type="button" class="cp-btn cp-btn-primary" style="font-size:11.5px;padding:5px 12px;" onclick="document.getElementById('cp-var-files-multi').click()" ${_cpVariantBusy?'disabled':''}>📤 이미지 여러 장 한 번에</button>
+        <input type="file" id="cp-var-files-multi" accept="image/*" multiple style="display:none;" onchange="cpVariantPickImages(this.files)">
+        <button type="button" class="cp-btn cp-btn-ghost" style="font-size:11.5px;padding:5px 12px;" onclick="cpVariantAddRow()" ${_cpVariantBusy?'disabled':''}>+ 행 추가</button>
+        <span style="font-size:10.5px;color:var(--text-muted);">파일명이 디자인명 기본값으로 채워집니다</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;min-height:120px;">${rows}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;align-items:center;">
+        <span style="margin-right:auto;font-size:10.5px;color:var(--text-muted);">상태·작성자·메모도 대표 제품과 동일하게 저장됩니다</span>
+        <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="cpCloseVariantModal()" ${_cpVariantBusy?'disabled':''}>닫기</button>
+        <button class="cp-btn-save" id="cp-var-create-btn" style="font-size:12px;" onclick="cpCreateVariants()" ${_cpVariantBusy?'disabled':''}>🎨 ${_cpVariantRows.filter(r=>(r.design||'').trim()||r.dataUrl).length}개 변형 만들기</button>
+      </div>
+    </div>`;
+  modal.style.display = 'flex';
+}
+async function cpCreateVariants(){
+  if(!(CP_CURRENT && CP_CURRENT.id)){ showToast('먼저 대표 제품을 저장하세요'); return; }
+  const rows = _cpVariantRows.filter(r => (r.design||'').trim() || r.dataUrl);
+  if(!rows.length){ showToast('디자인명 또는 이미지를 하나 이상 넣어주세요'); return; }
+  const dupe = rows.filter(r => !(r.design||'').trim());
+  if(dupe.length && !confirm('디자인명이 비어 있는 행이 '+dupe.length+'개 있습니다 — 대표 제품과 이름이 같아집니다.\n그래도 진행할까요?')) return;
+  const base = cpVariantBaseName();
+  const target = cpParseNum(document.getElementById('cp-target-price').value);
+  const me = (CP_LIST_CACHE||[]).find(x => x.id === CP_CURRENT.id);
+  const root = (me && me.seriesRootId) ? me.seriesRootId : CP_CURRENT.id;
+  _cpVariantBusy = true; cpRenderVariantModal();
+  let ok = 0;
+  for(const r of rows){
+    r.status = '⏳ 생성 중'; cpRenderVariantModal();
+    const name = cpVariantFinalName(r.design, r.designEn);
+    const built = cpBuildSaveBody(name, target, {
+      seriesRootId: root,
+      memoExtra: '\n🎨 디자인 변형 — 원본 "' + base + '" 복제 (원가·가격 동일, 디자인/옵션만 다름)'
+    });
+    try{
+      const rr = await fetch('/api/consumer-pricing', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(built.body) });
+      const dd = await rr.json();
+      if(!rr.ok || dd.error) throw new Error(dd.error || ('HTTP '+rr.status));
+      const newId = (dd.item && dd.item.id) || dd.id;
+      r.newId = newId;
+      if(r.dataUrl && newId){
+        try{
+          const ir = await fetch('/api/consumer-pricing/'+newId+'/upload-image', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dataUrl: r.dataUrl, ext: r.ext }) });
+          const ij = await ir.json().catch(()=>({}));
+          r.imgOk = !(!ir.ok || ij.error);
+        }catch(e){ r.imgOk = false; }
+      }
+      r.status = '✅ 완료'; ok++;
+    }catch(e){ r.status = '❌ ' + (e.message||'실패'); }
+    cpRenderVariantModal();
+  }
+  _cpVariantBusy = false; cpRenderVariantModal();
+  showToast('🎨 디자인 변형 ' + ok + '/' + rows.length + '개 생성 완료 — 같은 시리즈로 묶였습니다');
+  try{ await cpLoadList(); }catch(e){}
+  if(typeof cpUpdateSeriesApplyBtn === 'function') cpUpdateSeriesApplyBtn();
 }
 
 async function cpDeleteCurrent(){
