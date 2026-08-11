@@ -4514,25 +4514,66 @@ function cpRenderProductImage(url){
   }
 }
 
+// 🖼️ 업로드 전 자동 축소 (2026-08-11)
+//   원인: 서버 body 한도가 20MB 인데 dataURL(base64) 은 원본보다 약 1.37배 커진다.
+//         → 15MB 인쇄용 jpg 를 그대로 올리면 21MB 가 되어 413 으로 튕기고,
+//           화면엔 로컬 미리보기가 이미 떠 있어서 "저장된 것처럼" 보였다 (Owen 보고: 시안 4장 중 3장 유실).
+//   해결: 카탈로그·검토용은 2000px 면 충분하므로 canvas 로 줄여서 올린다 (보통 15MB → 1MB 미만).
+const CP_IMG_MAX_PX = 2000;
+const CP_IMG_SOFT_LIMIT = 3 * 1024 * 1024;   // 이 이하이고 크기도 작으면 원본 그대로
+function cpReadFileDataUrl(file){
+  return new Promise((res, rej) => {
+    const rd = new FileReader();
+    rd.onload = e => res(e.target.result);
+    rd.onerror = () => rej(new Error('파일 읽기 실패'));
+    rd.readAsDataURL(file);
+  });
+}
+async function cpPrepareImageDataUrl(file){
+  const rawExt = (file.name||'').split('.').pop();
+  const ext = ((rawExt && rawExt.length<=5) ? rawExt : 'jpg').toLowerCase();
+  const original = await cpReadFileDataUrl(file);
+  try{
+    const img = await new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => rej(new Error('이미지 디코드 실패'));
+      im.src = original;
+    });
+    const maxSide = Math.max(img.naturalWidth, img.naturalHeight);
+    if(maxSide <= CP_IMG_MAX_PX && file.size <= CP_IMG_SOFT_LIMIT){
+      return { dataUrl: original, ext, resized:false };
+    }
+    const scale = Math.min(1, CP_IMG_MAX_PX / maxSide);
+    const cv = document.createElement('canvas');
+    cv.width  = Math.max(1, Math.round(img.naturalWidth  * scale));
+    cv.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#fff'; cx.fillRect(0,0,cv.width,cv.height);   // 투명 png → jpg 변환 시 검게 되는 것 방지
+    cx.drawImage(img, 0, 0, cv.width, cv.height);
+    const out = cv.toDataURL('image/jpeg', 0.85);
+    if(out.length >= original.length) return { dataUrl: original, ext, resized:false };
+    return { dataUrl: out, ext:'jpg', resized:true, from:maxSide, to:Math.max(cv.width,cv.height) };
+  }catch(e){
+    return { dataUrl: original, ext, resized:false };
+  }
+}
+
 async function cpOnProductImageFile(file){
   if(!file) return;
   if(!file.type || !file.type.startsWith('image/')){ showToast('이미지 파일만 업로드 가능합니다'); return; }
-  if(file.size > 20*1024*1024){ showToast('이미지가 너무 큽니다 (최대 20MB)'); return; }
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const dataUrl = e.target.result;
-    const mExt = (file.name||'').split('.').pop();
-    const ext = ((mExt && mExt.length<=5) ? mExt : 'jpg').toLowerCase();
-    CP_PRODUCT_IMAGE = { dataUrl, ext, pendingLocal: !(CP_CURRENT && CP_CURRENT.id) };
-    cpRenderProductImage(dataUrl);
+  if(file.size > 60*1024*1024){ showToast('이미지가 너무 큽니다 (최대 60MB)'); return; }
+  try{
+    const prep = await cpPrepareImageDataUrl(file);
+    CP_PRODUCT_IMAGE = { dataUrl: prep.dataUrl, ext: prep.ext, pendingLocal: !(CP_CURRENT && CP_CURRENT.id) };
+    cpRenderProductImage(prep.dataUrl);
+    if(prep.resized) showToast(`이미지 자동 축소 (${prep.from}px → ${prep.to}px)`);
     if(CP_CURRENT && CP_CURRENT.id){
       await cpUploadProductImage();
     } else {
       showToast('이미지 준비됨 — 저장 시 업로드됩니다');
     }
-  };
-  reader.onerror = () => showToast('파일 읽기 실패');
-  reader.readAsDataURL(file);
+  }catch(e){ showToast('파일 읽기 실패: '+e.message); }
 }
 
 function cpOnProductImageDrop(e){
@@ -4552,8 +4593,16 @@ async function cpUploadProductImage(){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ dataUrl: CP_PRODUCT_IMAGE.dataUrl, ext: CP_PRODUCT_IMAGE.ext })
     });
-    const data = await r.json();
-    if(!r.ok || data.error){ showToast('이미지 업로드 실패: '+(data.error||r.status)); return false; }
+    let data = {};
+    try{ data = await r.json(); }catch(_){ data = {}; }   // 413 등은 JSON 이 아닌 응답이 온다
+    if(!r.ok || data.error){
+      // 실패했는데 미리보기가 남아 있으면 "저장된 것처럼" 보인다 → 미리보기도 되돌린다 (2026-08-11)
+      const msg = (r.status === 413) ? '이미지 용량 초과로 저장 실패 — 다시 시도해 주세요' : ('이미지 업로드 실패: '+(data.error||r.status));
+      CP_PRODUCT_IMAGE = null;
+      cpRenderProductImage(null);
+      showToast(msg);
+      return false;
+    }
     CP_PRODUCT_IMAGE = { url: data.url, ext: data.ext, pendingLocal:false };
     cpRenderProductImage(data.url);
     showToast('이미지 저장 완료');
@@ -6834,17 +6883,15 @@ function cpVariantPickImages(files, rowIdx){
   const list = Array.from(files || []);
   if(!list.length) return;
   let idx = (typeof rowIdx === 'number') ? rowIdx : 0;
-  const readOne = (file) => new Promise((res) => {
-    if(!file.type || !file.type.startsWith('image/')){ showToast('이미지 파일만 가능합니다: '+file.name); return res(null); }
-    if(file.size > 20*1024*1024){ showToast('20MB 초과 — 건너뜀: '+file.name); return res(null); }
-    const rd = new FileReader();
-    rd.onload = e => {
-      const mExt = (file.name||'').split('.').pop();
-      res({ dataUrl: e.target.result, ext: ((mExt && mExt.length<=5) ? mExt : 'jpg').toLowerCase(), fileName: file.name || '' });
-    };
-    rd.onerror = () => res(null);
-    rd.readAsDataURL(file);
-  });
+  // 2026-08-11: 인쇄용 원본(15MB+)은 base64 로 바뀌며 서버 한도를 넘겨 유실됐다 → 업로드 전 자동 축소
+  const readOne = async (file) => {
+    if(!file.type || !file.type.startsWith('image/')){ showToast('이미지 파일만 가능합니다: '+file.name); return null; }
+    if(file.size > 60*1024*1024){ showToast('60MB 초과 — 건너뜀: '+file.name); return null; }
+    try{
+      const prep = await cpPrepareImageDataUrl(file);
+      return { dataUrl: prep.dataUrl, ext: prep.ext, fileName: file.name || '' };
+    }catch(e){ showToast('읽기 실패 — 건너뜀: '+file.name); return null; }
+  };
   (async () => {
     for(const f of list){
       const got = await readOne(f);
