@@ -122,6 +122,18 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
 .frow{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center}
 .frow label{font-size:11.5px;color:var(--text-2);min-width:74px}
 .hint{font-size:11px;color:var(--text-3);margin-top:6px}
+/* 🤝 발주처 자동완성 (2026-08-13) */
+.acwrap{position:relative;flex:1;min-width:180px;display:flex}
+.acwrap input{flex:1;width:100%}
+.aclist{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;background:var(--surface-2);border:1px solid var(--accent);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45);max-height:236px;overflow-y:auto;display:none}
+.aclist.on{display:block}
+.acitem{display:flex;gap:8px;align-items:center;padding:7px 11px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line)}
+.acitem:last-child{border-bottom:none}
+.acitem:hover,.acitem.sel{background:var(--accent-bg)}
+.acitem .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acitem .nm em{font-style:normal;color:var(--accent-strong);font-weight:700}
+.acitem .meta{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+.achead{padding:5px 11px;font-size:10.5px;color:var(--text-3);background:var(--surface);border-bottom:1px solid var(--line)}
 .vendor-box{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
 .vendor-box.selected{border-color:var(--ok)}
 .vendor-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
@@ -173,7 +185,9 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
       <button class="chip on" id="brandOwn" onclick="pickBrand('own')">🏷️ 자체브랜드 (미스터두낫띵)</button>
       <button class="chip" id="brandOem" onclick="pickBrand('oem')">🤝 외주 (고객사 발주)</button>
     </div>
-    <div class="frow" id="npClientRow" style="display:none"><label>발주처</label><input id="npClient" style="flex:1" placeholder="외주 고객사 (예: 수성문화재단)"></div>
+    <div class="frow" id="npClientRow" style="display:none"><label>발주처</label>
+      <div class="acwrap"><input id="npClient" placeholder="거래처명 입력 (ㅅㅅ·수성 → 수성문화재단)" autocomplete="off"><div class="aclist" id="npClientAC"></div></div>
+    </div>
     <div class="frow"><label>이모지</label><input id="npEmoji" style="width:64px" value="✨"></div>
     <div class="frow"><label>제품명</label><input id="npName" style="flex:1" placeholder="예: 두낫띵 비닐봉투 LDPE 다이컷"></div>
     <div class="frow"><label>목표 수량</label><input id="npQty" type="number" style="width:110px" placeholder="10000"></div>
@@ -181,6 +195,19 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
     <div class="frow"><label>발주 근거</label><input id="npBasis" style="flex:1" placeholder="예: 문구박람회 821결제건 → 권장 1만장"></div>
     <div class="frow" id="npBarcodeRow" style="display:none"><label>기존 바코드</label><input id="npBarcode" style="flex:1" placeholder="재발주 제품의 바코드"></div>
     <div style="margin-top:14px;text-align:right"><button class="btn primary" onclick="createProject()">생성</button></div>
+  </div>
+</div>
+
+<!-- 🤝 발주처 지정 (외주 전환·발주처 변경) -->
+<div class="mbg" id="clientModal" onclick="if(event.target===this)closeM('clientModal')">
+  <div class="modal" style="max-width:440px">
+    <button class="x" onclick="closeM('clientModal')">✕</button>
+    <h2 style="font-size:16px">🤝 발주처 지정</h2>
+    <div class="frow" style="margin-top:14px"><label>발주처</label>
+      <div class="acwrap"><input id="cmClient" placeholder="거래처명 입력 (ㅅㅅ·수성 → 수성문화재단)" autocomplete="off"><div class="aclist" id="cmClientAC"></div></div>
+    </div>
+    <div class="hint">목록 = 이 파이프라인에서 쓴 발주처 + business 거래처. 새 이름을 그대로 입력하면 다음부터 목록에 쌓입니다.</div>
+    <div style="margin-top:14px;text-align:right"><button class="btn primary" onclick="saveClient()">저장</button></div>
   </div>
 </div>
 
@@ -710,6 +737,65 @@ function pickBrand(b){
   $('brandOem').classList.toggle('on',b==='oem');
   $('npClientRow').style.display=b==='oem'?'flex':'none';
 }
+// ━━━ 🤝 발주처(거래처) 자동완성 ━━━ (2026-08-13)
+//  서버 /api/pipeline/client-suggest = 파이프라인 발주처 사용이력 + business 거래처 마스터 병합.
+//  초성('ㅅㅅ')·부분일치('수성')·영문명 모두 검색. 고르면 business 거래처 id(ref)까지 같이 저장돼 다음부터 상단.
+function acAttach(input,list,opts={}){
+  const st={items:[],sel:-1,ref:null,timer:null,open:false};
+  input._ac=st;
+  const close=()=>{st.open=false;list.classList.remove('on');st.sel=-1};
+  const render=(q)=>{
+    if(!st.items.length){
+      list.innerHTML=`<div class="achead">${q?'일치하는 거래처 없음 — 그대로 입력하면 새 발주처로 저장됩니다':'등록된 발주처가 아직 없습니다'}</div>`;
+      st.open=true;list.classList.add('on');return;
+    }
+    const hi=(nm)=>{
+      if(!q)return esc(nm);
+      const i=nm.toLowerCase().indexOf(q.toLowerCase());
+      return i<0?esc(nm):esc(nm.slice(0,i))+'<em>'+esc(nm.slice(i,i+q.length))+'</em>'+esc(nm.slice(i+q.length));
+    };
+    list.innerHTML=(q?'':'<div class="achead">최근 쓴 발주처</div>')+st.items.map((it,i)=>{
+      const meta=[it.uses?'🔁'+it.uses+'회':'',it.ref?'💼거래처':'',it.country||''].filter(Boolean).join(' · ');
+      return `<div class="acitem${i===st.sel?' sel':''}" data-i="${i}"><span class="nm">${hi(it.name)}</span><span class="meta">${esc(meta)}</span></div>`;
+    }).join('');
+    [...list.querySelectorAll('.acitem')].forEach(el=>{
+      el.onmousedown=(e)=>{e.preventDefault();pick(Number(el.dataset.i))};
+    });
+    st.open=true;list.classList.add('on');
+  };
+  const pick=(i)=>{
+    const it=st.items[i];if(!it)return;
+    input.value=it.name;st.ref=it.ref||null;close();
+    if(opts.onPick)opts.onPick(it);
+  };
+  const query=()=>{
+    const q=input.value.trim();
+    clearTimeout(st.timer);
+    st.timer=setTimeout(async()=>{
+      try{
+        const d=await api('/client-suggest?limit=12&q='+encodeURIComponent(q));
+        st.items=d.items||[];st.sel=-1;render(q);
+      }catch(e){st.items=[];render(q)}
+    },110);
+  };
+  input.addEventListener('input',()=>{st.ref=null;query()});
+  input.addEventListener('focus',query);
+  input.addEventListener('blur',()=>setTimeout(close,120));
+  input.addEventListener('keydown',(e)=>{
+    if(!st.open)return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      if(!st.items.length)return;
+      st.sel=(st.sel+(e.key==='ArrowDown'?1:-1)+st.items.length)%st.items.length;
+      [...list.querySelectorAll('.acitem')].forEach((el,i)=>el.classList.toggle('sel',i===st.sel));
+      const cur=list.querySelector('.acitem.sel');if(cur)cur.scrollIntoView({block:'nearest'});
+    }else if(e.key==='Enter'){
+      if(st.sel>=0){e.preventDefault();pick(st.sel)}else close();
+    }else if(e.key==='Escape'){e.stopPropagation();close()}
+  });
+  return st;
+}
+
 async function createProject(){
   const name=$('npName').value.trim();
   if(!name)return toast('제품명을 입력하세요');
@@ -717,11 +803,13 @@ async function createProject(){
     const p=await api('/',{method:'POST',body:{
       type:NEWTYPE,name,emoji:$('npEmoji').value||'✨',
       brand:NEWBRAND, client:NEWBRAND==='oem'?$('npClient').value.trim():'',
+      client_ref:NEWBRAND==='oem'?(($('npClient')._ac&&$('npClient')._ac.ref)||null):null,
       barcode:$('npBarcode').value.trim()||null,
       target:{qty:Number($('npQty').value)||null,unit_cost_max:Number($('npCost').value)||null,basis:$('npBasis').value.trim()}
     }});
     closeM('newModal');
     ['npName','npQty','npCost','npBasis','npBarcode','npClient'].forEach(i=>$(i).value='');
+    if($('npClient')._ac)$('npClient')._ac.ref=null;
     NEWBRAND='own';pickBrand('own');
     await load();openDetail(p.id);toast('프로젝트 생성됨');
   }catch(e){toast('실패: '+e.message)}
@@ -755,7 +843,7 @@ function renderDetail(){
       <span style="font-size:24px">${esc(p.emoji)}</span>
       <b style="font-size:17px">${esc(p.name)}</b>
       <span style="cursor:pointer" onclick="toggleBrand()" title="클릭해 자체/외주 전환">${brandBadge(p)}</span>
-      ${brandOf(p)==='oem'&&p.client?`<span class="tag t-gray">발주처 ${esc(p.client)}</span>`:''}
+      ${brandOf(p)==='oem'?`<span class="tag t-gray" style="cursor:pointer" onclick="openClientPicker()" title="클릭해 발주처 변경">발주처 ${p.client?esc(p.client):'지정하기 ✏️'}${p.client_ref?' 💼':''}</span>`:''}
       <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
       <span class="tag ${p.status==='active'?'t-ok':p.status==='hold'?'t-warn':'t-gray'}">${{active:'진행 중',hold:'보류',done:'완료',cancelled:'취소'}[p.status]}</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 완료 ${completedCount(p)}/${p.stages.length}단계 · ${clientProgress(p)}%</span>
@@ -1449,11 +1537,27 @@ function setStatus(st){
 }
 function toggleBrand(){
   const next=brandOf(CUR)==='oem'?'own':'oem';
-  if(next==='oem'){
-    const c=prompt('외주(고객사 발주)로 전환합니다. 발주처(고객사)를 입력하세요:',CUR.client||'');
-    if(c===null)return;
-    refreshCur({brand:'oem',client:c.trim()});
-  } else refreshCur({brand:'own',client:''});
+  if(next==='oem')openClientPicker();
+  else refreshCur({brand:'own',client:'',client_ref:null});
+}
+// 🤝 발주처 지정·변경 — 자동완성 모달 (외주 전환, 발주처 태그 클릭)
+function openClientPicker(){
+  if(!CUR)return;
+  const inp=$('cmClient');
+  inp.value=CUR.client||'';
+  const st=inp._ac||acAttach(inp,$('cmClientAC'));
+  st.ref=CUR.client_ref||null;
+  $('clientModal').classList.add('on');
+  setTimeout(()=>{inp.focus();inp.select()},60);
+}
+async function saveClient(){
+  const inp=$('cmClient');
+  const v=inp.value.trim();
+  if(!v)return toast('발주처를 입력하세요');
+  const ref=(inp._ac&&inp._ac.ref)||null;
+  closeM('clientModal');
+  await refreshCur({brand:'oem',client:v,client_ref:ref});
+  toast('발주처 저장됨 — 다음 입력부터 목록에 나옵니다');
 }
 function insertSampleStage(){
   const stages=[...CUR.stages];
@@ -1478,6 +1582,8 @@ document.addEventListener('keydown',(e)=>{
   if(x){x.click();return;}
   top.classList.remove('on'); top.style.display='none';
 });
+
+acAttach($('npClient'),$('npClientAC'));   // 새 프로젝트 발주처 자동완성
 
 load().catch(e=>{document.body.innerHTML='<div style="padding:40px;color:#f87171">로드 실패: '+esc(e.message)+' — 로그인 상태를 확인하세요 (<a href="/login.html" style="color:#60a5fa">로그인</a>)</div>'});
 </script>
