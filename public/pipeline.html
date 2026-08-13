@@ -127,6 +127,7 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
 .acwrap input{flex:1;width:100%}
 .aclist{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;background:var(--surface-2);border:1px solid var(--accent);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45);max-height:236px;overflow-y:auto;display:none}
 .aclist.on{display:block}
+.aclist.float{position:fixed;left:0;top:0;right:auto;z-index:320;max-width:460px}
 .acitem{display:flex;gap:8px;align-items:center;padding:7px 11px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line)}
 .acitem:last-child{border-bottom:none}
 .acitem:hover,.acitem.sel{background:var(--accent-bg)}
@@ -458,7 +459,7 @@ function openInquiry(){
      <select id="iq-mfr" style="flex:1" onchange="document.getElementById('iq-newmfr').style.display=this.value==='__new'?'block':'none'">
        ${mfrOpts}<option value="__new">＋ 새 제조사 등록…</option></select></div>
    <div id="iq-newmfr" style="display:${MFRS.length?'none':'block'}">
-     <div class="frow"><label>새 제조사</label><input id="iq-nm-name" placeholder="상호 (예: 东莞晨阳玩具)" style="flex:1">
+     <div class="frow"><label>새 제조사</label><input id="iq-nm-name" placeholder="상호 (예: 东莞晨阳玩具) — 전에 쓴 업체 자동완성" style="flex:1" autocomplete="off" data-ac="vendor">
        <input id="iq-nm-country" placeholder="국가" style="width:80px"></div>
      <div class="frow"><label></label><input id="iq-nm-handle" placeholder="연락처 (WeChat id·알리바바 링크·이메일)" style="flex:1">
        <input id="iq-nm-spec" placeholder="전문분야 (피규어·봉제…)" style="width:150px"></div>
@@ -585,7 +586,7 @@ async function openMfrLib(){
    <div class="hint" style="margin:4px 0 10px">소싱 중 접촉하는 공장 목록입니다. 선정+발주되면 각 제품에서 business 거래처로 연결(승격)합니다.</div>
    ${rows}
    <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
-     <div class="frow"><input id="mf-name" placeholder="상호" style="flex:1"><input id="mf-country" placeholder="국가" style="width:80px">
+     <div class="frow"><input id="mf-name" placeholder="상호 (전에 쓴 업체 자동완성)" style="flex:1" autocomplete="off" data-ac="vendor"><input id="mf-country" placeholder="국가" style="width:80px">
        <select id="mf-ch">${CHANNELS.map(c=>`<option>${c}</option>`).join('')}</select></div>
      <div class="frow"><input id="mf-handle" placeholder="연락처(WeChat·알리바바·이메일)" style="flex:1"><input id="mf-spec" placeholder="전문분야" style="width:150px"><button class="btn sm" onclick="addMfr()">＋ 추가</button></div>
    </div></div></div>`;
@@ -737,16 +738,48 @@ function pickBrand(b){
   $('brandOem').classList.toggle('on',b==='oem');
   $('npClientRow').style.display=b==='oem'?'flex':'none';
 }
-// ━━━ 🤝 발주처(거래처) 자동완성 ━━━ (2026-08-13)
-//  서버 /api/pipeline/client-suggest = 파이프라인 발주처 사용이력 + business 거래처 마스터 병합.
-//  초성('ㅅㅅ')·부분일치('수성')·영문명 모두 검색. 고르면 business 거래처 id(ref)까지 같이 저장돼 다음부터 상단.
+// ━━━ 🤝 거래처·업체명 자동완성 ━━━ (2026-08-13)
+//  client = 발주처(외주 고객사): /client-suggest = 발주처 사용이력 + business 거래처 마스터
+//  vendor = 제조사·견적 업체:    /vendor-suggest = 전 제품 vendors[] + 제조사 소싱 후보 + business 거래처(질의 시)
+//  둘 다 초성('ㅅㅅ')·부분일치('수성')·영문명 검색. 고르면 business 거래처 id(ref)도 같이 잡힘.
+const AC_CFG={
+  client:{ep:'/client-suggest', head:'최근 쓴 발주처',
+    none:'일치하는 거래처 없음 — 그대로 입력하면 새 발주처로 저장됩니다', empty:'등록된 발주처가 아직 없습니다',
+    meta:it=>[it.uses?'🔁'+it.uses+'회':'',it.ref?'💼거래처':'',it.country||''].filter(Boolean).join(' · ')},
+  vendor:{ep:'/vendor-suggest', head:'전에 쓴 업체·제조사',
+    none:'등록된 업체 없음 — 그대로 입력하면 새 업체로 등록됩니다', empty:'아직 등록된 업체·제조사가 없습니다',
+    meta:it=>[it.ordered?'✅발주':(it.uses?'견적만':''),it.uses?'🔁'+it.uses+'제품':'',it.channel||'',it.country||'',it.ref?'💼거래처':''].filter(Boolean).join(' · ')}
+};
+// 동적 렌더 영역(업체·견적 탭 등)의 input 은 목록 컨테이너가 없어서 body 에 떠 있는 목록을 만들어 붙인다
+function acFloatList(input){
+  // 재렌더로 사라진 input 의 목록은 정리 (업체·견적 탭은 저장할 때마다 innerHTML 재생성됨)
+  document.querySelectorAll('.aclist.float').forEach(el=>{
+    if(!el._acOwner||!document.body.contains(el._acOwner))el.remove();
+  });
+  const el=document.createElement('div');
+  el.className='aclist float';
+  el._acOwner=input;
+  document.body.appendChild(el);
+  return el;
+}
 function acAttach(input,list,opts={}){
-  const st={items:[],sel:-1,ref:null,timer:null,open:false};
+  const cfg=AC_CFG[opts.kind||'client']||AC_CFG.client;
+  const floating=!list;
+  if(floating)list=acFloatList(input);
+  const st={items:[],sel:-1,ref:null,timer:null,open:false,kind:opts.kind||'client'};
   input._ac=st;
   const close=()=>{st.open=false;list.classList.remove('on');st.sel=-1};
+  const place=()=>{
+    if(!floating)return;
+    const r=input.getBoundingClientRect();
+    list.style.left=r.left+'px';
+    list.style.top=(r.bottom+4)+'px';
+    list.style.width=Math.max(r.width,240)+'px';
+  };
   const render=(q)=>{
+    place();
     if(!st.items.length){
-      list.innerHTML=`<div class="achead">${q?'일치하는 거래처 없음 — 그대로 입력하면 새 발주처로 저장됩니다':'등록된 발주처가 아직 없습니다'}</div>`;
+      list.innerHTML=`<div class="achead">${q?cfg.none:cfg.empty}</div>`;
       st.open=true;list.classList.add('on');return;
     }
     const hi=(nm)=>{
@@ -754,10 +787,8 @@ function acAttach(input,list,opts={}){
       const i=nm.toLowerCase().indexOf(q.toLowerCase());
       return i<0?esc(nm):esc(nm.slice(0,i))+'<em>'+esc(nm.slice(i,i+q.length))+'</em>'+esc(nm.slice(i+q.length));
     };
-    list.innerHTML=(q?'':'<div class="achead">최근 쓴 발주처</div>')+st.items.map((it,i)=>{
-      const meta=[it.uses?'🔁'+it.uses+'회':'',it.ref?'💼거래처':'',it.country||''].filter(Boolean).join(' · ');
-      return `<div class="acitem${i===st.sel?' sel':''}" data-i="${i}"><span class="nm">${hi(it.name)}</span><span class="meta">${esc(meta)}</span></div>`;
-    }).join('');
+    list.innerHTML=(q?'':`<div class="achead">${cfg.head}</div>`)+st.items.map((it,i)=>
+      `<div class="acitem${i===st.sel?' sel':''}" data-i="${i}"><span class="nm">${hi(it.name)}</span><span class="meta">${esc(cfg.meta(it))}</span></div>`).join('');
     [...list.querySelectorAll('.acitem')].forEach(el=>{
       el.onmousedown=(e)=>{e.preventDefault();pick(Number(el.dataset.i))};
     });
@@ -765,7 +796,8 @@ function acAttach(input,list,opts={}){
   };
   const pick=(i)=>{
     const it=st.items[i];if(!it)return;
-    input.value=it.name;st.ref=it.ref||null;close();
+    input.value=it.name;st.ref=it.ref||null;st.picked=it;close();
+    acAfterPick(input,it);
     if(opts.onPick)opts.onPick(it);
   };
   const query=()=>{
@@ -773,12 +805,13 @@ function acAttach(input,list,opts={}){
     clearTimeout(st.timer);
     st.timer=setTimeout(async()=>{
       try{
-        const d=await api('/client-suggest?limit=12&q='+encodeURIComponent(q));
+        const d=await api(cfg.ep+'?limit=12&q='+encodeURIComponent(q));
         st.items=d.items||[];st.sel=-1;render(q);
       }catch(e){st.items=[];render(q)}
     },110);
   };
-  input.addEventListener('input',()=>{st.ref=null;query()});
+  st.query=query;
+  input.addEventListener('input',()=>{st.ref=null;st.picked=null;query()});
   input.addEventListener('focus',query);
   input.addEventListener('blur',()=>setTimeout(close,120));
   input.addEventListener('keydown',(e)=>{
@@ -795,6 +828,23 @@ function acAttach(input,list,opts={}){
   });
   return st;
 }
+// 고른 뒤 옆 칸 자동 채움 (비어 있을 때만 — 사람이 쓴 값은 덮지 않음)
+function acAfterPick(input,it){
+  if(input.id==='nv-name'){
+    const c=$('nv-contact'); if(c&&!c.value&&it.contact)c.value=it.contact;
+  }else if(input.id==='mf-name'){
+    const co=$('mf-country'), h=$('mf-handle'), ch=$('mf-ch');
+    if(co&&!co.value&&it.country)co.value=it.country;
+    if(h&&!h.value&&it.contact)h.value=it.contact;
+    if(ch&&it.channel&&[...ch.options].some(o=>o.value===it.channel))ch.value=it.channel;
+  }
+}
+// 동적으로 그려지는 input[data-ac] 은 첫 포커스 때 붙인다 (업체·견적 탭, 소싱 문의, 제조사 관리)
+document.addEventListener('focusin',(e)=>{
+  const el=e.target;
+  if(!el||!el.matches||!el.matches('input[data-ac]')||el._ac)return;
+  acAttach(el,null,{kind:el.dataset.ac}).query();
+});
 
 async function createProject(){
   const name=$('npName').value.trim();
@@ -1120,7 +1170,7 @@ function paneVendors(p){
     </div>`;
   }).join('');
   html+=`<div class="frow" style="margin-top:12px">
-    <input id="nv-name" style="flex:1" placeholder="업체명 (예: KINSHUN Packaging)">
+    <input id="nv-name" style="flex:1" placeholder="업체명 — 전에 쓴 업체·제조사 자동완성 (초성·부분일치)" autocomplete="off" data-ac="vendor">
     <input id="nv-contact" style="flex:1" placeholder="연락 채널 (알리바바·이메일 등)">
     <button class="btn sm" onclick="addVendor()">＋ 업체 추가</button>
     <button class="btn sm" onclick="openQuoteImport()">📥 받은 견적서에서 불러오기</button>
