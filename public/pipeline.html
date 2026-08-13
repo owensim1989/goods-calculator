@@ -198,8 +198,13 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
   </div>
 </div>
 
-<!-- 🤝 발주처 지정 (외주 전환·발주처 변경) -->
-<div class="mbg" id="clientModal" onclick="if(event.target===this)closeM('clientModal')">
+<!-- 상세 -->
+<div class="mbg" id="detailModal" onclick="if(event.target===this)closeM('detailModal')">
+  <div class="modal" id="detailBody"></div>
+</div>
+
+<!-- 🤝 발주처 지정 (외주 전환·발주처 변경) — 상세 모달 위에 뜨도록 뒤에 배치 + z-index -->
+<div class="mbg" id="clientModal" style="z-index:140" onclick="if(event.target===this)closeM('clientModal')">
   <div class="modal" style="max-width:440px">
     <button class="x" onclick="closeM('clientModal')">✕</button>
     <h2 style="font-size:16px">🤝 발주처 지정</h2>
@@ -209,11 +214,6 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
     <div class="hint">목록 = 이 파이프라인에서 쓴 발주처 + business 거래처. 새 이름을 그대로 입력하면 다음부터 목록에 쌓입니다.</div>
     <div style="margin-top:14px;text-align:right"><button class="btn primary" onclick="saveClient()">저장</button></div>
   </div>
-</div>
-
-<!-- 상세 -->
-<div class="mbg" id="detailModal" onclick="if(event.target===this)closeM('detailModal')">
-  <div class="modal" id="detailBody"></div>
 </div>
 
 <div class="toast" id="toast"></div>
