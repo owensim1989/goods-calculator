@@ -128,6 +128,8 @@ td input,td select{padding:4px 7px;font-size:12px;width:100%;min-width:52px}
 .aclist{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;background:var(--surface-2);border:1px solid var(--accent);border-radius:9px;box-shadow:0 10px 26px rgba(0,0,0,.45);max-height:236px;overflow-y:auto;display:none}
 .aclist.on{display:block}
 .aclist.float{position:fixed;left:0;top:0;right:auto;z-index:320;max-width:460px}
+/* 💱 이전 견적에서 자동 채운 칸 */
+.prefill{border-color:var(--accent)!important;background:rgba(96,165,250,.08)}
 .acitem{display:flex;gap:8px;align-items:center;padding:7px 11px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line)}
 .acitem:last-child{border-bottom:none}
 .acitem:hover,.acitem.sel{background:var(--accent-bg)}
@@ -933,7 +935,7 @@ function setTab(t){CURTAB=t;renderDetail()}
 function renderPane(){
   const p=CUR,box=$('paneBox');
   if(CURTAB==='cl')return box.innerHTML=paneChecklist(p);
-  if(CURTAB==='vd')return box.innerHTML=paneVendors(p);
+  if(CURTAB==='vd'){box.innerHTML=paneVendors(p);fillQuoteDefaults(p).catch(()=>{});return;}
   if(CURTAB==='sp')return box.innerHTML=paneSamples(p);
   if(CURTAB==='pay')return box.innerHTML=panePay(p);
   if(CURTAB==='in')return box.innerHTML=paneInbound(p);
@@ -1118,6 +1120,60 @@ function paneVendorsCompare(p){
   t+='</tbody></table></div><div class="hint" style="margin-top:8px">원가율 = 견적단가₩ ÷ 목표판매가(사업성 검토). 셀의 "발주→"로 그 견적을 바로 PO에 채울 수 있습니다.</div>';
   return t;
 }
+// ━━━ 💱 견적 입력 자동 채움 ━━━ (2026-08-13)
+//  우선순위 ① 이 업체의 직전 견적(같은 제품) ② 이 업체가 다른 제품에서 낸 마지막 견적(서버 조회, 비동기)
+//           ③ 같은 제품 다른 업체의 통화(통화만 — 리드타임은 업체마다 달라서 안 씀)
+//  자동으로 채운 칸은 data-af 표시 → 사람이 손대면 즉시 해제되어 비동기 응답이 덮어쓰지 않음.
+const CURRENCIES=['USD','CNY','KRW','TWD','THB','JPY'];
+function quotePrefill(p,v){
+  const qs=(v.quotes||[]).filter(Boolean);
+  if(qs.length){
+    const q=qs[qs.length-1];
+    return {cur:q.cur||null,lead_days:q.lead_days!=null?q.lead_days:null,terms:q.terms||'',qty:q.qty||null,
+            self:true,src:`직전 견적에서 자동 채움 (${q.cur||''}${q.lead_days?' · '+q.lead_days+'일':''})`};
+  }
+  for(const ov of (p.vendors||[])){
+    if(ov===v)continue;
+    const oq=(ov.quotes||[]).filter(Boolean);
+    if(oq.length){
+      const q=oq[oq.length-1];
+      return {cur:q.cur||null,lead_days:null,terms:'',qty:q.qty||null,
+              self:false,src:`같은 제품 ${ov.name} 견적의 통화(${q.cur||''})로 채움`};
+    }
+  }
+  return {cur:null,lead_days:null,terms:'',qty:null,self:false,src:''};
+}
+// ② 다른 제품의 같은 업체 — 서버 조회 후 아직 손 안 댄 칸만 채움
+const QDEF_CACHE=new Map();
+async function fillQuoteDefaults(p){
+  const holders=[...document.querySelectorAll('.qfill[data-vendor]')];
+  for(const h of holders){
+    const name=h.dataset.vendor, vi=h.dataset.vi;
+    const cur=$('q-cur-'+vi), lead=$('q-lead-'+vi), terms=$('q-terms-'+vi);
+    if(!cur||!lead)continue;
+    if(!cur.dataset.af&&!lead.dataset.af)continue;          // 직전 견적으로 이미 채웠거나 사용자가 건드림
+    const ck=p.id+'|'+name;
+    let d=QDEF_CACHE.get(ck);
+    if(d===undefined){
+      try{ d=await api('/vendor-defaults?exclude='+encodeURIComponent(p.id)+'&name='+encodeURIComponent(name)); }
+      catch(e){ d={found:false}; }
+      QDEF_CACHE.set(ck,d);
+    }
+    if(!d||!d.found)continue;
+    if(!document.body.contains(cur))continue;               // 그새 다시 렌더됨
+    if(cur.dataset.af&&d.cur){cur.value=d.cur;cur.classList.add('prefill')}
+    if(lead.dataset.af&&d.lead_days!=null&&!lead.value){lead.value=d.lead_days;lead.classList.add('prefill')}
+    if(terms&&!terms.value&&d.terms)terms.placeholder=d.terms.slice(0,40);
+    const src=`${d.from&&d.from.emoji||''} ${d.from&&d.from.name||'다른 제품'} 견적에서 자동 채움 (${d.cur||''}${d.lead_days?' · '+d.lead_days+'일':''})`;
+    cur.title=src; lead.title=src;
+    h.textContent='💱 '+src+' — 다르면 그냥 고쳐서 입력하세요';
+    h.style.display='';
+  }
+}
+// 사람이 건드린 칸은 자동 채움 대상에서 제외
+document.addEventListener('input',e=>{const t=e.target;if(t&&t.dataset&&t.dataset.af)delete t.dataset.af},true);
+document.addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.dataset.af)delete t.dataset.af},true);
+
 function paneVendors(p){
   if(VDMODE==='compare')return paneVendorsCompare(p);
   const vends=p.vendors||[];
@@ -1135,6 +1191,7 @@ function paneVendors(p){
   }
   let html=relHtml+vends.map((v,vi)=>{
     const quotes=v.quotes||[];
+    const pf=quotePrefill(p,v);          // 💱 통화·리드타임 자동 채움 (직전 견적 → 같은 제품 다른 업체 → [비동기] 다른 제품의 같은 업체)
     return `<div class="vendor-box ${v.status==='selected'?'selected':''}">
       <div class="vendor-head">
         <b>${esc(v.name)}</b>
@@ -1159,14 +1216,15 @@ function paneVendors(p){
         <td><button class="btn sm" style="padding:1px 7px" title="이 견적으로 발주(PO) 채우기" onclick="poFromQuote(${vi},${qi})">발주→</button></td>
         <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delQuote(${vi},${qi})">✕</button></td></tr>`}).join('')}
       <tr>
-        <td><input id="q-qty-${vi}" type="number" placeholder="10000"></td>
+        <td><input id="q-qty-${vi}" type="number" placeholder="${pf.qty||10000}"></td>
         <td><input id="q-unit-${vi}" type="number" step="0.001" placeholder="0.118"></td>
-        <td><select id="q-cur-${vi}"><option>USD</option><option>CNY</option><option>KRW</option><option>TWD</option><option>THB</option><option>JPY</option></select></td>
+        <td><select id="q-cur-${vi}" class="${pf.cur?'prefill':''}" title="${esc(pf.src||'')}" ${pf.self?'':'data-af="1"'}>${CURRENCIES.map(c=>`<option${(pf.cur||'USD')===c?' selected':''}>${c}</option>`).join('')}</select></td>
         <td>—</td><td>—</td>
-        <td><input id="q-lead-${vi}" type="number" placeholder="일"></td>
-        <td><input id="q-terms-${vi}" placeholder="FOB …"></td>
+        <td><input id="q-lead-${vi}" type="number" placeholder="일" class="${pf.lead_days!=null?'prefill':''}" title="${esc(pf.src||'')}" value="${pf.lead_days!=null?pf.lead_days:''}" ${pf.self?'':'data-af="1"'}></td>
+        <td><input id="q-terms-${vi}" placeholder="${pf.terms?esc(pf.terms.slice(0,40)):'FOB …'}"></td>
         <td colspan="2"><button class="btn sm" onclick="addQuote(${vi})">＋</button></td>
       </tr></table>
+      <div class="hint qfill" id="q-fill-${vi}" data-vendor="${esc(v.name)}" data-vi="${vi}" style="margin-top:4px;${pf.src?'':'display:none'}">${pf.src?'💱 '+esc(pf.src)+' — 다르면 그냥 고쳐서 입력하세요':''}</div>
     </div>`;
   }).join('');
   html+=`<div class="frow" style="margin-top:12px">
