@@ -1421,13 +1421,18 @@ function panePay(p){
   const sel=(p.vendors||[]).find(v=>v.status==='selected');
   // 💳 이전 발주에서 자동 채움 — 통화는 선정 업체 견적으로 즉시, 결제조건·대금 구성은 서버 조회 후(fillPoDefaults)
   const vq=((sel&&sel.quotes)||[]).filter(Boolean);
-  const curGuess=po.cur||(vq.length?vq[vq.length-1].cur:null);
-  const payCurGuess=po.cur||curGuess||'KRW';
+  // ⚠️ po.cur 는 프로젝트 생성 시 'USD' 기본값이 들어가 있어서 "정한 통화"가 아닐 수 있음 →
+  //    업체·수량·단가·조건이 하나도 없으면 아직 발주를 안 쓴 것으로 보고 통화도 자동 채움 대상으로 둔다.
+  const poEmpty=!(po.vendor||po.qty||po.unit||po.memo);
+  const localCur=vq.length?vq[vq.length-1].cur:null;              // 이 제품 선정 업체 견적 통화 (제품별 신호 — 우선)
+  const curGuess=(!poEmpty&&po.cur)?po.cur:(localCur||po.cur||null);
+  const curFillable=poEmpty||!po.cur;
+  const payCurGuess=curGuess||'KRW';
   return `<h3 style="font-size:13px;margin-bottom:8px">발주(PO)</h3>
   <div class="frow"><label>업체</label><input id="po-vendor" value="${esc(po.vendor||sel?.name||'')}" placeholder="선정 업체" style="flex:1">
     <label>수량</label><input id="po-qty" type="number" value="${po.qty||''}" style="width:100px"></div>
   <div class="frow"><label>단가</label><input id="po-unit" type="number" step="0.001" value="${po.unit||''}" style="width:100px">
-    <select id="po-cur" style="width:80px" class="${!po.cur&&curGuess?'prefill':''}" ${po.cur?'':'data-af="1"'}>${CURRENCIES.map(c=>`<option${(curGuess||'USD')===c?' selected':''}>${c}</option>`).join('')}</select>
+    <select id="po-cur" style="width:80px" class="${curFillable&&localCur?'prefill':''}" ${curFillable?'data-af="1"':''} ${curFillable&&localCur?'data-guess="1"':''}>${CURRENCIES.map(c=>`<option${(curGuess||'USD')===c?' selected':''}>${c}</option>`).join('')}</select>
     <label>ETA</label><input id="po-eta" type="date" value="${po.eta||''}"></div>
   <div class="frow"><label>결제조건</label><input id="po-memo" value="${esc(po.memo||'')}" style="flex:1" placeholder="인코텀즈·결제조건·계좌 (예: T/T 30% 선금 + 70% 선적전, EXW)" ${po.memo?'':'data-af="1"'}></div>
   <div class="hint" id="po-fill" style="margin:0 0 6px;display:none"></div>
@@ -1448,7 +1453,7 @@ function panePay(p){
   <tr>
     <td><select id="pay-kind" data-af="1">${Object.entries(PAY_KINDS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></td>
     <td><input id="pay-amt" type="number" step="0.01" placeholder="금액" data-af="1"></td>
-    <td><select id="pay-cur" class="${po.cur||curGuess?'prefill':''}" data-af="1">${CURRENCIES.map(c=>`<option${payCurGuess===c?' selected':''}>${c}</option>`).join('')}</select></td>
+    <td><select id="pay-cur" class="${localCur?'prefill':''}" data-af="1" ${localCur?'data-guess="1"':''}>${CURRENCIES.map(c=>`<option${payCurGuess===c?' selected':''}>${c}</option>`).join('')}</select></td>
     <td>—</td>
     <td><input id="pay-due" type="date"></td><td>—</td>
     <td><input id="pay-memo" placeholder="메모" data-af="1"></td>
@@ -1461,14 +1466,16 @@ function panePay(p){
 //  대금은 "지난 발주에서 아직 이 제품에 없는 다음 구분"(선금 → 잔금 …)을 PO 총액×비율로 제안.
 const PODEF_CACHE=new Map();
 function roundCur(v,cur){ return (cur==='KRW'||cur==='JPY')?Math.round(v):Math.round(v*100)/100; }
-function nextPaySuggestion(p,d){
+function nextPaySuggestion(p,d,curEff){
   if(!d||!d.found||!(d.payments||[]).length)return null;
   const have=(p.payments||[]).map(x=>x.kind);
   const next=d.payments.find(x=>!have.includes(x.kind));
   if(!next)return null;
-  const po=p.po||{};
-  const total=(Number(po.qty)&&Number(po.unit))?Number(po.qty)*Number(po.unit):null;
-  const cur=(po.cur&&next.ratio)?po.cur:(next.cur||po.cur||'KRW');
+  // 수량·단가는 화면 입력칸 기준 (아직 저장 전이어도 계산되게)
+  const qty=Number(($('po-qty')&&$('po-qty').value)||(p.po&&p.po.qty)||0);
+  const unit=Number(($('po-unit')&&$('po-unit').value)||(p.po&&p.po.unit)||0);
+  const total=(qty&&unit)?qty*unit:null;
+  const cur=(curEff&&next.ratio!=null)?curEff:(next.cur||curEff||'KRW');
   const amount=(total&&next.ratio)?roundCur(total*next.ratio,cur):null;
   return {kind:next.kind,cur,memo:next.memo||'',amount,ratio:next.ratio};
 }
@@ -1488,16 +1495,18 @@ async function fillPoDefaults(p){
   // ① PO 통화·결제조건
   const cur=$('po-cur'), memo=$('po-memo');
   const filled=[];
-  if(cur&&cur.dataset.af&&d.po.cur){cur.value=d.po.cur;cur.classList.add('prefill');filled.push('통화 '+d.po.cur)}
+  // 통화: 이 제품 견적으로 이미 추정해 둔 값(data-guess)은 "같은 업체 지난 발주"일 때만 덮어씀
+  const curOk=cur&&cur.dataset.af&&d.po.cur&&(d.matched==='vendor'||!cur.dataset.guess);
+  if(curOk){cur.value=d.po.cur;cur.classList.add('prefill');filled.push('통화 '+d.po.cur)}
   if(memo&&memo.dataset.af&&d.po.memo){memo.value=d.po.memo;memo.classList.add('prefill');filled.push('결제조건')}
   const poHint=$('po-fill');
   if(poHint&&filled.length){poHint.textContent=`💳 ${src}에서 자동 채움 (${filled.join(' · ')}) — 다르면 그냥 고쳐서 입력하세요`;poHint.style.display=''}
-  // ② 다음 대금(선금 → 잔금 …) 제안
-  const s=nextPaySuggestion(p,d);
+  // ② 다음 대금(선금 → 잔금 …) 제안 — 통화는 위에서 확정된 PO 통화 기준
+  const s=nextPaySuggestion(p,d,(cur&&cur.value)||null);
   const kind=$('pay-kind'), amt=$('pay-amt'), pcur=$('pay-cur'), pmemo=$('pay-memo'), payHint=$('pay-fill');
   if(!s||!kind)return;
   if(kind.dataset.af){kind.value=s.kind;kind.classList.add('prefill')}
-  if(pcur&&pcur.dataset.af&&s.cur){pcur.value=s.cur;pcur.classList.add('prefill')}
+  if(pcur&&pcur.dataset.af&&s.cur&&(d.matched==='vendor'||!pcur.dataset.guess)){pcur.value=s.cur;pcur.classList.add('prefill')}
   if(amt&&amt.dataset.af&&s.amount!=null&&!amt.value){amt.value=s.amount;amt.classList.add('prefill')}
   if(pmemo&&pmemo.dataset.af&&s.memo&&!pmemo.value){pmemo.value=s.memo;pmemo.classList.add('prefill')}
   if(payHint){
