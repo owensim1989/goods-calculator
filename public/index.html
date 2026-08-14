@@ -594,6 +594,26 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .moq-meta-tag.low  { background: rgba(248,113,113,0.22); color: #f87171; }
 .moq-meta-tag.none { background: rgba(113,113,122,0.22); color: #71717a; }
 .moq-meta { font-size: 10px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ━━━ MOQ 판정 (2026-08-14) ━━━ */
+.moq-src-tag { display:inline-block; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:700; margin-left:4px; white-space:nowrap; }
+.moq-src-tag.hist  { background: rgba(96,165,250,0.16); color:#60a5fa; }
+.moq-src-tag.user  { background: rgba(52,211,153,0.16); color:#34d399; }
+.moq-src-tag.guess { background: rgba(161,161,170,0.18); color:#a1a1aa; }
+.moq-rec.moq-short { border-left-color:#f87171 !important; background: rgba(248,113,113,0.10); }
+.moq-warn-line { font-size:10px; font-weight:600; color:#f87171; margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.moq-fix-btn { background: rgba(251,191,36,0.9); color:#111; border:none; border-radius:4px; padding:2px 7px; font-size:9px; font-weight:700; cursor:pointer; }
+.moq-fix-btn:hover { background:#fcd34d; }
+.moq-blocked-header { margin-top:14px; padding:8px 12px; background: var(--input-bg); border:1px solid var(--border); border-radius:8px;
+  font-size:12px; font-weight:700; color:var(--text-muted); cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+.moq-blocked-header .arrow { transition: transform .15s; }
+.moq-blocked-header.open .arrow { transform: rotate(180deg); }
+.moq-blocked-body { display:none; margin-top:8px; }
+.moq-blocked-body.open { display:block; }
+.moq-rec.blocked { opacity:.55; border-left-color:#71717a; }
+.sug-combo-card.blocked { opacity:.5; cursor:not-allowed; }
+.combo-moq-warn { font-size:10px; font-weight:700; color:#f87171; margin-left:4px; }
+.combo-moq-ok { font-size:9px; color:#34d399; margin-left:4px; }
 .moq-qty-wrap { text-align: right; }
 .moq-qty-input {
   width: 100%; padding: 5px 8px; font-size: 12px;
@@ -1060,7 +1080,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <input type="date" class="deadline-date-input dl-sync" id="b-deadline">
     <span id="b-deadline-msg" class="deadline-result"></span>
   </div>
-  <div class="guide-box">💡 예산과 조건을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
+  <div class="guide-box" style="flex-direction:column;align-items:flex-start;gap:4px;">
+    <div>💡 예산과 조건을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
+    <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">🚫 MOQ(최소 발주 수량)를 못 채우는 품목·조합은 추천에서 제외됩니다. MOQ 기준 = ① 사용자 지정(⚙️) → ② 과거 최소 발주 이력 → ③ 품목 기본값(추정) 순.</div></div>
   <div class="filter-bar">
     <div class="filter-group"><label>총 예산 (거래처로부터 받은 금액)</label>
       <div class="budget-input-row">
@@ -3094,6 +3116,64 @@ function clearMoqOvr(품명) {
 }
 function getMoqOvr(품명) { return loadMoqOvr()[품명] || null; }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MOQ(최소 발주 수량) 산정 — 2026-08-14
+// 우선순위 ① 사용자 지정(⚙️ 90일) → ② 발주 이력 → ③ 품명 키워드 기본값(추정)
+// 이력이 있으면 이력이 기본값보다 우선 (실제로 발주했던 수량 = 검증된 하한)
+// 단, 샘플성 소량 발주(중앙값의 20% 미만)는 MOQ 근거에서 제외하고 p25 사용
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const MOQ_DEFAULT_FALLBACK = 500;
+const MOQ_KEYWORD_DEFAULTS = [
+  { re: /(인형|봉제|플러시|plush|doll)/i,                          moq: 500  },
+  { re: /(키링|키체인|아크릴|뱃지|배지|마그넷|자석|스탠드)/i,        moq: 500  },
+  { re: /(연필|볼펜|샤프|지우개|스티커|엽서|포토카드|카드|메모)/i,   moq: 1000 },
+  { re: /(노트|다이어리|클리어파일|파일|폴더|스케치북|달력)/i,       moq: 500  },
+  { re: /(티셔츠|후드|맨투맨|모자|캡|의류|앞치마|양말|슬리퍼)/i,     moq: 100  },
+  { re: /(머그|텀블러|컵|보틀|우산|담요|쿠션|가방|에코백|파우치)/i,  moq: 300  },
+  { re: /(부채|풍선|팔찌|밴드|랜야드|스트랩)/i,                     moq: 1000 }
+];
+function _moqDefaultFor(품명) {
+  const hit = MOQ_KEYWORD_DEFAULTS.find(k => k.re.test(품명 || ''));
+  return hit ? hit.moq : MOQ_DEFAULT_FALLBACK;
+}
+
+let _moqCache = {};
+function clearMoqCache() { _moqCache = {}; }
+
+// { value, source: 'user'|'history'|'history-p25'|'default', label, memo }
+function getMoqInfo(품명, dist) {
+  if (_moqCache[품명]) return _moqCache[품명];
+  const ovr = getMoqOvr(품명);
+  let info;
+  if (ovr && ovr.value > 0) {
+    info = { value: ovr.value, source: 'user', label: '사용자 지정', memo: ovr.memo || '' };
+  } else {
+    const d = (dist !== undefined) ? dist : calcQtyDist(품명);
+    if (d && d.count > 0) {
+      const sampleish = d.count >= 3 && d.med > 0 && d.min < d.med * 0.2;
+      const v = sampleish ? (d.p25 || d.min) : d.min;
+      info = sampleish
+        ? { value: v, source: 'history-p25', label: '이력 기준(샘플성 소량 제외)' }
+        : { value: v, source: 'history', label: '과거 최소 발주' };
+    } else {
+      info = { value: _moqDefaultFor(품명), source: 'default', label: '기본값(추정)' };
+    }
+  }
+  _moqCache[품명] = info;
+  return info;
+}
+function moqOf(품명) { const i = getMoqInfo(품명); return i ? i.value : 0; }
+
+// 조합/카드 공통: 수량이 MOQ를 충족하는지
+function moqCheck(품명, qty) {
+  const info = getMoqInfo(품명);
+  return { ok: !info.value || qty >= info.value, moq: info.value, info };
+}
+function moqSourceTag(info) {
+  const cls = info.source === 'user' ? 'user' : info.source === 'default' ? 'guess' : 'hist';
+  return `<span class="moq-src-tag ${cls}" title="${info.label}">MOQ ${_fmtNum(info.value)}개 · ${info.label}</span>`;
+}
+
 // 단일 행의 KRW 환산 (부대비용 포함)
 function _krwOf(it) {
   if (it.개당단가 == null) return null;
@@ -3265,6 +3345,7 @@ let budgetSortMode='weighted'; // 'weighted','confidence','price','qty','cat'
 function searchBudget(){
   const budget=getBudget(),aCountry=getChecked('b-country'),aCats=getChecked('b-cat'),aProds=getChecked('b-prod'),dl=gDays(globalDL);
   if(!budget){alert('예산을 입력해주세요');return;}
+  clearMoqCache();
   const pm={};
   DATA.forEach(it=>{
     if(aCats&&!aCats.includes(it.품목))return;
@@ -3291,6 +3372,9 @@ function searchBudget(){
     // ━ MOQ·신뢰도 확장 ━
     const dist = calcQtyDist(p.품명);
     const vendors = vendorsByProduct(p.품명);
+    // MOQ: 최저단가로 예산을 다 써도 MOQ에 못 미치면 이 예산으로는 진행 불가
+    const moq = getMoqInfo(p.품명, dist);
+    const moqBlocked = moq.value > 0 && (isFinite(qMax) ? qMax : 0) < moq.value;
     return{
       품명:p.품명,품목:p.품목,평균단가:avg,최저단가:min,
       예상수량_평균:isFinite(qAvg)?qAvg:0,예상수량_최대:isFinite(qMax)?qMax:0,
@@ -3298,7 +3382,8 @@ function searchBudget(){
       details:p.details.sort((a,b)=>a.부대비용포함-b.부대비용포함),hasOverseas,
       qty_distribution: dist,
       confidence: dist ? dist.confidence : 'none',
-      vendors
+      vendors,
+      moq, moqBlocked
     };
   }).filter(p=>p.예상수량_최대>0&&p.평균단가>0);
   const cont=document.getElementById('budget-results'),empty=document.getElementById('budget-empty');
@@ -3333,9 +3418,20 @@ function getRecQty(r) {
   if (recQtyState[r.품명] != null) return recQtyState[r.품명];
   const ovr = getMoqOvr(r.품명);
   if (ovr) return ovr.value;
-  return roundDownQty(r.예상수량_평균 || 0);
+  const base = roundDownQty(r.예상수량_평균 || 0);
+  // 예산 기준 수량이 MOQ 미달이면 MOQ로 상향 (진행 가능한 최소 수량 표시)
+  const moq = r.moq ? r.moq.value : 0;
+  return (moq && base < moq && !r.moqBlocked) ? moq : base;
 }
 function setRecQty(name, q) { recQtyState[name] = q; renderBudgetCards(); }
+// MOQ 맞추기 — 카드 수량을 MOQ로 올림
+function fixRecQtyToMoq(name) {
+  const r = budgetRecs.find(x => x.품명 === name);
+  if (!r || !r.moq) return;
+  recQtyState[name] = r.moq.value;
+  renderBudgetCards();
+  if (typeof showToast === 'function') showToast(`${name} 수량을 MOQ ${_fmtNum(r.moq.value)}개로 맞췄습니다`);
+}
 function toggleRecExpand(name) { recExpanded[name] = !recExpanded[name]; renderBudgetCards(); }
 
 function renderBudgetCards(){
@@ -3402,13 +3498,25 @@ function renderBudgetCards(){
     const ovr = getMoqOvr(r.품명);
     const history = (recExpanded[r.품명] && dist) ? purchaseHistoryOf(r.품명) : [];
 
+    // ━ MOQ 판정 ━
+    const moqInfo = r.moq || getMoqInfo(r.품명, dist);
+    const moqShort = !r.moqBlocked && moqInfo.value > 0 && qty > 0 && qty < moqInfo.value;
+    const moqLine = r.moqBlocked
+      ? `<div class="moq-warn-line">🚫 예산 ${_fmtNum(getBudget())}원으로는 MOQ ${_fmtNum(moqInfo.value)}개를 채울 수 없음 (최저단가 ${fmtP(r.최저단가)} × MOQ = ${fmtP(r.최저단가*moqInfo.value)}) — 이 예산으로는 진행 불가
+           <button class="moq-fix-btn" onclick="event.stopPropagation();openMoqOvrModal('${r.품명.replace(/'/g,"\\'")}')">⚙️ MOQ 직접 입력</button></div>`
+      : moqShort
+        ? `<div class="moq-warn-line">🚫 MOQ ${_fmtNum(moqInfo.value)}개 미달 (현재 ${_fmtNum(qty)}개) — 발주 불가
+           <button class="moq-fix-btn" onclick="event.stopPropagation();fixRecQtyToMoq('${r.품명.replace(/'/g,"\\'")}')">MOQ로 맞추기</button></div>`
+        : '';
+
     return `
-      <div class="moq-rec ${conf}${sel?' selected':''}">
+      <div class="moq-rec ${conf}${sel?' selected':''}${r.moqBlocked?' blocked':''}${moqShort?' moq-short':''}">
         <div class="moq-row1">
           <div class="moq-emoji">${({high:'🟢',mid:'🟡',low:'🔴',none:'⚫'})[conf]}</div>
           <div>
-            <div class="moq-name">${r.품명}<span class="moq-meta-tag ${conf}">${({high:'🟢 데이터 충분',mid:'🟡 직접 견적 권장',low:'🔴 직접 견적 필수',none:'⚫ 데이터 없음'})[conf]}</span>${ovr?'<span class="moq-meta-tag" style="background:rgba(96,165,250,0.18);color:#60a5fa;">⚙️ 사용자값</span>':''}</div>
+            <div class="moq-name">${r.품명}<span class="moq-meta-tag ${conf}">${({high:'🟢 데이터 충분',mid:'🟡 직접 견적 권장',low:'🔴 직접 견적 필수',none:'⚫ 데이터 없음'})[conf]}</span>${moqSourceTag(moqInfo)}${ovr?'<span class="moq-meta-tag" style="background:rgba(96,165,250,0.18);color:#60a5fa;">⚙️ 사용자값</span>':''}</div>
             <div class="moq-meta">${r.품목} · ${distMsg}${alertMsg?`<span style="color:${alertColor};font-weight:600;"> · ${alertMsg}</span>`:''}${qWarn?`<span style="color:${qWarn.level==='low'?'#f87171':'#fbbf24'};font-weight:600;display:block;margin-top:2px;">⚠️ ${qWarn.msg}</span>`:''}</div>
+            ${moqLine}
           </div>
           <div class="moq-qty-wrap">
             <input class="moq-qty-input" type="text" inputmode="numeric" value="${qty?qty.toLocaleString():''}" ${conf==='none'?'disabled':''}
@@ -3422,9 +3530,10 @@ function renderBudgetCards(){
           <div class="moq-icon-slot">
             ${dist ? `<button class="moq-icon-btn expand ${expandOpen}" title="발주 이력" onclick="event.stopPropagation();toggleRecExpand('${r.품명.replace(/'/g,"\\'")}')">▼</button>` : ''}
           </div>
-          <button class="moq-add ${sel?'selected':''}" ${conf==='none'?'disabled':''}
+          <button class="moq-add ${sel?'selected':''}" ${(conf==='none'||((r.moqBlocked||moqShort)&&!sel))?'disabled':''}
+                  title="${r.moqBlocked?'예산 대비 MOQ 미달 — 진행 불가':moqShort?'MOQ '+_fmtNum(moqInfo.value)+'개 미달 — 수량을 올려주세요':''}"
                   onclick="event.stopPropagation();toggleComboAtQty('${r.품명.replace(/'/g,"\\'")}', ${m && m.recommendedPrice ? m.recommendedPrice : r.평균단가}, ${qty})">
-            ${sel?'✓':'+'} 추가
+            ${sel?'✓':(r.moqBlocked||moqShort)?'🚫':'+'} 추가
           </button>
         </div>
         ${dist ? `
@@ -3454,6 +3563,10 @@ function renderBudgetCards(){
     `;
   };
 
+  // MOQ 미달로 진행 불가한 품목은 본 목록에서 제외하고 하단 접이식 섹션으로
+  const blocked = sorted.filter(r=>r.moqBlocked);
+  sorted = sorted.filter(r=>!r.moqBlocked);
+
   let html='';
   if(budgetSortMode==='cat'){
     const grouped={};
@@ -3470,12 +3583,32 @@ function renderBudgetCards(){
     html+=sorted.map(renderCard).join('');
     html+=`</div>`;
   }
+  if(!sorted.length){
+    html+=`<div class="guide-box" style="margin-top:8px;">🚫 이 예산으로 MOQ를 채울 수 있는 품목이 없습니다. 예산을 늘리거나 ⚙️로 MOQ를 조정하세요.</div>`;
+  }
+  if(blocked.length){
+    html+=`<div class="moq-blocked-header${_moqBlockedOpen?' open':''}" onclick="toggleMoqBlocked()">
+      <span>🚫 MOQ 미달로 제외 ${blocked.length}건 — 이 예산으로는 최소 발주 수량을 채울 수 없음</span><span class="arrow">▼</span></div>
+      <div class="moq-blocked-body${_moqBlockedOpen?' open':''}"><div class="moq-rec-list">${blocked.map(renderCard).join('')}</div></div>`;
+  }
   cont.innerHTML=html;
+}
+
+let _moqBlockedOpen = false;
+function toggleMoqBlocked(){
+  _moqBlockedOpen = !_moqBlockedOpen;
+  document.querySelector('.moq-blocked-header')?.classList.toggle('open', _moqBlockedOpen);
+  document.querySelector('.moq-blocked-body')?.classList.toggle('open', _moqBlockedOpen);
 }
 
 // 수량 + 단가 함께 조합에 추가 (수량 매칭 단가 사용)
 function toggleComboAtQty(name, unitPrice, qty) {
   const existing = comboItems.find(c => c.name === name);
+  const moq = moqOf(name) || 0;
+  if (!existing && moq && qty > 0 && qty < moq) {
+    if (typeof showToast === 'function') showToast(`🚫 ${name} MOQ ${_fmtNum(moq)}개 미달 (${_fmtNum(qty)}개) — 수량을 올린 뒤 추가하세요`);
+    return;
+  }
   if (existing) {
     // 이미 있으면 제거
     comboItems = comboItems.filter(c => c.name !== name);
@@ -3538,6 +3671,10 @@ function openMoqOvrModal(품명) {
           <div style="font-size:13px;color:var(--text-muted);">${dist?(`${fmt(dist.min)} ~ ${fmt(dist.med)} ~ ${fmt(dist.max)}개 (${dist.count}건)`):'데이터 없음'}</div>
         </div>
         <div class="moq-input-field">
+          <label>현재 적용 중인 MOQ</label>
+          <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return `${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`;})()}</div>
+        </div>
+        <div class="moq-input-field">
           <label>내가 알고 있는 최소 발주 수량</label>
           <input type="number" id="moq-ovr-input" value="${ovr?ovr.value:(dist?dist.med:'')}" placeholder="예: 1000">
         </div>
@@ -3560,6 +3697,16 @@ function closeMoqOvrModal() {
   const m = document.getElementById('moq-ovr-modal-bg');
   if (m) m.remove();
 }
+// MOQ 기준이 바뀌면 추천 목록의 MOQ 판정도 다시 계산
+function _refreshMoqOnRecs() {
+  clearMoqCache();
+  budgetRecs.forEach(r => {
+    r.moq = getMoqInfo(r.품명, r.qty_distribution);
+    r.moqBlocked = r.moq.value > 0 && (r.예상수량_최대 || 0) < r.moq.value;
+  });
+  const b = getBudget();
+  if (b && budgetRecs.length) genSugCombos(b);
+}
 function saveMoqOvrAndClose(품명) {
   const v = parseInt(document.getElementById('moq-ovr-input').value);
   if (!v || v <= 0) { alert('올바른 수량을 입력하세요'); return; }
@@ -3567,14 +3714,18 @@ function saveMoqOvrAndClose(품명) {
   saveMoqOvr(품명, v, memo);
   delete recQtyState[품명];  // 사용자 입력 초기화 → 오버라이드 적용
   closeMoqOvrModal();
+  _refreshMoqOnRecs();
   renderBudgetCards();
+  recalcComboQty(); renderCombo();
   if (typeof showToast === 'function') showToast(`${품명} MOQ ${v.toLocaleString()}개로 90일간 적용`);
 }
 function clearMoqOvrAndClose(품명) {
   clearMoqOvr(품명);
   delete recQtyState[품명];
   closeMoqOvrModal();
+  _refreshMoqOnRecs();
   renderBudgetCards();
+  recalcComboQty(); renderCombo();
   if (typeof showToast === 'function') showToast(`${품명} 사용자 MOQ 삭제됨`);
 }
 
@@ -3632,10 +3783,27 @@ function recalcComboQty(){
   comboItems.forEach(c=>{
     const quoteBudget=Math.floor(budget/n);
     const costBudget=Math.floor(quoteBudget*(1-c.margin/100));
-    c.qty=Math.max(1,Math.floor(costBudget/c.unitPrice));
+    const raw=Math.max(1,Math.floor(costBudget/c.unitPrice));
+    const moq=moqOf(c.name)||0;
+    // MOQ 미만이면 발주 자체가 불가 → MOQ로 상향 (예산 초과는 화면에 표시됨)
+    if(moq&&raw<moq){c.qty=moq;c.moqBumped=moq;}else{c.qty=raw;delete c.moqBumped;}
     c.quoteBudget=quoteBudget;
     c.costBudget=costBudget;
   });
+}
+// 조합 빌더 행의 수량을 MOQ로 올림
+function fixComboQtyToMoq(name){
+  const c=comboItems.find(x=>x.name===name);
+  if(!c)return;
+  const moq=moqOf(name);
+  if(!moq)return;
+  c.manualQty=moq;
+  if(typeof priceMatchByQty==='function'){
+    const m=priceMatchByQty(name,moq);
+    if(m){c.unitPrice=Math.round(m.recommendedPrice);c.matchedFrom=m.src==='reg'?'🎯회귀':m.src;}
+  }
+  renderCombo();
+  if(typeof showToast==='function')showToast(`${name} 수량을 MOQ ${_fmtNum(moq)}개로 맞췄습니다`);
 }
 
 function renderCombo(){
@@ -3655,6 +3823,10 @@ function renderCombo(){
     const cost=c.unitPrice*qty;
     const marginAmt=Math.round(c.unitPrice*c.margin/(100-c.margin));
     const quote=Math.round(cost/(1-c.margin/100));
+    const moq=moqOf(c.name)||0;
+    const moqTag = (moq&&qty<moq)
+      ? `<span class="combo-moq-warn">🚫 MOQ ${_fmtNum(moq)}개 미달 — 발주 불가 <button class="moq-fix-btn" onclick="fixComboQtyToMoq('${c.name.replace(/\'/g,"\\\'")}')">MOQ로 맞추기</button></span>`
+      : (c.moqBumped ? `<span class="combo-moq-ok">MOQ ${_fmtNum(moq)}개로 상향됨</span>` : (moq?`<span class="combo-moq-ok">MOQ ${_fmtNum(moq)}✓</span>`:''));
     return`<div class="combo-row">
       <span class="c-name">${c.name}</span>
       <span class="c-field"><input type="text" inputmode="numeric" value="${qty.toLocaleString()}" oninput="onQtyManualChangeText('${c.name.replace(/\'/g,"\\\'")}',this)" title="qty">개</span>
@@ -3662,6 +3834,7 @@ function renderCombo(){
       <span class="c-margin-group">마진 <input type="number" value="${parseFloat(c.margin.toFixed(1))}" min="0" max="95" step="1" onchange="onMarginRateChange('${c.name}',this.value)">% = <input type="number" class="margin-amt-input" value="${marginAmt}" min="0" step="100" onchange="onMarginAmtChange('${c.name}',this.value)">원/개</span>
       <span class="c-result">${fmtP(quote)}</span>
       <span class="remove-chip" onclick="removeFromCombo('${c.name}')">✕</span>
+      ${moqTag?`<div style="flex-basis:100%;">${moqTag}</div>`:''}
     </div>`;
   }).join('');
 
@@ -3674,8 +3847,12 @@ function renderCombo(){
   });
   document.getElementById('combo-total-price').textContent=fmtP(totalCost);
 
+  const shortList=comboItems.filter(c=>{const q=c.manualQty||c.qty;const m=moqOf(c.name)||0;return m&&q<m;});
   const rem=document.getElementById('combo-remaining');
-  if(budget>0){
+  if(shortList.length){
+    rem.innerHTML=`<span style="color:#f87171;font-weight:700;">🚫 MOQ 미달 ${shortList.length}건 (${shortList.map(c=>c.name).join(', ')}) — 이대로는 발주 불가</span>`;
+    rem.classList.remove('over');
+  } else if(budget>0){
     const r=budget-totalQuote;
     if(r>=0){
       rem.classList.remove('over');
@@ -3722,7 +3899,9 @@ function buildQuotePrompt(){
     const qty=c.manualQty||c.qty;
     const quote=Math.round(c.unitPrice*qty/(1-c.margin/100));
     const quoteUnit=Math.round(quote/qty);
-    const recQty=roundDownQty(qty);
+    // 발주 단위 내림 — 단, MOQ 밑으로는 내리지 않음
+    const _moq=(typeof moqOf==='function'?moqOf(c.name):0)||0;
+    const recQty=_moq?Math.max(_moq,roundDownQty(qty)):roundDownQty(qty);
     const rounded=recQty!==qty;
 
     // 신뢰도·분포 정보 (budgetRecs에서 조회)
@@ -3744,6 +3923,14 @@ function buildQuotePrompt(){
     ];
     if (dist) {
       lines.push('   - 발주 이력: 과거 '+dist.count+'회 (작년 '+dist.recent+'회) · '+dist.vendor_count+'개 업체');
+    }
+    const moqInfo = (typeof getMoqInfo==='function') ? getMoqInfo(c.name) : null;
+    if (moqInfo && moqInfo.value > 0) {
+      lines.push('   - MOQ(최소 발주 수량): '+moqInfo.value.toLocaleString()+'개 ['+moqInfo.label+']');
+      if (recQty < moqInfo.value) {
+        lines.push('   - 🚫 추천 수량이 MOQ 미달 — 이 수량으로는 발주 불가. 최소 '+moqInfo.value.toLocaleString()+'개로 올리거나 품목을 교체해야 합니다.');
+        hasLow = true;
+      }
     }
     if (m) {
       const matchInfo = m.src==='reg' ? `🎯 규모경제 회귀 ${m.regForcedFlat?'(평면)':'추정'} ₩${m.regPrice.toLocaleString()}`
@@ -3794,6 +3981,12 @@ function buildQuotePrompt(){
 function exportToQuote(){
   const txt=buildQuotePrompt();
   if(!txt){showToast('제품 조합을 먼저 추가하세요');return;}
+  // MOQ 미달 상태로 견적 생성 시 경고
+  const short=comboItems.filter(c=>{const q=c.manualQty||c.qty||0;const m=(typeof moqOf==='function'?moqOf(c.name):0)||0;return m&&q<m;});
+  if(short.length){
+    const msg=short.map(c=>`${c.name}: ${_fmtNum(c.manualQty||c.qty||0)}개 < MOQ ${_fmtNum(moqOf(c.name))}개`).join('\n');
+    if(!confirm('🚫 MOQ 미달 품목이 있어 실제 발주가 불가능할 수 있습니다.\n\n'+msg+'\n\n그래도 견적을 생성할까요?'))return;
+  }
   try{navigator.clipboard&&navigator.clipboard.writeText(txt);}catch(e){}
   // URL 해시 prefill — 한글 대응 base64
   const encoded=btoa(unescape(encodeURIComponent(txt)));
@@ -3804,23 +3997,64 @@ function exportToQuote(){
 }
 
 // 추천조합
+// MOQ 배분: 각 품목에 MOQ 물량을 먼저 확보한 뒤 남은 예산을 균등 분배.
+// MOQ 합계 원가가 예산(마진 제외)을 넘으면 그 조합은 실행 불가 → 추천에서 제외
+function _allocComboWithMoq(items, budget, marginRate){
+  const rate = (marginRate==null)?0.3:marginRate;
+  const costBudget = Math.floor(budget*(1-rate));
+  const rows = items.map(i=>{const moq=moqOf(i.name)||1;return {...i, moq, qty:moq};});
+  const need = rows.reduce((s,r)=>s+r.price*r.moq,0);
+  if(!(need>0) || need>costBudget) return {ok:false, need, costBudget, rows};
+  const per = Math.floor((costBudget-need)/rows.length);
+  rows.forEach(r=>{ if(r.price>0) r.qty += Math.floor(per/r.price); });
+  // 발주 단위로 내림 (단, MOQ 밑으로는 내리지 않음)
+  rows.forEach(r=>{ r.qty = Math.max(r.moq, roundDownQty(r.qty)); });
+  return {ok:true, rows, totalCost: rows.reduce((s,r)=>s+r.price*r.qty,0), need, costBudget};
+}
+
 function genSugCombos(budget){
   const c=document.getElementById('suggested-combos'),list=document.getElementById('sug-combo-list');
-  if(budgetRecs.length<2){c.style.display='none';return;}
-  const combos=[];const sorted=[...budgetRecs].sort((a,b)=>a.평균단가-b.평균단가);
+  // MOQ 미달(예산으로 최소 발주 불가)인 품목은 조합 후보에서 제외
+  const pool=budgetRecs.filter(r=>!r.moqBlocked);
+  if(pool.length<2){
+    c.style.display='block';
+    list.innerHTML=`<div class="guide-box" style="margin:0;">🚫 MOQ(최소 발주 수량)를 채울 수 있는 품목이 ${pool.length}개뿐이라 추천 조합을 만들 수 없습니다. 예산을 늘리거나 ⚙️로 MOQ를 조정하세요.</div>`;
+    return;
+  }
+  const combos=[];const sorted=[...pool].sort((a,b)=>a.평균단가-b.평균단가);
   if(sorted.length>=2)combos.push({label:'균등 배분 (저가 2종)',items:[{name:sorted[0].품명,price:sorted[0].평균단가},{name:sorted[1].품명,price:sorted[1].평균단가}]});
-  const main=budgetRecs[0],sub=budgetRecs.find(r=>r.품명!==main.품명&&r.품목!==main.품목);
+  const main=pool[0],sub=pool.find(r=>r.품명!==main.품명&&r.품목!==main.품목);
   if(sub)combos.push({label:`메인(${main.품명})+보조(${sub.품명})`,items:[{name:main.품명,price:main.평균단가},{name:sub.품명,price:sub.평균단가}]});
-  const diff=budgetRecs.filter((r,i,a)=>i===0||r.품목!==a[i-1].품목).slice(0,3);
+  const diff=pool.filter((r,i,a)=>i===0||r.품목!==a[i-1].품목).slice(0,3);
   if(diff.length>=3)combos.push({label:'3종 세트 (품목 다양화)',items:diff.map(r=>({name:r.품명,price:r.평균단가}))});
-  if(!combos.length){c.style.display='none';return;}
+  // 저가 3종 대안 — MOQ 때문에 위 조합들이 모두 막혔을 때 살아남을 확률이 높음
+  if(sorted.length>=3)combos.push({label:'저가 3종 (MOQ 충족 우선)',items:sorted.slice(0,3).map(r=>({name:r.품명,price:r.평균단가}))});
+
+  const feasible=[],blocked=[];
+  combos.forEach(co=>{
+    const alloc=_allocComboWithMoq(co.items,budget,0.3);
+    (alloc.ok?feasible:blocked).push({...co,alloc});
+  });
+  if(!feasible.length&&!blocked.length){c.style.display='none';return;}
   c.style.display='block';
-  list.innerHTML=combos.map(co=>{
-    const n=co.items.length,share=Math.floor(budget/n);
-    const itemsWithQty=co.items.map(i=>{const costB=Math.floor(share*0.7);const q=i.price>0?Math.floor(costB/i.price):0;return{...i,qty:isFinite(q)?q:0};});
-    const totalCost=itemsWithQty.reduce((s,i)=>s+i.price*i.qty,0);
-    return`<div class="sug-combo-card" onclick='applySugCombo(${JSON.stringify(co.items).replace(/'/g,"\\'")})'><div class="sug-combo-items">${co.label}<br>${itemsWithQty.map(i=>`<strong>${i.name}</strong> ~${fmt(i.qty)}개`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(totalCost)}</div></div>`;
+
+  let html=feasible.map(co=>{
+    const rows=co.alloc.rows;
+    const payload=JSON.stringify(rows.map(r=>({name:r.name,price:r.price,qty:r.qty}))).replace(/'/g,"\\'");
+    return`<div class="sug-combo-card" onclick='applySugCombo(${payload})'><div class="sug-combo-items">${co.label}<br>${rows.map(r=>`<strong>${r.name}</strong> ${fmt(r.qty)}개<span class="combo-moq-ok">MOQ ${fmt(r.moq)}✓</span>`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(co.alloc.totalCost)}</div></div>`;
   }).join('');
+
+  if(!feasible.length){
+    html+=`<div class="guide-box" style="margin:0 0 8px;">🚫 MOQ를 충족하는 조합이 없습니다. 예산을 늘리거나 품목 수를 줄여주세요.</div>`;
+  }
+  if(blocked.length){
+    html+=`<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">🚫 MOQ 미달로 제외된 조합 ${blocked.length}건</div>`;
+    html+=blocked.map(co=>{
+      const rows=co.alloc.rows;
+      return`<div class="sug-combo-card blocked" title="MOQ 최소 원가가 예산을 초과합니다"><div class="sug-combo-items">${co.label}<br>${rows.map(r=>`<strong>${r.name}</strong> MOQ ${fmt(r.moq)}개`).join(' + ')}<div style="font-size:10px;color:#f87171;margin-top:3px;">MOQ 최소 원가 ${fmtP(co.alloc.need)} &gt; 가용 원가예산 ${fmtP(co.alloc.costBudget)} (마진 30% 가정)</div></div><div class="sug-combo-price" style="color:#f87171;">진행 불가</div></div>`;
+    }).join('');
+  }
+  list.innerHTML=html;
 }
 
 
@@ -3894,9 +4128,13 @@ function fitComboToBudget() {
   if (totalQuote <= budget) { showToast('이미 예산 안에 있습니다'); return; }
   const ratio = budget / totalQuote;
   let priceChangedCount = 0;
+  let moqFloored = [];
   comboItems.forEach(c => {
     const qty = c.manualQty || c.qty;
-    const newQty = Math.max(1, Math.floor(qty * ratio));
+    const moq = moqOf(c.name) || 0;
+    let newQty = Math.max(1, Math.floor(qty * ratio));
+    // MOQ 밑으로는 줄일 수 없음 (줄이면 발주 자체가 불가)
+    if (moq && newQty < moq) { newQty = moq; moqFloored.push(c.name); }
     const oldPrice = c.unitPrice;
     c.manualQty = newQty;
     if (typeof priceMatchByQty === 'function') {
@@ -3913,14 +4151,19 @@ function fitComboToBudget() {
     }
   });
   renderCombo();
-  if (priceChangedCount > 0) {
+  if (moqFloored.length) {
+    const newTotal = comboItems.reduce((s,c)=>{const q=c.manualQty||c.qty;return s+Math.round(c.unitPrice*q/(1-c.margin/100));},0);
+    showToast(newTotal > budget
+      ? '⚠️ ' + moqFloored.join(', ') + ' MOQ 하한 때문에 예산 내 조합 불가 — 품목 수를 줄이거나 예산을 늘려주세요'
+      : 'MOQ 하한 적용(' + moqFloored.join(', ') + ') 후 예산 맞춤 완료');
+  } else if (priceChangedCount > 0) {
     showToast('예산 ' + _fmtNum(budget) + '원 맞춤 (' + priceChangedCount + '개 품목 단가 갱신)');
   } else {
     showToast('수량 조정 완료. 단가는 같은 매칭 범위라 변동 없음 (정상)');
   }
 }
 
-function applySugCombo(items){comboItems=items.map(c=>({name:c.name,unitPrice:c.price,margin:30}));recalcComboQty();renderCombo();}
+function applySugCombo(items){comboItems=items.map(c=>({name:c.name,unitPrice:c.price,margin:30,manualQty:c.qty||undefined}));recalcComboQty();renderCombo();renderBudgetCards();}
 
 // 추천조합 자동 접기 — searchBudget 후 호출됨
 // 추천조합은 항상 접힘 상태로 시작 (genSugCombos가 호출되든 안 되든)
