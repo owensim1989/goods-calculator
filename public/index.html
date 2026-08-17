@@ -1263,6 +1263,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
           <button type="button" class="cp-btn cp-btn-ghost" id="cp-product-image-remove" style="font-size:11px;padding:4px 12px;display:none;color:#c0392b;border-color:#c0392b;" onclick="cpRemoveProductImage()">🗑️ 제거</button>
         </div>
         <div style="color:var(--text-muted);font-size:11px;line-height:1.4;">JPG · PNG · WebP, 최대 20MB<br>신규 프로젝트는 <b>저장 시 자동 업로드</b>, 기존 프로젝트는 즉시 반영</div>
+        <div style="color:#e67e22;font-size:11px;line-height:1.4;">⚠️ 이 단계 이미지는 <b>작업파일</b>로 표시됩니다 — 제품 촬영 후 <b>굿즈 카탈로그 → 📷</b>에서 디피컷으로 교체하세요 (쇼핑몰·제품리스트에 그대로 노출됨)</div>
         <div style="color:#a78bfa;font-size:11px;line-height:1.4;">🎨 <b>디자인만 다른 변형</b>은 여기서 대표 이미지 1장 + 설정을 끝내고 <b>저장</b> → 하단 <b>“🎨 디자인 변형 추가”</b>로 이미지·디자인명만 넣어 한 번에 등록</div>
         <input type="file" id="cp-product-image-input" accept="image/*" style="display:none;" onchange="cpOnProductImageFile(this.files[0])">
       </div>
@@ -1603,6 +1604,9 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
         <input type="checkbox" id="cat-filter-noimg" onchange="catRender()"> <span>📷 사진 없음</span>
       </label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" id="cat-filter-workimg" onchange="catRender()"> <span>🖨️ 작업파일(디피컷 필요)</span>
+      </label>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="Barcode 필드가 비어있는 항목만 표시">
         <input type="checkbox" id="cat-filter-nobarcode" onchange="catRender()"> <span>⚠️ 바코드 없음</span>
       </label>
@@ -1718,6 +1722,10 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <input type="file" id="cat-img-file" accept="image/*" style="display:none;" onchange="catImgPicked(this.files[0])">
     <div id="cat-img-preview" style="display:none;text-align:center;margin-bottom:10px;"><img id="cat-img-preview-tag" style="max-width:200px;max-height:200px;border:1px solid var(--border);border-radius:6px;"></div>
     <div id="cat-img-status" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;"></div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:12px;cursor:pointer;">
+      <input type="checkbox" id="cat-img-is-display" checked style="accent-color:#27ae60;">
+      <span><b>디피컷</b>(제품 촬영본)입니다 <span style="color:var(--text-muted);">— 체크 해제 시 작업파일(시안)로 표시되어 추후 교체 대상으로 관리됩니다</span></span>
+    </label>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="cp-btn cp-btn-ghost" style="font-size:12px;" onclick="catImgClose()">취소</button>
       <button class="cp-btn cp-btn-primary" id="cat-img-save" style="font-size:12px;" onclick="catImgSave()" disabled>💾 저장</button>
@@ -10193,6 +10201,7 @@ function catRender(){
   const nobarcode = document.getElementById('cat-filter-nobarcode')?.checked || false;
   const nosync = document.getElementById('cat-filter-nosync')?.checked || false;
   const nocat = document.getElementById('cat-filter-nocat')?.checked || false;
+  const workimg = document.getElementById('cat-filter-workimg')?.checked || false;
   let list = _catItems.slice();
   if (q) list = list.filter(x =>
     (x.productName||'').toLowerCase().includes(q) ||
@@ -10208,6 +10217,8 @@ function catRender(){
   if (nosync) list = list.filter(x => x.barcode && _invStockByCatalogId[x.id] === null);
   // 🏷️ 미분류만 — category 미선택 row
   if (nocat) list = list.filter(x => !x.category);
+  // 🖨️ 작업파일만 — 사업성검토 단계 시안 이미지 그대로인 것 (디피컷 교체 대상, 2026-08-17)
+  if (workimg) list = list.filter(x => x.imageType === 'work');
 
   // 🔗 시리즈 그룹화 (2026-05-11) — root id 는 항상 "사업성 검토 page id" 기준
   // 견고성: server 의 비고 메타 (seriesRootId) 외에도 row.cpId 로 사업성 검토 list 의 root 매핑 fallback
@@ -10258,8 +10269,12 @@ function catRender(){
     const isSwapSource = _catSwapFromId === it.id;
     const isSelected = _catSelected.has(it.id);
     const thumb = (it.imageUrl || (it.hasLocalImage ? `/api/catalog-image/${escapeHtml(it.imageId||'')}` : ''));
+    // 🖨️ 작업파일 배지 (2026-08-17) — 사업성검토 시안 이미지 그대로 = 디피컷 교체 대상
+    const workBadge = it.imageType === 'work'
+      ? '<span style="position:absolute;top:2px;left:2px;background:rgba(230,126,34,0.92);color:#fff;font-size:9px;padding:1px 5px;border-radius:5px;font-weight:700;" title="사업성 검토 단계의 작업파일(시안) 이미지입니다. 📷 버튼으로 디피컷(촬영본)으로 교체하세요.">🖨️ 작업파일</span>'
+      : '';
     const thumbHtml = thumb
-      ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" onerror="this.parentElement.textContent='📷';">`
+      ? `<span style="position:relative;display:inline-block;">${workBadge}<img src="${escapeHtml(thumb)}" alt="" loading="lazy" onerror="this.parentElement.textContent='📷';"></span>`
       : '<span title="사진 없음">📷</span>';
     const catVal = it.category || '';
     const opts = ['피규어/토이','키링/잡화','인형','문구','홈리빙','프린트/스티커','모바일 악세사리','의류','기타']
@@ -11019,7 +11034,7 @@ async function catImgSave(){
     const r = await fetch('/api/consumer-pricing/catalog/'+encodeURIComponent(id)+'/image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dataUrl: _catImgDataUrl })
+      body: JSON.stringify({ dataUrl: _catImgDataUrl, imageType: (document.getElementById('cat-img-is-display')?.checked !== false) ? 'display' : 'work' })
     });
     if (r.status === 401) { _cpHandleAuthExpired(); return; }
     const d = await r.json().catch(()=>({}));
@@ -11029,6 +11044,7 @@ async function catImgSave(){
       it.imageUrl = d.imageUrl;
       it.imageId = d.imageId;
       it.hasLocalImage = true;
+      it.imageType = (document.getElementById('cat-img-is-display')?.checked !== false) ? 'display' : 'work';
     }
     showToast('📷 이미지 업로드 완료', 'success');
     catRender();

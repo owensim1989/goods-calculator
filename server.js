@@ -162,6 +162,27 @@ function removeCatalogImagesById(id) {
   } catch (e) {}
 }
 
+// ━━━ 이미지 타입 메타 (작업파일 work / 디피컷 display) ━━━
+// 사업성 검토 단계 업로드는 대개 "작업파일"이고, 추후 촬영된 "디피컷"으로 교체하는 절차를 지원.
+// 저장: CATALOG_IMAGE_DIR/image-meta.json { [imageId]: { type:'work'|'display', at } } — 볼륨이라 재배포에도 유지.
+const IMAGE_META_PATH = path.join(CATALOG_IMAGE_DIR, 'image-meta.json');
+function readImageMeta() {
+  try { return JSON.parse(fs.readFileSync(IMAGE_META_PATH, 'utf8')); } catch { return {}; }
+}
+function setImageType(imgId, type) {
+  if (!imgId || !['work', 'display'].includes(type)) return;
+  try {
+    const m = readImageMeta();
+    m[imgId] = { type, at: new Date().toISOString() };
+    fs.writeFileSync(IMAGE_META_PATH, JSON.stringify(m));
+  } catch (e) { console.warn('[image-meta 저장 실패]', e.message); }
+}
+function getImageType(imgId) {
+  if (!imgId) return null;
+  const m = readImageMeta();
+  return (m[imgId] && m[imgId].type) || null;
+}
+
 // ━━━ HS Code + Product Name → Category 자동 분류 ━━━
 // 카탈로그 DB의 Category Select 옵션에 맞춘 분류 규칙
 // 우선순위: HS Code 앞자리 매핑 → Product Name 키워드 fallback → '기타'
@@ -2546,6 +2567,7 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
         imageUrl: getUrl('Image_URL'),
         imageId: imgId,
         hasLocalImage,
+        imageType: hasLocalImage ? getImageType(imgId) : null,  // 'work'=작업파일 | 'display'=디피컷 | null=미분류
         costKRW: getNum('원가_KRW'),
         retailKR: getNum('Retail_KR_KRW'),
         // 유사 제품 가격 비교용 (2026-05-15 추가) — 스펙 + 국가별 retail
@@ -2616,6 +2638,7 @@ app.get('/api/shop-catalog', async (req, res) => {
         category: getSel('Category'),
         imageId: imgId || null,
         imageUrl: getUrl('Image_URL') || null,
+        imageType: imgId ? getImageType(imgId) : null, // 'work'=작업파일 | 'display'=디피컷 | null=미분류
         sizeMm: getText('Size_mm'),
         material: getText('Material'),
         weightG: getNum('포장합무게_g'),
@@ -2815,47 +2838,72 @@ app.get('/api/admin/catalog/archive', async (req, res) => {
 });
 
 // 카탈로그 이미지 업로드 — base64/dataURL 받아 CATALOG_IMAGE_DIR 에 저장 + Image_URL 갱신
+// 카탈로그 페이지 이미지 교체 공통 로직 (UI 단건 업로드 + 서버간 디피컷 일괄 반영 공용)
+// imageType: 'display'(디피컷, 기본) | 'work'(작업파일) — image-meta.json 에 기록
+async function applyCatalogPageImage(pageId, dataUrl, ext, imageType) {
+  if (!notion) { const e = new Error('notion unavailable'); e.status = 503; throw e; }
+  if (!dataUrl) { const e = new Error('dataUrl 누락'); e.status = 400; throw e; }
+  // 카탈로그 페이지에서 cpId(소비자가_산정_ID) 또는 새 ID 생성
+  const page = await notion.pages.retrieve({ page_id: pageId });
+  const pr = page.properties || {};
+  const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t=>t.plain_text||'').join('');
+  let cpIdRaw = getText('소비자가_산정_ID');
+  let imgId;
+  if (cpIdRaw) {
+    imgId = cpImageId(cpIdRaw);
+  } else {
+    // 카탈로그 자체 ID 기반 (예: BoxHero import 분 같이 cpId 없는 항목)
+    imgId = 'cat_' + String(pageId || '').replace(/-/g, '').slice(0, 24);
+  }
+  const decoded = decodeImagePayload(dataUrl, ext);
+  if (!decoded) { const e = new Error('이미지 디코딩 실패'); e.status = 400; throw e; }
+  // 옛 파일·썸네일 정리 후 새로 저장
+  removeCatalogImagesById(imgId);
+  const fname = `${imgId}.${decoded.ext}`;
+  const fpath = path.join(CATALOG_IMAGE_DIR, fname);
+  fs.writeFileSync(fpath, decoded.buf);
+  setImageType(imgId, imageType === 'work' ? 'work' : 'display');
+  // ?v= 캐시버스트 — 썸네일 교체 시 URL 자체가 바뀌어야 inventory/브라우저가 새 이미지를 인식
+  // (catalog-image GET 은 1주일 캐시라 고정 URL이면 옛 이미지가 계속 보임)
+  // ⚠️ 절대 URL(PUBLIC_BASE_URL 상수, 미설정 시 https://goods.jeisha.kr) 사용 필수.
+  //    process.env.PUBLIC_BASE_URL 직접 쓰면 env 미설정 환경에서 상대경로가 나와
+  //    inventory 가 자기 도메인으로 풀어 이미지 404 (publish 경로와 불일치). 2026-06-30 실측 확인.
+  const v = Date.now();
+  const url = PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v;
+  await notion.pages.update({
+    page_id: pageId,
+    properties: { 'Image_URL': { url } }
+  });
+  // 2026-06-30 회계팀 요청: 굿즈 썸네일 변경도 inventory 제품목록에 즉시 반영 (best-effort)
+  syncCatalogPageToInventory(pageId, 'image-update').catch(() => {});
+  return { imageUrl: url, imageId: imgId };
+}
+
 app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
-  if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   try {
-    const { dataUrl, ext } = req.body || {};
-    if (!dataUrl) return res.status(400).json({ error: 'dataUrl 누락' });
-    // 카탈로그 페이지에서 cpId(소비자가_산정_ID) 또는 새 ID 생성
-    const page = await notion.pages.retrieve({ page_id: req.params.id });
-    const pr = page.properties || {};
-    const getText = k => (pr[k] && (pr[k].rich_text || pr[k].title) || []).map(t=>t.plain_text||'').join('');
-    let cpIdRaw = getText('소비자가_산정_ID');
-    let imgId;
-    if (cpIdRaw) {
-      imgId = cpImageId(cpIdRaw);
-    } else {
-      // 카탈로그 자체 ID 기반 (예: BoxHero import 분 같이 cpId 없는 항목)
-      imgId = 'cat_' + String(req.params.id || '').replace(/-/g, '').slice(0, 24);
-    }
-    const decoded = decodeImagePayload(dataUrl, ext);
-    if (!decoded) return res.status(400).json({ error: '이미지 디코딩 실패' });
-    // 옛 파일·썸네일 정리 후 새로 저장
-    removeCatalogImagesById(imgId);
-    const fname = `${imgId}.${decoded.ext}`;
-    const fpath = path.join(CATALOG_IMAGE_DIR, fname);
-    fs.writeFileSync(fpath, decoded.buf);
-    // ?v= 캐시버스트 — 썸네일 교체 시 URL 자체가 바뀌어야 inventory/브라우저가 새 이미지를 인식
-    // (catalog-image GET 은 1주일 캐시라 고정 URL이면 옛 이미지가 계속 보임)
-    // ⚠️ 절대 URL(PUBLIC_BASE_URL 상수, 미설정 시 https://goods.jeisha.kr) 사용 필수.
-    //    process.env.PUBLIC_BASE_URL 직접 쓰면 env 미설정 환경에서 상대경로가 나와
-    //    inventory 가 자기 도메인으로 풀어 이미지 404 (publish 경로와 불일치). 2026-06-30 실측 확인.
-    const v = Date.now();
-    const url = PUBLIC_BASE_URL + '/api/catalog-image/' + imgId + '?v=' + v;
-    await notion.pages.update({
-      page_id: req.params.id,
-      properties: { 'Image_URL': { url } }
-    });
-    // 2026-06-30 회계팀 요청: 굿즈 썸네일 변경도 inventory 제품목록에 즉시 반영 (best-effort)
-    syncCatalogPageToInventory(req.params.id, 'image-update').catch(() => {});
-    res.json({ success: true, imageUrl: url, imageId: imgId });
+    const { dataUrl, ext, imageType } = req.body || {};
+    const r = await applyCatalogPageImage(req.params.id, dataUrl, ext, imageType);
+    res.json({ success: true, ...r });
   } catch (e) {
     console.error('[카탈로그 이미지 업로드 실패]', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// 📷 디피컷 일괄 반영 (서버간 전용, SHOP_CATALOG_KEY 가드) — mrdonothing.com 추출분 등 대량 교체용
+// body: { dataUrl, ext?, imageType? } — 기본 imageType='display'
+app.post('/api/catalog-dp-image/:id', async (req, res) => {
+  const key = req.get('X-Shop-Api-Key') || req.query.key || '';
+  if (!process.env.SHOP_CATALOG_KEY || key !== process.env.SHOP_CATALOG_KEY) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const { dataUrl, ext, imageType } = req.body || {};
+    const r = await applyCatalogPageImage(req.params.id, dataUrl, ext, imageType);
+    res.json({ success: true, ...r });
+  } catch (e) {
+    console.error('[디피컷 일괄 반영 실패]', e.message);
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -6877,6 +6925,9 @@ app.post('/api/consumer-pricing/:id/upload-image', async (req, res) => {
     removeCatalogImagesById(imgId);
     const savePath = path.join(CATALOG_IMAGE_DIR, imgId + '.' + decoded.ext);
     fs.writeFileSync(savePath, decoded.buf);
+    // 사업성 검토 단계 업로드는 작업파일(디자인 시안)일 가능성이 높음 → 'work' 로 기록.
+    // 추후 카탈로그에서 디피컷(촬영본)으로 교체하면 'display' 로 바뀜 (교체 절차).
+    setImageType(imgId, 'work');
     const v = Date.now();
     res.json({
       success: true,
