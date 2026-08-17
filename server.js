@@ -835,6 +835,91 @@ app.get('/api/products', (req, res) => {
   });
 });
 
+// ━━━ MOQ(최소 발주 수량) 오버라이드 — 팀 공용 (2026-08-15) ━━━
+// 이전에는 브라우저 localStorage 개별 저장이라 지정한 사람 PC 에서만 적용됐음.
+// 서버 저장으로 바꿔 전 직원이 같은 MOQ 기준을 공유한다. 90일 만료는 유지(만료 시 발주 이력 기준으로 복귀).
+const MOQ_OVR_PATH = path.join(PERSIST_DATA_DIR, 'moq-overrides.json');
+const MOQ_OVR_TTL_DAYS = 90;
+
+function loadMoqOverrides() {
+  try {
+    if (fs.existsSync(MOQ_OVR_PATH)) return JSON.parse(fs.readFileSync(MOQ_OVR_PATH, 'utf8')) || {};
+  } catch (e) { console.error('[MOQ] 오버라이드 로드 오류:', e.message); }
+  return {};
+}
+function saveMoqOverrides(obj) {
+  try { fs.writeFileSync(MOQ_OVR_PATH, JSON.stringify(obj, null, 2), 'utf8'); }
+  catch (e) { console.error('[MOQ] 오버라이드 저장 오류:', e.message); }
+}
+let moqOverrides = loadMoqOverrides();
+function pruneMoqOverrides() {
+  const now = Date.now();
+  let dirty = false;
+  Object.keys(moqOverrides).forEach(k => {
+    const o = moqOverrides[k];
+    if (!o || !(o.value > 0) || (o.expires && o.expires < now)) { delete moqOverrides[k]; dirty = true; }
+  });
+  if (dirty) saveMoqOverrides(moqOverrides);
+  return moqOverrides;
+}
+
+app.get('/api/moq-overrides', (req, res) => {
+  res.json({ overrides: pruneMoqOverrides(), ttlDays: MOQ_OVR_TTL_DAYS });
+});
+
+app.post('/api/moq-overrides', (req, res) => {
+  const b = req.body || {};
+  const 품명 = String(b.품명 || b.name || '').trim();
+  const value = parseInt(b.value, 10);
+  if (!품명) return res.status(400).json({ error: '품명 필요' });
+  if (!(value > 0)) return res.status(400).json({ error: 'value(1 이상 정수) 필요' });
+  pruneMoqOverrides();
+  const prev = moqOverrides[품명];
+  moqOverrides[품명] = {
+    value,
+    memo: String(b.memo || ''),
+    updatedBy: (req.user && (req.user.name || req.user.displayName)) || b.updatedBy || '',
+    updatedAt: new Date().toISOString(),
+    expires: Date.now() + MOQ_OVR_TTL_DAYS * 86400 * 1000
+  };
+  saveMoqOverrides(moqOverrides);
+  console.log(`[MOQ] ${품명} ${prev ? prev.value + '→' : ''}${value}개 (${moqOverrides[품명].updatedBy || '이름없음'})`);
+  res.json({ ok: true, 품명, override: moqOverrides[품명] });
+});
+
+app.delete('/api/moq-overrides/:name', (req, res) => {
+  const 품명 = decodeURIComponent(req.params.name || '');
+  if (!moqOverrides[품명]) return res.json({ ok: true, 품명, removed: false });
+  delete moqOverrides[품명];
+  saveMoqOverrides(moqOverrides);
+  console.log(`[MOQ] ${품명} 사용자 지정 삭제 (${(req.user && req.user.name) || '이름없음'})`);
+  res.json({ ok: true, 품명, removed: true });
+});
+
+// localStorage → 서버 1회 이관 (브라우저에 남아있던 개인 설정 흡수)
+app.post('/api/moq-overrides/migrate', (req, res) => {
+  const list = Array.isArray(req.body && req.body.items) ? req.body.items : [];
+  pruneMoqOverrides();
+  let added = 0, skipped = 0;
+  list.forEach(it => {
+    const 품명 = String((it && (it.품명 || it.name)) || '').trim();
+    const value = parseInt(it && it.value, 10);
+    if (!품명 || !(value > 0)) { skipped++; return; }
+    if (moqOverrides[품명]) { skipped++; return; }   // 서버 값이 우선
+    moqOverrides[품명] = {
+      value,
+      memo: String((it && it.memo) || ''),
+      updatedBy: (req.user && (req.user.name || req.user.displayName)) || '',
+      updatedAt: new Date().toISOString(),
+      expires: (it && it.expires) || (Date.now() + MOQ_OVR_TTL_DAYS * 86400 * 1000),
+      migrated: true
+    };
+    added++;
+  });
+  if (added) saveMoqOverrides(moqOverrides);
+  res.json({ ok: true, added, skipped, overrides: moqOverrides });
+});
+
 // 품명별 거래처 비교 테이블
 app.get('/api/compare', (req, res) => {
   const { 품명 } = req.query;

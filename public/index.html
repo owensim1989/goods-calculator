@@ -3092,29 +3092,74 @@ function renderBarChart(items){
 // MOQ·신뢰도 헬퍼 (2026-04-25, 클라이언트)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// localStorage MOQ 오버라이드 (90일 만료)
-const MOQ_OVR_KEY = 'goods-moq-overrides';
-function loadMoqOvr() {
+// MOQ 오버라이드 — 서버 저장(팀 공용, 90일 만료). 2026-08-15 localStorage 개별저장에서 이전.
+const MOQ_OVR_KEY = 'goods-moq-overrides';   // 구버전 localStorage 키 (이관용으로만 사용)
+let MOQ_OVR = {};          // 서버에서 받아온 팀 공용 오버라이드 (동기 조회용 캐시)
+let _moqOvrLoaded = false;
+
+async function fetchMoqOverrides() {
   try {
-    const raw = JSON.parse(localStorage.getItem(MOQ_OVR_KEY) || '{}');
-    const now = Date.now();
-    let dirty = false;
-    Object.keys(raw).forEach(k => { if (raw[k].expires && raw[k].expires < now) { delete raw[k]; dirty = true; } });
-    if (dirty) localStorage.setItem(MOQ_OVR_KEY, JSON.stringify(raw));
-    return raw;
-  } catch (e) { return {}; }
+    const r = await fetch('/api/moq-overrides', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    MOQ_OVR = j.overrides || {};
+    _moqOvrLoaded = true;
+    await _migrateLocalMoqOvr();
+  } catch (e) {
+    console.warn('[MOQ] 서버 오버라이드 로드 실패:', e.message);
+  }
+  clearMoqCache();
+  return MOQ_OVR;
 }
-function saveMoqOvr(품명, value, memo) {
-  const raw = loadMoqOvr();
-  raw[품명] = { value: +value, memo: memo || '', expires: Date.now() + 90 * 86400 * 1000 };
-  localStorage.setItem(MOQ_OVR_KEY, JSON.stringify(raw));
+async function ensureMoqOverrides() { if (!_moqOvrLoaded) await fetchMoqOverrides(); }
+
+// 브라우저에 남아있던 옛 localStorage 설정을 서버로 1회 이관
+async function _migrateLocalMoqOvr() {
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem(MOQ_OVR_KEY) || '{}'); } catch (e) { raw = {}; }
+  const items = Object.keys(raw)
+    .filter(k => raw[k] && raw[k].value > 0 && !(raw[k].expires && raw[k].expires < Date.now()))
+    .map(k => ({ 품명: k, value: raw[k].value, memo: raw[k].memo || '', expires: raw[k].expires }));
+  if (!items.length) { localStorage.removeItem(MOQ_OVR_KEY); return; }
+  try {
+    const r = await fetch('/api/moq-overrides/migrate', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    if (r.ok) {
+      const j = await r.json();
+      MOQ_OVR = j.overrides || MOQ_OVR;
+      localStorage.removeItem(MOQ_OVR_KEY);
+      if (j.added && typeof showToast === 'function') showToast(`MOQ 사용자 설정 ${j.added}건을 서버로 이관했습니다 (이제 팀 공용)`);
+    }
+  } catch (e) { console.warn('[MOQ] 이관 실패:', e.message); }
 }
-function clearMoqOvr(품명) {
-  const raw = loadMoqOvr();
-  delete raw[품명];
-  localStorage.setItem(MOQ_OVR_KEY, JSON.stringify(raw));
+
+async function saveMoqOvr(품명, value, memo) {
+  const r = await fetch('/api/moq-overrides', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 품명, value: +value, memo: memo || '' })
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || ('HTTP ' + r.status));
+  const j = await r.json();
+  MOQ_OVR[품명] = j.override;
+  clearMoqCache();
+  return j.override;
 }
-function getMoqOvr(품명) { return loadMoqOvr()[품명] || null; }
+async function clearMoqOvr(품명) {
+  const r = await fetch('/api/moq-overrides/' + encodeURIComponent(품명), { method: 'DELETE', credentials: 'same-origin' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  delete MOQ_OVR[품명];
+  clearMoqCache();
+}
+function getMoqOvr(품명) {
+  const o = MOQ_OVR[품명];
+  if (!o || !(o.value > 0)) return null;
+  if (o.expires && o.expires < Date.now()) return null;
+  return o;
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MOQ(최소 발주 수량) 산정 — 2026-08-14
@@ -3342,9 +3387,10 @@ function getBudget(){return parseInt((document.getElementById('budget-input').va
 
 let budgetSortMode='weighted'; // 'weighted','confidence','price','qty','cat'
 
-function searchBudget(){
+async function searchBudget(){
   const budget=getBudget(),aCountry=getChecked('b-country'),aCats=getChecked('b-cat'),aProds=getChecked('b-prod'),dl=gDays(globalDL);
   if(!budget){alert('예산을 입력해주세요');return;}
+  await ensureMoqOverrides();   // 팀 공용 MOQ 기준 (서버) 로드
   clearMoqCache();
   const pm={};
   DATA.forEach(it=>{
@@ -3673,6 +3719,7 @@ function openMoqOvrModal(품명) {
         <div class="moq-input-field">
           <label>현재 적용 중인 MOQ</label>
           <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return `${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`;})()}</div>
+          ${ovr ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">설정: ${ovr.updatedBy||'이름없음'} · ${(ovr.updatedAt||'').slice(0,10)} · 만료 ${ovr.expires?new Date(ovr.expires).toISOString().slice(0,10):'-'}</div>` : ''}
         </div>
         <div class="moq-input-field">
           <label>내가 알고 있는 최소 발주 수량</label>
@@ -3682,11 +3729,11 @@ function openMoqOvrModal(품명) {
           <label>메모 (선택)</label>
           <textarea id="moq-ovr-memo" rows="2" placeholder="예: A 거래처 신규 단가표 기준">${ovr?ovr.memo:''}</textarea>
         </div>
-        <div style="font-size:10px;color:var(--text-muted);">90일간 적용 · 만료 시 자동 삭제</div>
+        <div style="font-size:10px;color:var(--text-muted);">👥 서버 저장 — 전 직원에게 동일하게 적용됩니다 · 90일 후 자동 만료(발주 이력 기준으로 복귀)</div>
         <div class="moq-modal-actions">
           ${ovr?`<button class="moq-modal-btn danger" onclick="clearMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">삭제</button>`:''}
           <button class="moq-modal-btn cancel" onclick="closeMoqOvrModal()">취소</button>
-          <button class="moq-modal-btn save" onclick="saveMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">90일간 적용</button>
+          <button class="moq-modal-btn save" onclick="saveMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">저장 (팀 공용 · 90일)</button>
         </div>
       </div>
     </div>
@@ -3707,26 +3754,28 @@ function _refreshMoqOnRecs() {
   const b = getBudget();
   if (b && budgetRecs.length) genSugCombos(b);
 }
-function saveMoqOvrAndClose(품명) {
+async function saveMoqOvrAndClose(품명) {
   const v = parseInt(document.getElementById('moq-ovr-input').value);
   if (!v || v <= 0) { alert('올바른 수량을 입력하세요'); return; }
   const memo = document.getElementById('moq-ovr-memo').value || '';
-  saveMoqOvr(품명, v, memo);
+  try { await saveMoqOvr(품명, v, memo); }
+  catch (e) { alert('MOQ 저장 실패: ' + e.message); return; }
   delete recQtyState[품명];  // 사용자 입력 초기화 → 오버라이드 적용
   closeMoqOvrModal();
   _refreshMoqOnRecs();
   renderBudgetCards();
   recalcComboQty(); renderCombo();
-  if (typeof showToast === 'function') showToast(`${품명} MOQ ${v.toLocaleString()}개로 90일간 적용`);
+  if (typeof showToast === 'function') showToast(`${품명} MOQ ${v.toLocaleString()}개로 저장 (팀 공용 · 90일)`);
 }
-function clearMoqOvrAndClose(품명) {
-  clearMoqOvr(품명);
+async function clearMoqOvrAndClose(품명) {
+  try { await clearMoqOvr(품명); }
+  catch (e) { alert('MOQ 삭제 실패: ' + e.message); return; }
   delete recQtyState[품명];
   closeMoqOvrModal();
   _refreshMoqOnRecs();
   renderBudgetCards();
   recalcComboQty(); renderCombo();
-  if (typeof showToast === 'function') showToast(`${품명} 사용자 MOQ 삭제됨`);
+  if (typeof showToast === 'function') showToast(`${품명} 사용자 MOQ 삭제됨 (팀 공용)`);
 }
 
 function showBudgetDetail(name){
@@ -11097,6 +11146,8 @@ window.addEventListener('DOMContentLoaded', () => {
 // 페이지 진입 시 인증 확인 + 권한별 사이드바 노출
 function _goodsBoot(){
   _initGoodsAuth().then(() => {
+    // 팀 공용 MOQ 기준 미리 로드 (예산 조합 탭에서 즉시 사용)
+    if (typeof fetchMoqOverrides === 'function') fetchMoqOverrides();
     // 🚀 파이프라인 "새 검토 시작"을 새 탭으로 넘어온 경우 (?cpFromPipeline=<제품id>) — 인증 후 자동 프리필
     try {
       const pid = new URLSearchParams(location.search).get('cpFromPipeline');
