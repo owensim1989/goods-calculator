@@ -1205,17 +1205,18 @@ function paneVendors(p){
       </div>
       ${v.memo?`<div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">${esc(v.memo)}</div>`:''}
       ${partnerLinkBlock(p,v,vi)}
-      <table><tr><th>수량</th><th>단가</th><th>통화</th><th>₩환산</th><th>원가율</th><th>리드타임</th><th>조건</th><th></th><th></th></tr>
+      <table><tr>${quotes.length?`<th style="width:24px"><input type="checkbox" ${qselAllChecked(vi,quotes.length)?'checked':''} onchange="qselAll(${vi},${quotes.length},this.checked)" title="전체 선택"></th>`:'<th style="width:24px"></th>'}<th>수량</th><th>단가</th><th>통화</th><th>₩환산</th><th>원가율</th><th>리드타임</th><th>조건</th><th></th><th></th></tr>
       ${quotes.map((q,qi)=>{
         const krw=fxKrw(Number(q.unit)||0,q.cur||'USD');
         const overCap=krw&&p.target&&p.target.unit_cost_max&&krw>p.target.unit_cost_max;
-        return `<tr><td>${(Number(q.qty)||0).toLocaleString()}</td><td>${q.unit}</td><td>${esc(q.cur||'USD')}</td>
+        return `<tr><td><input type="checkbox" ${qselHas(vi,qi)?'checked':''} onchange="qselToggle(${vi},${qi},this.checked)"></td><td>${(Number(q.qty)||0).toLocaleString()}</td><td>${q.unit}</td><td>${esc(q.cur||'USD')}</td>
         <td class="${overCap?'dday-late':''}" title="${overCap?'목표단가 ≤₩'+p.target.unit_cost_max.toLocaleString()+' 초과':''}">${krw?('≈₩'+Math.round(krw).toLocaleString()):'—'}${overCap?' ⚠️':''}</td>
         <td>${costRateCell(p,krw)}</td>
         <td>${q.lead_days?q.lead_days+'일':'—'}</td><td>${esc(q.terms||'')}</td>
-        <td><button class="btn sm" style="padding:1px 7px" title="이 견적으로 발주(PO) 채우기" onclick="poFromQuote(${vi},${qi})">발주→</button></td>
+        <td><button class="btn sm" style="padding:1px 7px" title="이 견적 한 줄로 발주(PO) 채우기" onclick="poFromQuote(${vi},${qi})">발주→</button></td>
         <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delQuote(${vi},${qi})">✕</button></td></tr>`}).join('')}
       <tr>
+        <td></td>
         <td><input id="q-qty-${vi}" type="number" placeholder="${pf.qty||10000}"></td>
         <td><input id="q-unit-${vi}" type="number" step="0.001" placeholder="0.118"></td>
         <td><select id="q-cur-${vi}" class="${pf.cur?'prefill':''}" title="${esc(pf.src||'')}" ${pf.self?'':'data-af="1"'}>${CURRENCIES.map(c=>`<option${(pf.cur||'USD')===c?' selected':''}>${c}</option>`).join('')}</select></td>
@@ -1224,6 +1225,7 @@ function paneVendors(p){
         <td><input id="q-terms-${vi}" placeholder="${pf.terms?esc(pf.terms.slice(0,40)):'FOB …'}"></td>
         <td colspan="2"><button class="btn sm" onclick="addQuote(${vi})">＋</button></td>
       </tr></table>
+      ${qselBar(p,v,vi)}
       <div class="hint qfill" id="q-fill-${vi}" data-vendor="${esc(v.name)}" data-vi="${vi}" style="margin-top:4px;${pf.src?'':'display:none'}">${pf.src?'💱 '+esc(pf.src)+' — 다르면 그냥 고쳐서 입력하세요':''}</div>
     </div>`;
   }).join('');
@@ -1293,7 +1295,65 @@ function addQuote(vi){
   (vs[vi].quotes=vs[vi].quotes||[]).push({qty,unit,cur:$(`q-cur-${vi}`).value,lead_days:Number($(`q-lead-${vi}`).value)||null,terms:$(`q-terms-${vi}`).value.trim()});
   if(vs[vi].status==='contacted')vs[vi].status='quoted';
   refreshCur({vendors:vs})}
-function delQuote(vi,qi){const vs=[...CUR.vendors];vs[vi].quotes.splice(qi,1);refreshCur({vendors:vs})}
+function delQuote(vi,qi){const vs=[...CUR.vendors];vs[vi].quotes.splice(qi,1);QSEL.delete(qselKey(vi));refreshCur({vendors:vs})}
+
+// ━━━ ✅ 견적 품목 선택 → 합산 → 선택분만 발주 (2026-08-17) ━━━
+//  선택 상태는 프로젝트+업체 단위(QSEL Map) — 렌더를 다시 해도 유지, 다른 프로젝트 열면 초기화(openDetail)
+const QSEL=new Map();
+function qselKey(vi){return (CUR&&CUR.id||'')+'|'+vi}
+function qselSet(vi){let s=QSEL.get(qselKey(vi));if(!s){s=new Set();QSEL.set(qselKey(vi),s)}return s}
+function qselHas(vi,qi){const s=QSEL.get(qselKey(vi));return !!(s&&s.has(qi))}
+function qselAllChecked(vi,n){const s=QSEL.get(qselKey(vi));return !!(s&&n&&s.size===n)}
+function qselToggle(vi,qi,on){const s=qselSet(vi);on?s.add(qi):s.delete(qi);renderDetail()}
+function qselAll(vi,n,on){const s=qselSet(vi);s.clear();if(on)for(let i=0;i<n;i++)s.add(i);renderDetail()}
+function qselClear(vi){QSEL.delete(qselKey(vi));renderDetail()}
+// 업체 카드 하단 합산 바 — 선택 건수·총수량·통화별 합계·₩환산 합계 + 「선택 발주」
+function qselBar(p,v,vi){
+  const s=QSEL.get(qselKey(vi));
+  if(!s||!s.size)return '';
+  const qs=[...s].sort((a,b)=>a-b).map(qi=>(v.quotes||[])[qi]).filter(Boolean);
+  if(!qs.length)return '';
+  let qty=0,krwSum=0,krwOk=true;const byCur={};
+  for(const q of qs){
+    const lq=Number(q.qty)||0,lu=Number(q.unit)||0,cur=q.cur||'USD';
+    qty+=lq;byCur[cur]=(byCur[cur]||0)+lq*lu;
+    const k=fxKrw(lq*lu,cur);if(k==null)krwOk=false;else krwSum+=k;
+  }
+  const curs=Object.keys(byCur);
+  const curTxt=curs.map(c=>`${Number(byCur[c].toFixed(2)).toLocaleString()} ${esc(c)}`).join(' + ');
+  const mixed=curs.length>1;
+  return `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.35);border-radius:9px;padding:7px 12px;margin-top:8px;font-size:12.5px">
+    <span>✅ 선택 <b>${qs.length}건</b> · 총수량 <b>${qty.toLocaleString()}</b></span>
+    <span>합계 <b>${curTxt}</b>${krwOk&&krwSum?` <span class="hint">(≈${fmtKrw(krwSum)})</span>`:''}</span>
+    ${mixed?'<span class="tag t-warn" title="발주(PO)는 한 통화로만 가능합니다 — 같은 통화끼리 선택하세요">⚠️ 통화 혼합</span>':''}
+    <span style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn sm" onclick="qselClear(${vi})">선택 해제</button>
+      <button class="btn sm" style="border-color:var(--accent);color:var(--accent-strong);font-weight:700" ${mixed?'disabled title="같은 통화끼리만 발주할 수 있습니다"':''} onclick="poFromQuoteSel(${vi})">🛒 선택 발주 →</button>
+    </span></div>`;
+}
+// 선택 품목들로 발주(PO) 채우기 — po.items[] 다중 라인. 미선정 업체면 선정까지 제안(단건 발주와 동일 규칙)
+async function poFromQuoteSel(vi){
+  const v=CUR.vendors[vi];if(!v)return;
+  const s=QSEL.get(qselKey(vi));
+  const qis=s?[...s].sort((a,b)=>a-b):[];
+  const qs=qis.map(qi=>(v.quotes||[])[qi]).filter(Boolean);
+  if(!qs.length)return toast('견적 행을 먼저 선택하세요');
+  const curs=[...new Set(qs.map(q=>q.cur||'USD'))];
+  if(curs.length>1)return toast('통화가 섞여 있습니다 — 같은 통화끼리 선택하세요');
+  if(v.status!=='selected'){
+    if(!confirm(`"${v.name}"은(는) 아직 선정 전입니다. 선정하고 선택한 ${qs.length}건으로 발주를 채울까요?`))return;
+    const vs=CUR.vendors.map((x,i)=>({...x,status:i===vi?'selected':(x.status==='selected'?'quoted':x.status)}));
+    await refreshCur({vendors:vs});
+  }
+  const items=qs.map((q,i)=>({name:String(q.terms||'').trim()||('품목 '+(i+1)),qty:Number(q.qty)||0,unit:Number(q.unit)||0,cur:q.cur||curs[0]}));
+  const totQty=items.reduce((a,it)=>a+it.qty,0);
+  const tot=items.reduce((a,it)=>a+it.qty*it.unit,0);
+  await refreshCur({po:{...(CUR.po||{}),vendor:v.name,cur:curs[0],qty:totQty||null,unit:items.length===1?(items[0].unit||null):null,items}});
+  const totKrw=fxKrw(tot,curs[0]);
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`견적→발주 채움(선택 ${items.length}건): ${v.name} · ${totQty.toLocaleString()}개 · 합계 ${Number(tot.toFixed(2)).toLocaleString()} ${curs[0]}${totKrw?` (≈${fmtKrw(totKrw)})`:''}`}});
+  QSEL.delete(qselKey(vi));
+  setTab('pay'); toast(`발주(PO)에 선택 ${items.length}건이 채워졌습니다 — ETA 확인 후 저장하고, 대금은 결제요청으로 사업화팀에 넘기세요`);
+}
 
 // 원가율 = 견적단가(₩환산) ÷ 목표판매가 — 목표판매가는 사업성 검토(타겟_소비자가) 우선, 없으면 target.sell_price
 function sellPriceOf(p){
@@ -1317,7 +1377,8 @@ async function poFromQuote(vi,qi){
     const vs=CUR.vendors.map((x,i)=>({...x,status:i===vi?'selected':(x.status==='selected'?'quoted':x.status)}));
     await refreshCur({vendors:vs});
   }
-  await refreshCur({po:{...(CUR.po||{}),vendor:v.name,qty:Number(q.qty)||CUR.po&&CUR.po.qty||null,unit:Number(q.unit)||null,cur:q.cur||'USD'}});
+  // 단건 발주는 품목 모드 해제(items 초기화) — 수량×단가 단일 라인으로 되돌림
+  await refreshCur({po:{...(CUR.po||{}),vendor:v.name,qty:Number(q.qty)||CUR.po&&CUR.po.qty||null,unit:Number(q.unit)||null,cur:q.cur||'USD',items:null}});
   await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`견적→발주 채움: ${v.name} · ${q.qty?Number(q.qty).toLocaleString()+'개':''} × ${q.unit}${q.cur||''}`}});
   setTab('pay'); toast('발주(PO)에 견적이 채워졌습니다 — ETA·메모 확인 후 저장');
 }
@@ -1401,11 +1462,18 @@ function sampleField(i,k,v){const ss=[...CUR.samples];ss[i][k]=v;refreshCur({sam
 function delSample(i){const ss=[...CUR.samples];ss.splice(i,1);refreshCur({samples:ss})}
 
 // -- 발주·대금
-// PO 총액(수량×단가) + 대금 기록 합계 대사
+// PO 총액 — 품목(po.items[])이 있으면 Σ(수량×단가), 없으면 기존 수량×단가 (하위호환)
+function poItems(po){return Array.isArray(po&&po.items)?po.items.filter(Boolean):[]}
+function poTotal(po){
+  const its=poItems(po);
+  if(its.length)return its.reduce((a,it)=>a+(Number(it.qty)||0)*(Number(it.unit)||0),0)||null;
+  return (Number(po&&po.qty)&&Number(po&&po.unit))?Number(po.qty)*Number(po.unit):null;
+}
+// PO 총액 + 대금 기록 합계 대사
 function poSummaryLine(p,curGuess){
   const po=p.po||{};
-  if(!(po.qty&&po.unit))return '';
-  const total=Number(po.qty)*Number(po.unit);
+  const total=poTotal(po);
+  if(total==null)return '';
   const cur=po.cur||curGuess||'USD';        // PO 통화 미저장 시 선정 업체 견적 통화로 표시(입력칸 자동채움과 일치)
   const totalKrw=fxKrw(total,cur);
   let paidSum=0,allSum=0;
@@ -1423,7 +1491,8 @@ function panePay(p){
   const vq=((sel&&sel.quotes)||[]).filter(Boolean);
   // ⚠️ po.cur 는 프로젝트 생성 시 'USD' 기본값이 들어가 있어서 "정한 통화"가 아닐 수 있음 →
   //    업체·수량·단가·조건이 하나도 없으면 아직 발주를 안 쓴 것으로 보고 통화도 자동 채움 대상으로 둔다.
-  const poEmpty=!(po.vendor||po.qty||po.unit||po.memo);
+  const its=poItems(po);
+  const poEmpty=!(po.vendor||po.qty||po.unit||po.memo||its.length);
   const localCur=vq.length?vq[vq.length-1].cur:null;              // 이 제품 선정 업체 견적 통화 (제품별 신호 — 우선)
   const curGuess=(!poEmpty&&po.cur)?po.cur:(localCur||po.cur||null);
   const curFillable=poEmpty||!po.cur;
@@ -1432,16 +1501,34 @@ function panePay(p){
   const localLead=vq.length?(Number(vq[vq.length-1].lead_days)||null):null;
   const etaGuess=po.eta||(localLead?dPlus(todayLocal(),localLead):null);
   const initHint=(!po.eta&&localLead)?`🚚 ${sel.name} 견적 리드타임 ${localLead}일 → ETA ${etaGuess}${localCur?` · 통화 ${localCur}`:''}`:'';
-  return `<h3 style="font-size:13px;margin-bottom:8px">발주(PO)</h3>
-  <div class="frow"><label>업체</label><input id="po-vendor" value="${esc(po.vendor||sel?.name||'')}" placeholder="선정 업체" style="flex:1">
-    <label>수량</label><input id="po-qty" type="number" value="${po.qty||''}" style="width:100px"></div>
+  const curSel=`<select id="po-cur" style="width:80px" class="${curFillable&&localCur?'prefill':''}" ${curFillable?'data-af="1"':''} ${curFillable&&localCur?'data-guess="1"':''}>${CURRENCIES.map(c=>`<option${(curGuess||'USD')===c?' selected':''}>${c}</option>`).join('')}</select>`;
+  const etaInp=`<input id="po-eta" type="date" value="${etaGuess||''}" class="${!po.eta&&etaGuess?'prefill':''}" ${po.eta?'':'data-af="1"'} ${!po.eta&&etaGuess?'data-guess="1"':''}>`;
+  const itemsBlock=its.length?`
+  <table style="margin:2px 0 4px"><tr><th>품목</th><th>수량</th><th>단가</th><th>통화</th><th>금액</th><th></th></tr>
+  ${its.map((it,i)=>{const amt=(Number(it.qty)||0)*(Number(it.unit)||0);
+    return `<tr><td>${esc(it.name||'')}</td><td>${(Number(it.qty)||0).toLocaleString()}</td><td>${it.unit}</td><td>${esc(it.cur||po.cur||'')}</td>
+    <td>${Number(amt.toFixed(2)).toLocaleString()}</td>
+    <td><button class="del" style="border:none;background:none;color:var(--text-3)" title="이 품목만 발주에서 제외 (견적에는 남음)" onclick="delPoItem(${i})">✕</button></td></tr>`}).join('')}
+  </table>
+  <div class="hint" style="margin:0 0 6px">📦 업체·견적 탭에서 <b>선택 발주</b>한 품목입니다 — 구성 변경은 업체·견적 탭에서 다시 선택 발주하세요.</div>`:'';
+  return `<h3 style="font-size:13px;margin-bottom:8px">발주(PO)${its.length?` <span class="tag t-gray">품목 ${its.length}건</span>`:''}</h3>
+  ${its.length
+    ?`<div class="frow"><label>업체</label><input id="po-vendor" value="${esc(po.vendor||sel?.name||'')}" placeholder="선정 업체" style="flex:1">
+      <label>통화</label>${curSel}<label>ETA</label>${etaInp}</div>${itemsBlock}`
+    :`<div class="frow"><label>업체</label><input id="po-vendor" value="${esc(po.vendor||sel?.name||'')}" placeholder="선정 업체" style="flex:1">
+      <label>수량</label><input id="po-qty" type="number" value="${po.qty||''}" style="width:100px"></div>
   <div class="frow"><label>단가</label><input id="po-unit" type="number" step="0.001" value="${po.unit||''}" style="width:100px">
-    <select id="po-cur" style="width:80px" class="${curFillable&&localCur?'prefill':''}" ${curFillable?'data-af="1"':''} ${curFillable&&localCur?'data-guess="1"':''}>${CURRENCIES.map(c=>`<option${(curGuess||'USD')===c?' selected':''}>${c}</option>`).join('')}</select>
-    <label>ETA</label><input id="po-eta" type="date" value="${etaGuess||''}" class="${!po.eta&&etaGuess?'prefill':''}" ${po.eta?'':'data-af="1"'} ${!po.eta&&etaGuess?'data-guess="1"':''}></div>
+    ${curSel}
+    <label>ETA</label>${etaInp}</div>`}
   <div class="frow"><label>결제조건</label><input id="po-memo" value="${esc(po.memo||'')}" style="flex:1" placeholder="인코텀즈·결제조건·계좌 (예: T/T 30% 선금 + 70% 선적전, EXW)" ${po.memo?'':'data-af="1"'}></div>
   <div class="hint" id="po-fill" style="margin:0 0 6px;${initHint?'':'display:none'}"><span id="po-fill-local">${esc(initHint)}</span><span id="po-fill-srv"></span></div>
   ${poSummaryLine(p,curGuess)}
-  <div style="text-align:right"><button class="btn sm" onclick="savePo()">PO 저장</button></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+    ${(!pays.length&&poTotal(po)!=null)?(po.pay_requested_at
+      ?`<span class="tag t-warn" title="MyDesk 결제요청 전달됨 — 사업화팀(김정은·이진아) 처리 대기">💳 결제요청됨 ${esc(po.pay_requested_at)}</span>`
+      :`<button class="btn sm" title="발주 총액을 MyDesk 결제요청으로 사업화팀(김정은·이진아)에 전달" onclick="payReqPo()">💳 결제요청(총액) → 사업화팀</button>`)
+      :''}
+    <button class="btn sm" onclick="savePo()">PO 저장</button></div>
 
   <h3 style="font-size:13px;margin:16px 0 8px">대금 기록 <span class="tag t-gray" style="font-weight:600">기록 전용 — 실제 입출금은 granter·Notion 체계</span></h3>
   <table><tr><th>구분</th><th>금액</th><th>통화</th><th>₩환산</th><th>예정일</th><th>지급일</th><th>메모</th><th></th></tr>
@@ -1451,7 +1538,11 @@ function panePay(p){
     <td>${(Number(pa.amount)||0).toLocaleString()}</td><td>${esc(pa.cur||'KRW')}</td>
     <td>${krw?'≈'+fmtKrw(krw):'—'}</td>
     <td>${pa.due||'—'}</td>
-    <td>${pa.paid_at?`<span class="tag t-ok">${pa.paid_at}</span>`:`<button class="btn sm" onclick="markPaid(${i})">지급 완료</button>`}</td>
+    <td>${pa.paid_at?`<span class="tag t-ok">${pa.paid_at}</span>`
+      :`<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">
+        ${pa.requested_at?`<span class="tag t-warn" title="MyDesk 결제요청 전달됨 — 사업화팀(김정은·이진아) 처리 대기">💳 요청됨 ${esc(pa.requested_at)}</span>`
+          :`<button class="btn sm" title="이 대금을 MyDesk 결제요청으로 사업화팀(김정은·이진아)에 전달" onclick="payReqRow(${i})">💳 결제요청</button>`}
+        <button class="btn sm" onclick="markPaid(${i})">지급 완료</button></div>`}</td>
     <td style="font-size:11.5px;color:var(--text-2)">${esc(pa.memo||'')}</td>
     <td><button class="del" style="border:none;background:none;color:var(--text-3)" onclick="delPay(${i})">✕</button></td></tr>`}).join('')}
   <tr>
@@ -1481,10 +1572,11 @@ function nextPaySuggestion(p,d,curEff){
   const have=(p.payments||[]).map(x=>x.kind);
   const next=d.payments.find(x=>!have.includes(x.kind));
   if(!next)return null;
-  // 수량·단가는 화면 입력칸 기준 (아직 저장 전이어도 계산되게)
+  // 수량·단가는 화면 입력칸 기준 (아직 저장 전이어도 계산되게) — 품목(po.items) 발주면 품목 합계
+  const itsN=poItems(p.po||{});
   const qty=Number(($('po-qty')&&$('po-qty').value)||(p.po&&p.po.qty)||0);
   const unit=Number(($('po-unit')&&$('po-unit').value)||(p.po&&p.po.unit)||0);
-  const total=(qty&&unit)?qty*unit:null;
+  const total=itsN.length?poTotal(p.po):((qty&&unit)?qty*unit:null);
   const cur=(curEff&&next.ratio!=null)?curEff:(next.cur||curEff||'KRW');
   const amount=(total&&next.ratio)?roundCur(total*next.ratio,cur):null;
   const due=(next.due_offset!=null)?dPlus(payBaseOf(p),next.due_offset):null;
@@ -1543,7 +1635,78 @@ async function fillPoDefaults(p){
   }
 }
 
-function savePo(){refreshCur({po:{vendor:$('po-vendor').value.trim()||null,qty:Number($('po-qty').value)||null,unit:Number($('po-unit').value)||null,cur:$('po-cur').value,eta:$('po-eta').value||null,memo:$('po-memo').value.trim()}});toast('PO 저장됨')}
+// PO 저장 — 품목 모드(po.items[])에서는 수량·단가 입력칸이 없으므로 기존 값(품목 합계) 보존
+function savePo(){
+  const po={...(CUR.po||{})};
+  po.vendor=$('po-vendor').value.trim()||null;
+  const q=$('po-qty'),u=$('po-unit');
+  if(q)po.qty=Number(q.value)||null;
+  if(u)po.unit=Number(u.value)||null;
+  po.cur=$('po-cur').value;po.eta=$('po-eta').value||null;po.memo=$('po-memo').value.trim();
+  refreshCur({po});toast('PO 저장됨')}
+// 품목 한 줄만 발주에서 제외 — 견적에는 그대로 남음(나중에 다시 선택 발주 가능)
+async function delPoItem(i){
+  const po={...(CUR.po||{})};const its=poItems(po);
+  const nm=(its[i]&&its[i].name)||'품목';
+  if(!confirm(`"${nm}"을(를) 발주에서 빼시겠어요? (업체·견적 탭에는 남아 있습니다)`))return;
+  its.splice(i,1);
+  if(its.length){po.items=its;po.qty=its.reduce((a,it)=>a+(Number(it.qty)||0),0)||null;po.unit=its.length===1?(Number(its[0].unit)||null):null;}
+  else{po.items=null;po.qty=null;po.unit=null;}
+  await refreshCur({po});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`발주 품목 제외: ${nm}`}});
+}
+// ━━━ 💳 결제요청 → 사업화팀 (2026-08-17) ━━━
+//  실행 주체 = 사업화팀(김정은·이진아). goods 는 MyDesk 결제요청 폼을 prefill 로 열고(제출은 담당자),
+//  제출되면 MyDesk 의 payment_request_new 웹푸시(관리자+사업화지원 역할)가 자동으로 나간다 — goods 쪽 별도 알림 불필요.
+//  대금 기록은 기존대로 "기록 전용" — 실제 입출금은 granter·Notion 체계 유지.
+function openMydeskPayReq(title,amountKrw,memo){
+  const params=new URLSearchParams({prefill:'1',title,amount:String(amountKrw||0),memo});
+  const a=document.createElement('a');
+  a.href='https://mydesk.jeisha.kr/?tab=payment&new=1&'+params.toString();
+  a.target='_blank';a.rel='noopener noreferrer';
+  document.body.appendChild(a);a.click();a.remove();
+}
+function payReqMemo(p,extraLines){
+  const po=p.po||{};const its=poItems(po);
+  const out=['[goods.jeisha.kr 제품 파이프라인 발주에서 자동 생성]',`• 제품: ${p.emoji||''} ${p.name}`.trim()];
+  if(po.vendor)out.push('• 발주 업체: '+po.vendor);
+  if(its.length){
+    out.push(`• 발주 품목 (${its.length}건):`);
+    its.forEach(it=>out.push(`   - ${it.name} — ${(Number(it.qty)||0).toLocaleString()}개 × ${it.unit} ${it.cur||po.cur||''}`));
+  }else if(po.qty&&po.unit)out.push(`• 발주: ${Number(po.qty).toLocaleString()}개 × ${po.unit} ${po.cur||''}`);
+  const tot=poTotal(po);
+  if(tot!=null){const k=fxKrw(tot,po.cur||'KRW');out.push(`• 발주 총액: ${Number(tot.toFixed(2)).toLocaleString()} ${po.cur||''}${k?` (≈${fmtKrw(k)})`:''}`);}
+  out.push(...(extraLines||[]));
+  if(po.eta)out.push('• ETA: '+po.eta);
+  if(po.memo)out.push('• 결제조건: '+po.memo);
+  out.push('• 파이프라인 제품 ID: '+p.id);
+  out.push('','💳 결제 실행 담당: 사업화팀 — 제출 시 MyDesk 알림이 자동 발송됩니다');
+  return out.join('\n');
+}
+// 대금 행 1건 → MyDesk 결제요청 (선금·잔금 등 분할 지급 단위)
+async function payReqRow(i){
+  const p=CUR,pa=(p.payments||[])[i];if(!pa)return;
+  const kindL=PAY_KINDS[pa.kind]||pa.kind;
+  const krw=Math.round(fxKrw(Number(pa.amount)||0,pa.cur||'KRW')||0);
+  if(!krw)return toast('₩환산 금액을 계산할 수 없습니다 — 금액·통화를 확인하세요');
+  openMydeskPayReq(`${p.name} 발주 ${kindL}`,krw,
+    payReqMemo(p,[`• 이번 요청: ${kindL} ${(Number(pa.amount)||0).toLocaleString()} ${pa.cur||'KRW'} (≈${fmtKrw(krw)})${pa.due?` · 예정일 ${pa.due}`:''}`]));
+  const ps=[...CUR.payments];ps[i]={...ps[i],requested_at:todayLocal()};
+  await refreshCur({payments:ps});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`결제요청(MyDesk) 전달: ${kindL} ≈${fmtKrw(krw)} → 사업화팀`}});
+  toast('MyDesk 결제요청 폼이 열렸습니다 — 내용 확인 후 제출하면 사업화팀(김정은·이진아)에게 자동 알림됩니다');
+}
+// 대금 행이 아직 없을 때 — 발주 총액 그대로 결제요청
+async function payReqPo(){
+  const p=CUR,po=p.po||{};const tot=poTotal(po);
+  if(tot==null)return toast('발주 수량·단가(또는 품목)를 먼저 저장하세요');
+  const krw=Math.round(fxKrw(tot,po.cur||'KRW')||0);
+  if(!krw)return toast('₩환산 금액을 계산할 수 없습니다 — 통화를 확인하세요');
+  openMydeskPayReq(`${p.name} 발주 대금`,krw,payReqMemo(p,['• 이번 요청: 발주 총액 전액']));
+  await refreshCur({po:{...(CUR.po||{}),pay_requested_at:todayLocal()}});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`결제요청(MyDesk) 전달: 발주 총액 ≈${fmtKrw(krw)} → 사업화팀`}});
+  toast('MyDesk 결제요청 폼이 열렸습니다 — 내용 확인 후 제출하면 사업화팀(김정은·이진아)에게 자동 알림됩니다');
+}
 function addPay(){const amt=Number($('pay-amt').value);if(!amt)return toast('금액을 입력하세요');
   const ps=[...(CUR.payments||[])];ps.push({kind:$('pay-kind').value,amount:amt,cur:$('pay-cur').value,due:$('pay-due').value||null,paid_at:null,memo:$('pay-memo').value.trim()});refreshCur({payments:ps})}
 function markPaid(i){const ps=[...CUR.payments];ps[i].paid_at=new Date().toISOString().slice(0,10);refreshCur({payments:ps})}
