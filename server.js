@@ -1494,7 +1494,7 @@ app.post('/api/manufacturer-quotes', express.json({ limit: '1mb' }), async (req,
   // env QUOTE_API_KEY 미설정 시 차단 (안전망 — Railway env 설정 후 활성)
   const apiKey = process.env.QUOTE_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'QUOTE_API_KEY 미설정 — Railway env 추가 필요' });
-  if (req.headers['x-quote-api-key'] !== apiKey) {
+  if (!security.keyEq(req.headers['x-quote-api-key'], apiKey)) { // 2026-08-18 보안: 상수시간 비교
     return res.status(401).json({ error: 'unauthorized — X-Quote-Api-Key 헤더 필요' });
   }
 
@@ -2611,8 +2611,8 @@ app.get('/api/consumer-pricing/catalog', async (req, res) => {
 // shop.mrdonothing.com 가 server-to-server 로 호출. /api/consumer-pricing/catalog 와 동일 데이터,
 // 단 인증 대신 SHOP_CATALOG_KEY 키 가드. 판매상태 discontinued 제외 + 전체 페이지 반환.
 app.get('/api/shop-catalog', async (req, res) => {
-  const key = req.get('X-Shop-Api-Key') || req.query.key || '';
-  if (!process.env.SHOP_CATALOG_KEY || key !== process.env.SHOP_CATALOG_KEY) {
+  const key = req.get('X-Shop-Api-Key') || ''; // 2026-08-18 보안: 쿼리스트링 키 제거(로그·프록시·히스토리 노출 방지) — 헤더 전용
+  if (!security.keyEq(key, process.env.SHOP_CATALOG_KEY)) { // 상수시간 비교 + env 미설정 시 fail-closed
     return res.status(401).json({ error: 'unauthorized' });
   }
   if (!notion) return res.json({ items: [] });
@@ -2787,8 +2787,8 @@ app.get('/api/admin/catalog/archive', async (req, res) => {
   const sessionAdmin = req.user && req.user.role === '관리자';
   const adminPwSet = !!(process.env.ADMIN_PASSWORD || '').trim();
   const passwordOK = adminPwSet && (req.query.password || '') === process.env.ADMIN_PASSWORD;
-  const noPasswordFallback = !adminPwSet;
-  if (!sessionAdmin && !passwordOK && !noPasswordFallback) {
+  // 2026-08-18 보안: env 미설정 시 통과(fail-open) 제거 — 관리자 SSO 세션만
+  if (!sessionAdmin && !passwordOK) {
     return res.status(403).json({ error: 'unauthorized — 관리자 SSO 로그인 또는 password 파라미터 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -2899,8 +2899,8 @@ app.post('/api/consumer-pricing/catalog/:id/image', async (req, res) => {
 // 📷 디피컷 일괄 반영 (서버간 전용, SHOP_CATALOG_KEY 가드) — mrdonothing.com 추출분 등 대량 교체용
 // body: { dataUrl, ext?, imageType? } — 기본 imageType='display'
 app.post('/api/catalog-dp-image/:id', async (req, res) => {
-  const key = req.get('X-Shop-Api-Key') || req.query.key || '';
-  if (!process.env.SHOP_CATALOG_KEY || key !== process.env.SHOP_CATALOG_KEY) {
+  const key = req.get('X-Shop-Api-Key') || ''; // 2026-08-18 보안: 쿼리스트링 키 제거(로그·프록시·히스토리 노출 방지) — 헤더 전용
+  if (!security.keyEq(key, process.env.SHOP_CATALOG_KEY)) { // 상수시간 비교 + env 미설정 시 fail-closed
     return res.status(401).json({ error: 'unauthorized' });
   }
   try {
@@ -3279,8 +3279,11 @@ app.post('/api/consumer-pricing/catalog/swap-images', async (req, res) => {
 // 결과: 카탈로그 전체 read → 단종 제외 → 7개국(KR/TW/HK/CN/TH/US/JP) 빈칸/충진/barcode 분포
 // ※ Phase 1은 Notion·DB 쓰기 0건, 읽기만. 안전.
 app.get('/api/admin/pricing-audit/scan', async (req, res) => {
-  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
-    return res.status(403).json({ error: 'unauthorized' });
+  { // 2026-08-18 보안: env 미설정 시 빈 password 통과(fail-open) 제거 + 관리자 SSO 허용
+    const sessionAdmin = req.user && req.user.role === '관리자';
+    const _pw = process.env.ADMIN_PASSWORD || '';
+    const passwordOK = _pw && (req.query.password || '') === _pw;
+    if (!sessionAdmin && !passwordOK) return res.status(403).json({ error: 'unauthorized — 관리자 SSO 또는 password 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   try {
@@ -3823,8 +3826,11 @@ async function _runPricingAudit(jobId, filepath) {
 }
 
 app.get('/api/admin/pricing-audit/run', async (req, res) => {
-  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
-    return res.status(403).json({ error: 'unauthorized' });
+  { // 2026-08-18 보안: env 미설정 시 빈 password 통과(fail-open) 제거 + 관리자 SSO 허용
+    const sessionAdmin = req.user && req.user.role === '관리자';
+    const _pw = process.env.ADMIN_PASSWORD || '';
+    const passwordOK = _pw && (req.query.password || '') === _pw;
+    if (!sessionAdmin && !passwordOK) return res.status(403).json({ error: 'unauthorized — 관리자 SSO 또는 password 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 미설치' });
@@ -3902,8 +3908,11 @@ app.get('/api/admin/pricing-audit/files', (req, res) => {
 // 사용: GET /api/admin/pricing-audit/markup-report
 // 결과: 4시트 엑셀 (1.카테고리·국가 요약 / 2.국가별 마크업 정책 / 3.카테고리·배송비 정책 / 4.인상률 분해)
 app.get('/api/admin/pricing-audit/markup-report', async (req, res) => {
-  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
-    return res.status(403).json({ error: 'unauthorized' });
+  { // 2026-08-18 보안: env 미설정 시 빈 password 통과(fail-open) 제거 + 관리자 SSO 허용
+    const sessionAdmin = req.user && req.user.role === '관리자';
+    const _pw = process.env.ADMIN_PASSWORD || '';
+    const passwordOK = _pw && (req.query.password || '') === _pw;
+    if (!sessionAdmin && !passwordOK) return res.status(403).json({ error: 'unauthorized — 관리자 SSO 또는 password 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
   if (!ExcelJS) return res.status(503).json({ error: 'exceljs 미설치' });
@@ -4152,8 +4161,8 @@ app.get('/api/admin/pricing-audit/apply', async (req, res) => {
   const sessionAdmin = req.user && req.user.role === '관리자';
   const adminPwSet = !!(process.env.ADMIN_PASSWORD || '').trim();
   const passwordOK = adminPwSet && (req.query.password || '') === process.env.ADMIN_PASSWORD;
-  const noPasswordFallback = !adminPwSet; // env 미설정 시 기존 동작 유지(빈 문자열 통과)
-  if (!sessionAdmin && !passwordOK && !noPasswordFallback) {
+  // 2026-08-18 보안: env 미설정 시 통과(fail-open) 제거 — 관리자 SSO 세션만
+  if (!sessionAdmin && !passwordOK) {
     return res.status(403).json({ error: 'unauthorized — 관리자 SSO 로그인 또는 password 파라미터 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -4312,8 +4321,11 @@ app.get('/api/admin/pricing-audit/apply', async (req, res) => {
 //   - DRY-RUN 미리보기 강제
 //   - rate limit 보호
 app.get('/api/admin/pricing-audit/publish-migrate', async (req, res) => {
-  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
-    return res.status(403).json({ error: 'unauthorized' });
+  { // 2026-08-18 보안: env 미설정 시 빈 password 통과(fail-open) 제거 + 관리자 SSO 허용
+    const sessionAdmin = req.user && req.user.role === '관리자';
+    const _pw = process.env.ADMIN_PASSWORD || '';
+    const passwordOK = _pw && (req.query.password || '') === _pw;
+    if (!sessionAdmin && !passwordOK) return res.status(403).json({ error: 'unauthorized — 관리자 SSO 또는 password 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
 
@@ -4625,8 +4637,11 @@ app.post('/api/admin/pricing-audit/apply-prices', async (req, res) => {
 });
 
 app.get('/api/admin/pricing-audit/preview-recalc-2026-04-28', async (req, res) => {
-  if ((req.query.password || '') !== (process.env.ADMIN_PASSWORD || '')) {
-    return res.status(403).json({ error: 'unauthorized' });
+  { // 2026-08-18 보안: env 미설정 시 빈 password 통과(fail-open) 제거 + 관리자 SSO 허용
+    const sessionAdmin = req.user && req.user.role === '관리자';
+    const _pw = process.env.ADMIN_PASSWORD || '';
+    const passwordOK = _pw && (req.query.password || '') === _pw;
+    if (!sessionAdmin && !passwordOK) return res.status(403).json({ error: 'unauthorized — 관리자 SSO 또는 password 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
 
@@ -7199,8 +7214,8 @@ app.post('/api/admin/catalog/sync-all-from-goods', async (req, res) => {
   const sessionAdmin = req.user && req.user.role === '관리자';
   const adminPwSet = !!(process.env.ADMIN_PASSWORD || '').trim();
   const passwordOK = adminPwSet && (req.query.password || req.body?.password || '') === process.env.ADMIN_PASSWORD;
-  const noPasswordFallback = !adminPwSet;
-  if (!sessionAdmin && !passwordOK && !noPasswordFallback) {
+  // 2026-08-18 보안: env 미설정 시 통과(fail-open) 제거 — 관리자 SSO 세션만
+  if (!sessionAdmin && !passwordOK) {
     return res.status(403).json({ error: 'unauthorized — 관리자 SSO 로그인 또는 password 파라미터 필요' });
   }
   if (!notion) return res.status(503).json({ error: 'notion unavailable' });
@@ -7449,7 +7464,9 @@ try {
       ].filter(Boolean)
     } : null
   });
-  driveBackup.mountAdminRoutes(app, { projectName: 'goods-calculator', extraJsonFiles: localJson, imageDirs: [CATALOG_IMAGE_DIR], requireAdmin: (req,res,next)=>next() });
+  // 2026-08-18 보안: 기존 requireAdmin no-op(항상 통과) → 제한접근(사업화지원·두낫띵·관리자)만.
+  //   백업 다운로드는 원가·거래처·주문 전체 JSON 유출 경로 → 일반직원 차단.
+  driveBackup.mountAdminRoutes(app, { projectName: 'goods-calculator', extraJsonFiles: localJson, imageDirs: [CATALOG_IMAGE_DIR], requireAdmin: auth.requireRestrictedAccess });
 } catch (err) { console.error('[backup-to-drive] mount 실패:', err.message); }
 
 // ── Drive 견적 인박스 watcher — 🖥️ 정액제 전환(2026-07-25): 스캔·파일이동은 goods, AI 파싱은 맥미니 데몬 큐로 위임 ──

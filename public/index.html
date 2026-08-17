@@ -2642,7 +2642,7 @@ function initCheckDD(key,menuId,labelId,items){
   updateCheckLabel(key,labelId,sorted);
 }
 function renderCheckItems(key,labelId,items){
-  return items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");const checked=checkDDState[key].has(v)?'checked':'';return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" ${checked} onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${v}</label><button class="solo-btn" onclick="event.stopPropagation();soloCheck('${key}','${ev}','${labelId}')">이것만</button></div>`;}).join('');
+  return items.map((v,i)=>{const sid=`chk-${key}-${i}`;const ev=v.replace(/'/g,"\\'");const checked=checkDDState[key].has(v)?'checked':'';return`<div class="cat-dd-item" onclick="event.stopPropagation()"><input type="checkbox" id="${sid}" data-val="${v.replace(/"/g,'&quot;')}" ${checked} onchange="onCheckDD('${key}','${ev}',this.checked,'${labelId}')"><label for="${sid}">${escapeHtml(v)}</label><button class="solo-btn" onclick="event.stopPropagation();soloCheck('${key}','${ev}','${labelId}')">이것만</button></div>`;}).join('');
 }
 function filterCheckDD(key,menuId,labelId,query){
   const all=checkDDItems[key]||[];
@@ -3800,9 +3800,9 @@ function showBudgetDetail(name){
   const rows=rec.details.map(d=>{
     const fxLabel=d.통화!=='KRW'?`<span style="font-size:11px;color:var(--text-muted)">${d.통화} ${d.통화==='KRW'?Number(d.원본단가).toLocaleString('ko-KR'):Number(d.원본단가).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`:'';
     const costLabel=d.부대비용상태==='확정'?`<span style="font-size:10px;color:#60a5fa">확정</span>`:d.부대비용율>0?`<span style="font-size:10px;color:#fbbf24">+${Math.round(d.부대비용율*100)}%</span>`:'';
-    return`<tr><td>${d.거래처}</td><td>${cB(d.국가)}</td><td class="price">${fmtP(d.KRW단가)} ${fxLabel}</td><td class="price">${fmtP(d.부대비용포함)} ${costLabel}</td><td style="text-align:right">${d.수량?fmt(d.수량):'-'}</td><td style="text-align:right">${d.제작일수?d.제작일수+'일':'-'}</td></tr>`;
+    return`<tr><td>${escapeHtml(d.거래처)}</td><td>${cB(d.국가)}</td><td class="price">${fmtP(d.KRW단가)} ${fxLabel}</td><td class="price">${fmtP(d.부대비용포함)} ${costLabel}</td><td style="text-align:right">${d.수량?fmt(d.수량):'-'}</td><td style="text-align:right">${d.제작일수?d.제작일수+'일':'-'}</td></tr>`;
   }).join('');
-  ol.innerHTML=`<div class="detail-overlay" onclick="closeBudgetDetail()"><div class="detail-panel" onclick="event.stopPropagation()"><button class="close-btn" onclick="closeBudgetDetail()">✕</button><h3>${rec.품명}</h3><div class="detail-sub">${rec.품목} · ${rec.국가.join('/')} · ${rec.데이터건수}건</div><div class="summary-row"><div class="summary-item"><div class="s-label">평균단가</div><div class="s-val">${fmtP(rec.평균단가)}</div></div><div class="summary-item"><div class="s-label">최저단가</div><div class="s-val" style="color:var(--success)">${fmtP(rec.최저단가)}</div></div><div class="summary-item"><div class="s-label">예상수량</div><div class="s-val">${fmt(rec.예상수량_평균)}개</div></div></div><table><thead><tr><th>거래처</th><th>국가</th><th>단가(KRW)</th><th>부대비용포함</th><th style="text-align:right">수량</th><th style="text-align:right">납기</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  ol.innerHTML=`<div class="detail-overlay" onclick="closeBudgetDetail()"><div class="detail-panel" onclick="event.stopPropagation()"><button class="close-btn" onclick="closeBudgetDetail()">✕</button><h3>${escapeHtml(rec.품명)}</h3><div class="detail-sub">${escapeHtml(rec.품목)} · ${escapeHtml(rec.국가.join('/'))} · ${rec.데이터건수}건</div><div class="summary-row"><div class="summary-item"><div class="s-label">평균단가</div><div class="s-val">${fmtP(rec.평균단가)}</div></div><div class="summary-item"><div class="s-label">최저단가</div><div class="s-val" style="color:var(--success)">${fmtP(rec.최저단가)}</div></div><div class="summary-item"><div class="s-label">예상수량</div><div class="s-val">${fmt(rec.예상수량_평균)}개</div></div></div><table><thead><tr><th>거래처</th><th>국가</th><th>단가(KRW)</th><th>부대비용포함</th><th style="text-align:right">수량</th><th style="text-align:right">납기</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 function closeBudgetDetail(){document.getElementById('budget-detail-overlay').innerHTML='';}
 
@@ -3914,7 +3914,7 @@ function renderCombo(){
   const shortList=comboItems.filter(c=>{const q=c.manualQty||c.qty;const m=moqOf(c.name)||0;return m&&q<m;});
   const rem=document.getElementById('combo-remaining');
   if(shortList.length){
-    rem.innerHTML=`<span style="color:#f87171;font-weight:700;">🚫 MOQ 미달 ${shortList.length}건 (${shortList.map(c=>c.name).join(', ')}) — 이대로는 발주 불가</span>`;
+    rem.innerHTML=`<span style="color:#f87171;font-weight:700;">🚫 MOQ 미달 ${shortList.length}건 (${shortList.map(c=>escapeHtml(c.name)).join(', ')}) — 이대로는 발주 불가</span>`;
     rem.classList.remove('over');
   } else if(budget>0){
     const r=budget-totalQuote;

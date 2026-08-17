@@ -1,3 +1,11 @@
 node_modules/
-data/goods-cache.json
 .env
+
+# 2026-08-18 보안: 런타임 민감 파일 — /data 영구볼륨에서 생성되므로 커밋 금지.
+#   세션ID·remember 토큰이 커밋되면 계정 탈취 소지, 거래처/원가 이력은 기밀.
+data/goods-cache.json
+data/goods-sessions.json
+data/goods-remember.json
+data/pipeline.json
+data/pipeline-clients.json
+data/fx-cache.json
