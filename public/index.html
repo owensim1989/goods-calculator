@@ -582,7 +582,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 
 .moq-row1 {
   display: grid;
-  grid-template-columns: 28px 1fr 100px 180px 32px 32px 70px;
+  grid-template-columns: 28px 1fr 100px 180px 32px 32px 32px 70px;
   gap: 8px; align-items: center;
 }
 .moq-row1 > * { min-width: 0; }
@@ -650,6 +650,8 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .moq-icon-btn.contact { color: #fbbf24; border-color: rgba(251,191,36,0.4); }
 .moq-icon-btn.contact:hover { background: rgba(251,191,36,0.18); }
 .moq-icon-btn.expand.open { transform: rotate(180deg); color: var(--primary); border-color: var(--primary); }
+.moq-icon-btn.moq-empty { opacity: .45; }
+.moq-icon-btn.moq-empty:hover { opacity: 1; }
 
 .moq-add {
   background: var(--primary); color: #fff; border: none;
@@ -665,7 +667,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .moq-detail.open { display: block; }
 .moq-detail-row {
   display: grid;
-  grid-template-columns: 28px 1fr 100px 180px 32px 32px 70px;
+  grid-template-columns: 28px 1fr 100px 180px 32px 32px 32px 70px;
   gap: 8px; align-items: center; padding: 3px 12px;
   font-family: 'Menlo', 'Consolas', monospace; font-size: 10px;
 }
@@ -1083,7 +1085,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
   <div class="guide-box" style="flex-direction:column;align-items:flex-start;gap:4px;">
     <div>💡 예산과 조건을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
-    <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">🚫 MOQ(최소 발주 수량)를 못 채우는 품목·조합은 추천에서 제외됩니다. MOQ 기준 = ① 사용자 지정(⚙️ 팀 공용) → ② 과거 최소 발주 이력. 둘 다 없으면 「MOQ 미확인」으로 두고 거르지 않습니다(제조사 확인 필요).</div></div>
+    <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">🚫 MOQ(최소 발주 수량)를 못 채우는 품목·조합은 추천에서 제외됩니다. MOQ는 <b>⚙️로 직접 입력한 값만</b> 인정합니다 — 발주 이력은 MOQ가 아니라 참고용입니다(MOQ만큼만 발주하는 게 아니므로). 미입력 품목은 「MOQ 미확인」으로 두고 거르지 않습니다.</div></div>
   <div class="filter-bar">
     <div class="filter-group"><label>총 예산 (거래처로부터 받은 금액)</label>
       <div class="budget-input-row">
@@ -3174,40 +3176,26 @@ function moqOvrStale(ovr) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MOQ(최소 발주 수량) 산정 — 2026-08-14 (2026-08-17 키워드 기본값 폐지)
-// 우선순위 ① 사용자 지정(⚙️ 팀 공용) → ② 발주 이력
-// 이력이 있으면 이력이 곧 검증된 하한 (실제로 그 수량으로 발주했음).
-// 단, 샘플성 소량 발주(중앙값의 20% 미만)는 MOQ 근거에서 제외하고 p25 사용.
-// 둘 다 없으면 MOQ '미확인' — 추측값으로 거르지 않고, 제조사 확인이 필요하다고만 표시한다.
+// MOQ(최소 발주 수량) 산정 — 2026-08-17 최종
+// MOQ 는 ⚙️ 로 직접 입력한 값만 인정한다. 발주 이력은 MOQ 가 아니다
+// (우리가 항상 MOQ 만큼만 발주하는 게 아니므로, 과거 수량으로 MOQ 를 추정하면 과대평가된다).
+// 입력이 없으면 'MOQ 미확인' → 추천 필터링에 쓰지 않고, 확인이 필요하다고만 표시한다.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 let _moqCache = {};
 function clearMoqCache() { _moqCache = {}; }
 
-// { value, source: 'user'|'history'|'history-p25'|'default', label, memo }
+// { value, source: 'user'|'none', label, memo }
+// value 0 = MOQ 미확인 (추천 필터링에 사용하지 않음)
 function getMoqInfo(품명, dist) {
   if (_moqCache[품명]) return _moqCache[품명];
   const ovr = getMoqOvr(품명);
-  let info;
-  if (ovr && ovr.value > 0) {
-    const age = moqOvrAgeDays(ovr);
-    info = {
-      value: ovr.value, source: 'user', label: '사용자 지정', memo: ovr.memo || '',
-      updatedBy: ovr.updatedBy || '', updatedAt: ovr.updatedAt || '',
-      ageDays: age, stale: moqOvrStale(ovr)
-    };
-  } else {
-    const d = (dist !== undefined) ? dist : calcQtyDist(품명);
-    if (d && d.count > 0) {
-      const sampleish = d.count >= 3 && d.med > 0 && d.min < d.med * 0.2;
-      const v = sampleish ? (d.p25 || d.min) : d.min;
-      info = sampleish
-        ? { value: v, source: 'history-p25', label: '이력 기준(샘플성 소량 제외)' }
-        : { value: v, source: 'history', label: '과거 최소 발주' };
-    } else {
-      // 발주 이력도 사용자 지정도 없음 → 추측하지 않는다 (필터링에서 제외)
-      info = { value: 0, source: 'none', label: 'MOQ 미확인' };
-    }
-  }
+  const info = (ovr && ovr.value > 0)
+    ? {
+        value: ovr.value, source: 'user', label: '사용자 지정', memo: ovr.memo || '',
+        updatedBy: ovr.updatedBy || '', updatedAt: ovr.updatedAt || '',
+        ageDays: moqOvrAgeDays(ovr), stale: moqOvrStale(ovr)
+      }
+    : { value: 0, source: 'none', label: 'MOQ 미확인' };
   _moqCache[품명] = info;
   return info;
 }
@@ -3219,9 +3207,8 @@ function moqCheck(품명, qty) {
   return { ok: !info.value || qty >= info.value, moq: info.value, info };
 }
 function moqSourceTag(info) {
-  if (!info.value) return `<span class="moq-src-tag guess" title="발주 이력이 없어 MOQ를 알 수 없습니다. 제조사 확인 후 ⚙️로 입력하세요">MOQ 미확인 · 제조사 확인 필요</span>`;
-  const cls = info.source === 'user' ? 'user' : 'hist';
-  let html = `<span class="moq-src-tag ${cls}" title="${info.label}">MOQ ${_fmtNum(info.value)}개 · ${info.label}</span>`;
+  if (!info.value) return `<span class="moq-src-tag guess" title="MOQ는 제조사에서 확인한 값만 인정합니다. ⚙️로 입력하면 추천 필터에 반영됩니다">MOQ 미확인</span>`;
+  let html = `<span class="moq-src-tag user" title="${(info.updatedBy||'')} 입력">MOQ ${_fmtNum(info.value)}개</span>`;
   if (info.stale) {
     const m = Math.floor((info.ageDays || 0) / 30);
     html += `<span class="moq-src-tag stale" title="${(info.updatedBy||'')} ${(info.updatedAt||'').slice(0,10)} 설정 — 아직 유효한 기준인지 확인해주세요">⏳ ${m}개월 경과 · 재확인 권장</span>`;
@@ -3586,6 +3573,10 @@ function renderBudgetCards(){
           <div class="moq-icon-slot">
             ${dist ? `<button class="moq-icon-btn expand ${expandOpen}" title="발주 이력" onclick="event.stopPropagation();toggleRecExpand('${r.품명.replace(/'/g,"\\'")}')">▼</button>` : ''}
           </div>
+          <div class="moq-icon-slot">
+            <button class="moq-icon-btn ${moqInfo.value?'':'moq-empty'}" title="${moqInfo.value?'MOQ '+_fmtNum(moqInfo.value)+'개 — 수정':'MOQ 입력 (제조사 확인값)'}"
+                    onclick="event.stopPropagation();openMoqOvrModal('${r.품명.replace(/'/g,"\\'")}')">⚙️</button>
+          </div>
           <button class="moq-add ${sel?'selected':''}" ${(conf==='none'||((r.moqBlocked||moqShort)&&!sel))?'disabled':''}
                   title="${r.moqBlocked?'예산 대비 MOQ 미달 — 진행 불가':moqShort?'MOQ '+_fmtNum(moqInfo.value)+'개 미달 — 수량을 올려주세요':''}"
                   onclick="event.stopPropagation();toggleComboAtQty('${r.품명.replace(/'/g,"\\'")}', ${m && m.recommendedPrice ? m.recommendedPrice : r.평균단가}, ${qty})">
@@ -3599,7 +3590,7 @@ function renderBudgetCards(){
               <div class="moq-detail-meta"><span class="date">발주일</span><span class="vendor">거래처</span></div>
               <div class="col-qty">수량</div>
               <div class="col-price">단가</div>
-              <div></div><div></div><div></div>
+              <div></div><div></div><div></div><div></div>
             </div>
             ${history.map(h=>`
               <div class="moq-detail-row">
@@ -3607,7 +3598,7 @@ function renderBudgetCards(){
                 <div class="moq-detail-meta"><span class="date">${h.date||'-'}</span><span class="vendor">${h.vendor}</span></div>
                 <div class="col-qty">${fmt(h.qty)}</div>
                 <div class="col-price">${fmtP(h.price)}</div>
-                <div></div><div></div><div></div>
+                <div></div><div></div><div></div><div></div>
               </div>
             `).join('')}
             <div style="padding:6px 14px;border-top:1px solid var(--border);margin-top:4px;display:flex;justify-content:flex-end;gap:6px;">
@@ -3623,7 +3614,13 @@ function renderBudgetCards(){
   const blocked = sorted.filter(r=>r.moqBlocked);
   sorted = sorted.filter(r=>!r.moqBlocked);
 
-  let html='';
+  // MOQ 입력 현황 — 미입력 품목은 필터가 적용되지 않으므로 눈에 보이게
+  const withMoq = budgetRecs.filter(r=>r.moq && r.moq.value>0).length;
+  const noMoq = budgetRecs.length - withMoq;
+  let html = `<div style="font-size:11px;color:var(--text-muted);margin:2px 0 8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <span>⚙️ MOQ 입력됨 <b style="color:#34d399;">${withMoq}</b>품목</span>
+      <span>· MOQ 미확인 <b style="color:#a1a1aa;">${noMoq}</b>품목 <span style="opacity:.8;">(필터 미적용 — 카드의 ⚙️로 제조사 확인값을 넣으면 반영됩니다)</span></span>
+    </div>`;
   if(budgetSortMode==='cat'){
     const grouped={};
     sorted.forEach(r=>{const cat=r.품목||'기타';if(!grouped[cat])grouped[cat]=[];grouped[cat].push(r);});
@@ -3723,21 +3720,21 @@ function openMoqOvrModal(품명) {
         <button class="moq-modal-close" onclick="closeMoqOvrModal()">✕</button>
         <h3>${품명} — MOQ 직접 입력</h3>
         <div class="moq-input-field">
-          <label>현재 데이터 분포</label>
+          <label>과거 발주 수량 (참고용 — MOQ 아님)</label>
           <div style="font-size:13px;color:var(--text-muted);">${dist?(`${fmt(dist.min)} ~ ${fmt(dist.med)} ~ ${fmt(dist.max)}개 (${dist.count}건)`):'데이터 없음'}</div>
         </div>
         <div class="moq-input-field">
           <label>현재 적용 중인 MOQ</label>
-          <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return i.value?`${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`:'<span style="color:var(--text-muted);">미확인 — 발주 이력이 없어 자동 산출 불가</span>';})()}</div>
+          <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return i.value?`${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`:'<span style="color:var(--text-muted);">미확인 — 아직 입력된 값이 없습니다 (추천 필터 미적용)</span>';})()}</div>
           ${ovr ? `<div style="font-size:11px;color:${moqOvrStale(ovr)?'#fbbf24':'var(--text-muted)'};margin-top:3px;">설정: ${ovr.updatedBy||'이름없음'} · ${(ovr.updatedAt||'').slice(0,10)}${(()=>{const d=moqOvrAgeDays(ovr);return d==null?'':` (${d}일 전)`;})()}${moqOvrStale(ovr)?' · ⏳ 6개월 지났습니다. 아직 유효한 기준인지 확인해주세요':''}</div>` : ''}
         </div>
         <div class="moq-input-field">
-          <label>내가 알고 있는 최소 발주 수량</label>
-          <input type="number" id="moq-ovr-input" value="${ovr?ovr.value:(dist?dist.med:'')}" placeholder="예: 1000">
+          <label>제조사에서 확인한 최소 발주 수량 (MOQ)</label>
+          <input type="number" id="moq-ovr-input" value="${ovr?ovr.value:''}" placeholder="예: 500">
         </div>
         <div class="moq-input-field">
-          <label>메모 (선택)</label>
-          <textarea id="moq-ovr-memo" rows="2" placeholder="예: A 거래처 신규 단가표 기준">${ovr?ovr.memo:''}</textarea>
+          <label>근거 메모 (선택)</label>
+          <textarea id="moq-ovr-memo" rows="2" placeholder="예: A공장 2026-08 견적서 기준 MOQ 500">${ovr?ovr.memo:''}</textarea>
         </div>
         <div style="font-size:10px;color:var(--text-muted);">👥 서버 저장 — 전 직원에게 동일하게 적용됩니다 · 삭제할 때까지 유지되며, 6개월이 지나면 재확인 배지가 표시됩니다</div>
         <div class="moq-modal-actions">
@@ -4111,7 +4108,7 @@ function genSugCombos(budget){
     html+=`<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">🚫 MOQ 미달로 제외된 조합 ${blocked.length}건</div>`;
     html+=blocked.map(co=>{
       const rows=co.alloc.rows;
-      return`<div class="sug-combo-card blocked" title="MOQ 최소 원가가 예산을 초과합니다"><div class="sug-combo-items">${co.label}<br>${rows.map(r=>`<strong>${r.name}</strong> MOQ ${fmt(r.moq)}개`).join(' + ')}<div style="font-size:10px;color:#f87171;margin-top:3px;">MOQ 최소 원가 ${fmtP(co.alloc.need)} &gt; 가용 원가예산 ${fmtP(co.alloc.costBudget)} (마진 30% 가정)</div></div><div class="sug-combo-price" style="color:#f87171;">진행 불가</div></div>`;
+      return`<div class="sug-combo-card blocked" title="MOQ 최소 원가가 예산을 초과합니다"><div class="sug-combo-items">${co.label}<br>${rows.map(r=>`<strong>${r.name}</strong> ${r.moq?`MOQ ${fmt(r.moq)}개`:'MOQ 미확인'}`).join(' + ')}<div style="font-size:10px;color:#f87171;margin-top:3px;">MOQ 최소 원가 ${fmtP(co.alloc.need)} &gt; 가용 원가예산 ${fmtP(co.alloc.costBudget)} (마진 30% 가정)</div></div><div class="sug-combo-price" style="color:#f87171;">진행 불가</div></div>`;
     }).join('');
   }
   list.innerHTML=html;
