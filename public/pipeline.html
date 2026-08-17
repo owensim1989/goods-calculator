@@ -898,7 +898,7 @@ function renderDetail(){
       <b style="font-size:17px">${esc(p.name)}</b>
       <span style="cursor:pointer" onclick="toggleBrand()" title="클릭해 자체/외주 전환">${brandBadge(p)}</span>
       ${brandOf(p)==='oem'?`<span class="tag t-gray" style="cursor:pointer" onclick="openClientPicker()" title="클릭해 발주처 변경">발주처 ${p.client?esc(p.client):'지정하기 ✏️'}${p.client_ref?' 💼':''}</span>`:''}
-      ${brandOf(p)==='oem'?projTag(p):''}
+      ${projTag(p)}
       <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
       <span class="tag ${p.status==='active'?'t-ok':p.status==='hold'?'t-warn':'t-gray'}">${{active:'진행 중',hold:'보류',done:'완료',cancelled:'취소'}[p.status]}</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 완료 ${completedCount(p)}/${p.stages.length}단계 · ${clientProgress(p)}%</span>
@@ -1679,13 +1679,18 @@ function payReqExtra(p){
   if(r){out.project=r.name;out.projectId=r.id;}
   return out;
 }
-// 귀속 미연결 외주 건은 대금요청 전에 프로젝트부터 연결하도록 막는다 (MyDesk 게이트①에서 어차피 반려됨)
+// 귀속 미연결 건은 대금요청 전에 프로젝트부터 연결하도록 막는다 (MyDesk 게이트①에서 어차피 반려됨)
+//   외주 = 발주처 프로젝트 탐색 / 자체브랜드 = MDN 제품 프로젝트 생성 안내
 async function ensureProjectLinked(){
-  if(brandOf(CUR)!=='oem')return true;               // 자체브랜드는 MyDesk 에서 직접 선택
   if(projRef(CUR))return true;
-  toast('외주 건은 정산 프로젝트를 먼저 연결해야 합니다 — 발주처 프로젝트를 찾는 중…');
-  await autoLinkProject(false);
-  return !!projRef(CUR);
+  if(brandOf(CUR)==='oem'){
+    toast('외주 건은 정산 프로젝트를 먼저 연결해야 합니다 — 발주처 프로젝트를 찾는 중…');
+    await autoLinkProject(false);
+    return !!projRef(CUR);
+  }
+  toast('자체브랜드 제품은 원가를 쌓을 MDN 프로젝트가 필요합니다 — 만들거나 연결해 주세요');
+  openProjPicker();
+  return false;
 }
 function payReqMemo(p,extraLines){
   const po=p.po||{};const its=poItems(po);
@@ -1699,9 +1704,9 @@ function payReqMemo(p,extraLines){
   if(tot!=null){const k=fxKrw(tot,po.cur||'KRW');out.push(`• 발주 총액: ${Number(tot.toFixed(2)).toLocaleString()} ${po.cur||''}${k?` (≈${fmtKrw(k)})`:''}`);}
   out.push(...(extraLines||[]));
   const pr=projRef(p);
-  if(pr)out.push(`• 정산 프로젝트: ${pr.name}${pr.client?` (${pr.client})`:''}`);
+  if(pr)out.push(`• 정산 프로젝트: ${pr.name}${pr.client?` (${pr.client})`:''}${pr.created_by_goods?' — 이 제품 전용(원가 누적용). 정산행이 없으면 “정산행 생성”을 한 번 눌러주세요':''}`);
   else if(brandOf(p)==='oem'&&p.client)out.push(`• 발주처: ${p.client} — ⚠️ 정산 프로젝트 미연결`);
-  else out.push('• 자체브랜드(미스터두낫띵) 건 — 귀속 프로젝트를 선택해 주세요');
+  else out.push('• 자체브랜드(미스터두낫띵) 건 — ⚠️ 정산 프로젝트 미연결');
   if(po.eta)out.push('• ETA: '+po.eta);
   if(po.memo)out.push('• 결제조건: '+po.memo);
   out.push('• 파이프라인 제품 ID: '+p.id);
@@ -1965,9 +1970,26 @@ function store_normLoose(s){return String(s||'').toLowerCase().replace(/[\s()\[\
 function projRef(p){return (p&&p.links&&p.links.mydesk_project)||null}
 function projTag(p){
   const r=projRef(p);
-  return r
-    ? `<span class="tag t-ok" style="cursor:pointer" onclick="openProjPicker()" title="정산 프로젝트 — 대금요청 시 이 프로젝트로 귀속됩니다 (클릭해 변경)">🧾 ${esc(r.name)}</span>`
-    : `<span class="tag t-warn" style="cursor:pointer" onclick="openProjPicker()" title="지출 귀속용 정산 프로젝트가 아직 연결되지 않았습니다">🧾 정산 프로젝트 연결하기 ✏️</span>`;
+  if(r)return `<span class="tag t-ok" style="cursor:pointer" onclick="openProjPicker()" title="정산 프로젝트 — 대금요청 시 이 프로젝트로 귀속됩니다 (클릭해 변경)">🧾 ${esc(r.name)}</span>`;
+  const own=brandOf(p)!=='oem';
+  return `<span class="tag t-warn" style="cursor:pointer" onclick="openProjPicker()" title="${own?'자체브랜드 제품 원가를 쌓을 MDN 프로젝트가 아직 없습니다':'지출 귀속용 정산 프로젝트가 아직 연결되지 않았습니다'}">🧾 ${own?'MDN 프로젝트 만들기':'정산 프로젝트 연결하기'} ✏️</span>`;
+}
+// 🏷️ 자체브랜드 — 제품별 MDN 프로젝트 생성 (Owen 확정 B안)
+//   MyDesk 두낫띵 DB에 '[내부] [MDN] 제품명 (발주 YYYY-MM)' 로 만들고 바로 연결한다.
+function mdnProjName(p){return `[MDN] ${(p.name||'').trim()} (발주 ${todayLocal().slice(0,7)})`}
+async function createMdnProject(){
+  if(!CUR)return;
+  const nm=mdnProjName(CUR);
+  if(!confirm(`MyDesk에 이 제품의 정산 프로젝트를 만들까요?\n\n  ${nm}\n\n· 두낫띵 팀 프로젝트로 생성되고, 앞으로 이 제품 발주 대금이 여기에 귀속됩니다.\n· 매출이 없는 원가 전용 건이라 미수금 집계에는 잡히지 않습니다.\n· 첫 지출 승인 때 사업화팀이 "정산행 생성"을 한 번 눌러주면 원가가 쌓이기 시작합니다.`))return;
+  document.getElementById('projModal')?.remove();
+  toast('MyDesk 프로젝트 생성 중…');
+  let d;
+  try{ d=await api('/'+CUR.id+'/settlement-project',{method:'POST',body:{}}); }
+  catch(e){ return toast('생성 실패: '+e.message); }
+  if(d.pipeline){CUR=d.pipeline;renderDetail();load();}
+  else await refreshCur({});
+  toast(d.created?`정산 프로젝트가 생성됐습니다 — ${d.project.name}`
+    :`같은 이름의 프로젝트가 이미 있어 연결했습니다 — ${d.project.name}`);
 }
 // 발주처로 프로젝트 자동 탐색.
 //   유일 후보 → 바로 연결. 후보가 여럿이거나 없으면 사람이 골라야 하므로
@@ -2000,6 +2022,11 @@ async function openProjPicker(){
     <h2 style="font-size:16px">🧾 정산 프로젝트 연결</h2>
     <div class="hint" style="margin:6px 0 10px">이 제품의 <b>지출(대금)</b>이 귀속될 MyDesk 프로젝트입니다. 연결해 두면 대금요청 폼에 프로젝트가 자동으로 채워집니다.
       ${cur?`<br>현재 연결: <b style="color:var(--ok)">${esc(cur.name)}</b>`:''}</div>
+    ${brandOf(CUR)!=='oem'?`<div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:12.5px;margin-bottom:6px">🏷️ 자체브랜드 제품은 <b>제품별 MDN 프로젝트</b>를 만들어 원가를 쌓습니다.</div>
+      <div class="hint" style="margin-bottom:8px">만들 이름: <b style="color:var(--text)">${esc(mdnProjName(CUR))}</b></div>
+      <button class="btn sm" style="border-color:var(--accent);color:var(--accent-strong);font-weight:700" onclick="createMdnProject()">➕ MDN 프로젝트 만들고 연결</button>
+      <span class="hint" style="margin-left:8px">이미 만들어 뒀다면 아래에서 검색해 연결하세요</span></div>`:''}
     <div class="frow"><input id="pjq" style="flex:1" placeholder="프로젝트명 검색 (초성·부분일치)" autocomplete="off">
       ${cur?`<button class="btn sm danger" onclick="unlinkProject()">연결 해제</button>`:''}</div>
     <div id="pjlist" style="margin-top:10px;max-height:320px;overflow:auto"><div class="hint">불러오는 중…</div></div>
