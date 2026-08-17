@@ -272,6 +272,12 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '20mb' }));
 
+// ━━━ 보안 (2026-08-17) — 헤더 + 로그인 브루트포스 차단 ━━━
+const security = require('./lib/security');
+app.use(security.securityHeaders());
+// /api/login·/api/login/auto 브루트포스 제한 (IP당 15분 20회) — MyDesk 비번 무차별 대입 차단
+app.use('/api/login', security.rateLimit('login', 20, 15 * 60e3));
+
 // ━━━ 로그인 시스템 (MyDesk SSO 연동) ━━━
 const auth = require('./lib/auth');
 // 바이어 엑셀 대외 발송 정제 (내부 마커 제거 + 내부메모 차단 + 한글→영문) — 2026-08-01
