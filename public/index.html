@@ -1083,7 +1083,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
   </div>
   <div class="guide-box" style="flex-direction:column;align-items:flex-start;gap:4px;">
     <div>💡 예산과 조건을 입력하고 추천받기를 누르세요. 카드를 클릭하면 조합에 추가됩니다.</div>
-    <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">🚫 MOQ(최소 발주 수량)를 못 채우는 품목·조합은 추천에서 제외됩니다. MOQ 기준 = ① 사용자 지정(⚙️) → ② 과거 최소 발주 이력 → ③ 품목 기본값(추정) 순.</div></div>
+    <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">🚫 MOQ(최소 발주 수량)를 못 채우는 품목·조합은 추천에서 제외됩니다. MOQ 기준 = ① 사용자 지정(⚙️ 팀 공용) → ② 과거 최소 발주 이력. 둘 다 없으면 「MOQ 미확인」으로 두고 거르지 않습니다(제조사 확인 필요).</div></div>
   <div class="filter-bar">
     <div class="filter-group"><label>총 예산 (거래처로부터 받은 금액)</label>
       <div class="budget-input-row">
@@ -3174,26 +3174,12 @@ function moqOvrStale(ovr) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MOQ(최소 발주 수량) 산정 — 2026-08-14
-// 우선순위 ① 사용자 지정(⚙️ 90일) → ② 발주 이력 → ③ 품명 키워드 기본값(추정)
-// 이력이 있으면 이력이 기본값보다 우선 (실제로 발주했던 수량 = 검증된 하한)
-// 단, 샘플성 소량 발주(중앙값의 20% 미만)는 MOQ 근거에서 제외하고 p25 사용
+// MOQ(최소 발주 수량) 산정 — 2026-08-14 (2026-08-17 키워드 기본값 폐지)
+// 우선순위 ① 사용자 지정(⚙️ 팀 공용) → ② 발주 이력
+// 이력이 있으면 이력이 곧 검증된 하한 (실제로 그 수량으로 발주했음).
+// 단, 샘플성 소량 발주(중앙값의 20% 미만)는 MOQ 근거에서 제외하고 p25 사용.
+// 둘 다 없으면 MOQ '미확인' — 추측값으로 거르지 않고, 제조사 확인이 필요하다고만 표시한다.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const MOQ_DEFAULT_FALLBACK = 500;
-const MOQ_KEYWORD_DEFAULTS = [
-  { re: /(인형|봉제|플러시|plush|doll)/i,                          moq: 500  },
-  { re: /(키링|키체인|아크릴|뱃지|배지|마그넷|자석|스탠드)/i,        moq: 500  },
-  { re: /(연필|볼펜|샤프|지우개|스티커|엽서|포토카드|카드|메모)/i,   moq: 1000 },
-  { re: /(노트|다이어리|클리어파일|파일|폴더|스케치북|달력)/i,       moq: 500  },
-  { re: /(티셔츠|후드|맨투맨|모자|캡|의류|앞치마|양말|슬리퍼)/i,     moq: 100  },
-  { re: /(머그|텀블러|컵|보틀|우산|담요|쿠션|가방|에코백|파우치)/i,  moq: 300  },
-  { re: /(부채|풍선|팔찌|밴드|랜야드|스트랩)/i,                     moq: 1000 }
-];
-function _moqDefaultFor(품명) {
-  const hit = MOQ_KEYWORD_DEFAULTS.find(k => k.re.test(품명 || ''));
-  return hit ? hit.moq : MOQ_DEFAULT_FALLBACK;
-}
-
 let _moqCache = {};
 function clearMoqCache() { _moqCache = {}; }
 
@@ -3218,7 +3204,8 @@ function getMoqInfo(품명, dist) {
         ? { value: v, source: 'history-p25', label: '이력 기준(샘플성 소량 제외)' }
         : { value: v, source: 'history', label: '과거 최소 발주' };
     } else {
-      info = { value: _moqDefaultFor(품명), source: 'default', label: '기본값(추정)' };
+      // 발주 이력도 사용자 지정도 없음 → 추측하지 않는다 (필터링에서 제외)
+      info = { value: 0, source: 'none', label: 'MOQ 미확인' };
     }
   }
   _moqCache[품명] = info;
@@ -3232,7 +3219,8 @@ function moqCheck(품명, qty) {
   return { ok: !info.value || qty >= info.value, moq: info.value, info };
 }
 function moqSourceTag(info) {
-  const cls = info.source === 'user' ? 'user' : info.source === 'default' ? 'guess' : 'hist';
+  if (!info.value) return `<span class="moq-src-tag guess" title="발주 이력이 없어 MOQ를 알 수 없습니다. 제조사 확인 후 ⚙️로 입력하세요">MOQ 미확인 · 제조사 확인 필요</span>`;
+  const cls = info.source === 'user' ? 'user' : 'hist';
   let html = `<span class="moq-src-tag ${cls}" title="${info.label}">MOQ ${_fmtNum(info.value)}개 · ${info.label}</span>`;
   if (info.stale) {
     const m = Math.floor((info.ageDays || 0) / 30);
@@ -3740,7 +3728,7 @@ function openMoqOvrModal(품명) {
         </div>
         <div class="moq-input-field">
           <label>현재 적용 중인 MOQ</label>
-          <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return `${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`;})()}</div>
+          <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return i.value?`${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`:'<span style="color:var(--text-muted);">미확인 — 발주 이력이 없어 자동 산출 불가</span>';})()}</div>
           ${ovr ? `<div style="font-size:11px;color:${moqOvrStale(ovr)?'#fbbf24':'var(--text-muted)'};margin-top:3px;">설정: ${ovr.updatedBy||'이름없음'} · ${(ovr.updatedAt||'').slice(0,10)}${(()=>{const d=moqOvrAgeDays(ovr);return d==null?'':` (${d}일 전)`;})()}${moqOvrStale(ovr)?' · ⏳ 6개월 지났습니다. 아직 유효한 기준인지 확인해주세요':''}</div>` : ''}
         </div>
         <div class="moq-input-field">
@@ -4073,13 +4061,14 @@ function exportToQuote(){
 function _allocComboWithMoq(items, budget, marginRate){
   const rate = (marginRate==null)?0.3:marginRate;
   const costBudget = Math.floor(budget*(1-rate));
-  const rows = items.map(i=>{const moq=moqOf(i.name)||1;return {...i, moq, qty:moq};});
-  const need = rows.reduce((s,r)=>s+r.price*r.moq,0);
+  // moq 0 = 미확인 → 제약 없음(최소 1개로만 계산)
+  const rows = items.map(i=>{const moq=moqOf(i.name)||0;return {...i, moq, qty:Math.max(1,moq)};});
+  const need = rows.reduce((s,r)=>s+r.price*Math.max(1,r.moq),0);
   if(!(need>0) || need>costBudget) return {ok:false, need, costBudget, rows};
   const per = Math.floor((costBudget-need)/rows.length);
   rows.forEach(r=>{ if(r.price>0) r.qty += Math.floor(per/r.price); });
   // 발주 단위로 내림 (단, MOQ 밑으로는 내리지 않음)
-  rows.forEach(r=>{ r.qty = Math.max(r.moq, roundDownQty(r.qty)); });
+  rows.forEach(r=>{ r.qty = Math.max(Math.max(1,r.moq), roundDownQty(r.qty)); });
   return {ok:true, rows, totalCost: rows.reduce((s,r)=>s+r.price*r.qty,0), need, costBudget};
 }
 
@@ -4112,7 +4101,7 @@ function genSugCombos(budget){
   let html=feasible.map(co=>{
     const rows=co.alloc.rows;
     const payload=JSON.stringify(rows.map(r=>({name:r.name,price:r.price,qty:r.qty}))).replace(/'/g,"\\'");
-    return`<div class="sug-combo-card" onclick='applySugCombo(${payload})'><div class="sug-combo-items">${co.label}<br>${rows.map(r=>`<strong>${r.name}</strong> ${fmt(r.qty)}개<span class="combo-moq-ok">MOQ ${fmt(r.moq)}✓</span>`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(co.alloc.totalCost)}</div></div>`;
+    return`<div class="sug-combo-card" onclick='applySugCombo(${payload})'><div class="sug-combo-items">${co.label}<br>${rows.map(r=>`<strong>${r.name}</strong> ${fmt(r.qty)}개<span class="combo-moq-ok">${r.moq?`MOQ ${fmt(r.moq)}✓`:'MOQ 미확인'}</span>`).join(' + ')}</div><div class="sug-combo-price">원가 ~${fmtP(co.alloc.totalCost)}</div></div>`;
   }).join('');
 
   if(!feasible.length){
