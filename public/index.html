@@ -600,6 +600,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .moq-src-tag.hist  { background: rgba(96,165,250,0.16); color:#60a5fa; }
 .moq-src-tag.user  { background: rgba(52,211,153,0.16); color:#34d399; }
 .moq-src-tag.guess { background: rgba(161,161,170,0.18); color:#a1a1aa; }
+.moq-src-tag.stale { background: rgba(251,191,36,0.20); color:#fbbf24; }
 .moq-rec.moq-short { border-left-color:#f87171 !important; background: rgba(248,113,113,0.10); }
 .moq-warn-line { font-size:10px; font-weight:600; color:#f87171; margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .moq-fix-btn { background: rgba(251,191,36,0.9); color:#111; border:none; border-radius:4px; padding:2px 7px; font-size:9px; font-weight:700; cursor:pointer; }
@@ -3119,7 +3120,7 @@ async function _migrateLocalMoqOvr() {
   try { raw = JSON.parse(localStorage.getItem(MOQ_OVR_KEY) || '{}'); } catch (e) { raw = {}; }
   const items = Object.keys(raw)
     .filter(k => raw[k] && raw[k].value > 0 && !(raw[k].expires && raw[k].expires < Date.now()))
-    .map(k => ({ 품명: k, value: raw[k].value, memo: raw[k].memo || '', expires: raw[k].expires }));
+    .map(k => ({ 품명: k, value: raw[k].value, memo: raw[k].memo || '' }));
   if (!items.length) { localStorage.removeItem(MOQ_OVR_KEY); return; }
   try {
     const r = await fetch('/api/moq-overrides/migrate', {
@@ -3157,8 +3158,19 @@ async function clearMoqOvr(품명) {
 function getMoqOvr(품명) {
   const o = MOQ_OVR[품명];
   if (!o || !(o.value > 0)) return null;
-  if (o.expires && o.expires < Date.now()) return null;
-  return o;
+  return o;   // 만료 없음 — 지울 때까지 유지
+}
+// 설정 후 경과일 / 6개월 경과 여부 (재확인 권장 배지용)
+const MOQ_OVR_STALE_DAYS = 180;
+function moqOvrAgeDays(ovr) {
+  if (!ovr || !ovr.updatedAt) return null;
+  const t = Date.parse(ovr.updatedAt);
+  if (!t) return null;
+  return Math.floor((Date.now() - t) / 86400000);
+}
+function moqOvrStale(ovr) {
+  const d = moqOvrAgeDays(ovr);
+  return d != null && d >= MOQ_OVR_STALE_DAYS;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3191,7 +3203,12 @@ function getMoqInfo(품명, dist) {
   const ovr = getMoqOvr(품명);
   let info;
   if (ovr && ovr.value > 0) {
-    info = { value: ovr.value, source: 'user', label: '사용자 지정', memo: ovr.memo || '' };
+    const age = moqOvrAgeDays(ovr);
+    info = {
+      value: ovr.value, source: 'user', label: '사용자 지정', memo: ovr.memo || '',
+      updatedBy: ovr.updatedBy || '', updatedAt: ovr.updatedAt || '',
+      ageDays: age, stale: moqOvrStale(ovr)
+    };
   } else {
     const d = (dist !== undefined) ? dist : calcQtyDist(품명);
     if (d && d.count > 0) {
@@ -3216,7 +3233,12 @@ function moqCheck(품명, qty) {
 }
 function moqSourceTag(info) {
   const cls = info.source === 'user' ? 'user' : info.source === 'default' ? 'guess' : 'hist';
-  return `<span class="moq-src-tag ${cls}" title="${info.label}">MOQ ${_fmtNum(info.value)}개 · ${info.label}</span>`;
+  let html = `<span class="moq-src-tag ${cls}" title="${info.label}">MOQ ${_fmtNum(info.value)}개 · ${info.label}</span>`;
+  if (info.stale) {
+    const m = Math.floor((info.ageDays || 0) / 30);
+    html += `<span class="moq-src-tag stale" title="${(info.updatedBy||'')} ${(info.updatedAt||'').slice(0,10)} 설정 — 아직 유효한 기준인지 확인해주세요">⏳ ${m}개월 경과 · 재확인 권장</span>`;
+  }
+  return html;
 }
 
 // 단일 행의 KRW 환산 (부대비용 포함)
@@ -3719,7 +3741,7 @@ function openMoqOvrModal(품명) {
         <div class="moq-input-field">
           <label>현재 적용 중인 MOQ</label>
           <div style="font-size:13px;color:var(--text);">${(()=>{const i=getMoqInfo(품명,dist);return `${fmt(i.value)}개 <span style="color:var(--text-muted);font-size:11px;">(${i.label})</span>`;})()}</div>
-          ${ovr ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">설정: ${ovr.updatedBy||'이름없음'} · ${(ovr.updatedAt||'').slice(0,10)} · 만료 ${ovr.expires?new Date(ovr.expires).toISOString().slice(0,10):'-'}</div>` : ''}
+          ${ovr ? `<div style="font-size:11px;color:${moqOvrStale(ovr)?'#fbbf24':'var(--text-muted)'};margin-top:3px;">설정: ${ovr.updatedBy||'이름없음'} · ${(ovr.updatedAt||'').slice(0,10)}${(()=>{const d=moqOvrAgeDays(ovr);return d==null?'':` (${d}일 전)`;})()}${moqOvrStale(ovr)?' · ⏳ 6개월 지났습니다. 아직 유효한 기준인지 확인해주세요':''}</div>` : ''}
         </div>
         <div class="moq-input-field">
           <label>내가 알고 있는 최소 발주 수량</label>
@@ -3729,11 +3751,11 @@ function openMoqOvrModal(품명) {
           <label>메모 (선택)</label>
           <textarea id="moq-ovr-memo" rows="2" placeholder="예: A 거래처 신규 단가표 기준">${ovr?ovr.memo:''}</textarea>
         </div>
-        <div style="font-size:10px;color:var(--text-muted);">👥 서버 저장 — 전 직원에게 동일하게 적용됩니다 · 90일 후 자동 만료(발주 이력 기준으로 복귀)</div>
+        <div style="font-size:10px;color:var(--text-muted);">👥 서버 저장 — 전 직원에게 동일하게 적용됩니다 · 삭제할 때까지 유지되며, 6개월이 지나면 재확인 배지가 표시됩니다</div>
         <div class="moq-modal-actions">
           ${ovr?`<button class="moq-modal-btn danger" onclick="clearMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">삭제</button>`:''}
           <button class="moq-modal-btn cancel" onclick="closeMoqOvrModal()">취소</button>
-          <button class="moq-modal-btn save" onclick="saveMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">저장 (팀 공용 · 90일)</button>
+          <button class="moq-modal-btn save" onclick="saveMoqOvrAndClose('${품명.replace(/'/g,"\\'")}')">저장 (팀 공용)</button>
         </div>
       </div>
     </div>

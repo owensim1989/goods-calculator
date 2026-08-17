@@ -837,13 +837,22 @@ app.get('/api/products', (req, res) => {
 
 // ━━━ MOQ(최소 발주 수량) 오버라이드 — 팀 공용 (2026-08-15) ━━━
 // 이전에는 브라우저 localStorage 개별 저장이라 지정한 사람 PC 에서만 적용됐음.
-// 서버 저장으로 바꿔 전 직원이 같은 MOQ 기준을 공유한다. 90일 만료는 유지(만료 시 발주 이력 기준으로 복귀).
+// 서버 저장으로 바꿔 전 직원이 같은 MOQ 기준을 공유한다.
+// 2026-08-17: 자동 만료 폐지 — 조용한 원복이 더 위험하다는 판단. 지울 때까지 유지하고,
+//   설정 후 MOQ_OVR_STALE_DAYS(180일) 지나면 화면에 "재확인 권장" 배지만 표시한다.
 const MOQ_OVR_PATH = path.join(PERSIST_DATA_DIR, 'moq-overrides.json');
-const MOQ_OVR_TTL_DAYS = 90;
+const MOQ_OVR_STALE_DAYS = 180;
 
 function loadMoqOverrides() {
   try {
-    if (fs.existsSync(MOQ_OVR_PATH)) return JSON.parse(fs.readFileSync(MOQ_OVR_PATH, 'utf8')) || {};
+    if (fs.existsSync(MOQ_OVR_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(MOQ_OVR_PATH, 'utf8')) || {};
+      // 구버전(90일 만료) 레코드 이관 — expires 제거해 영구 유지로 전환
+      let dirty = false;
+      Object.keys(raw).forEach(k => { if (raw[k] && raw[k].expires != null) { delete raw[k].expires; dirty = true; } });
+      if (dirty) { try { fs.writeFileSync(MOQ_OVR_PATH, JSON.stringify(raw, null, 2), 'utf8'); } catch (e) {} }
+      return raw;
+    }
   } catch (e) { console.error('[MOQ] 오버라이드 로드 오류:', e.message); }
   return {};
 }
@@ -852,19 +861,19 @@ function saveMoqOverrides(obj) {
   catch (e) { console.error('[MOQ] 오버라이드 저장 오류:', e.message); }
 }
 let moqOverrides = loadMoqOverrides();
+// 값이 깨진 레코드만 정리 (시간 경과로는 삭제하지 않음)
 function pruneMoqOverrides() {
-  const now = Date.now();
   let dirty = false;
   Object.keys(moqOverrides).forEach(k => {
     const o = moqOverrides[k];
-    if (!o || !(o.value > 0) || (o.expires && o.expires < now)) { delete moqOverrides[k]; dirty = true; }
+    if (!o || !(o.value > 0)) { delete moqOverrides[k]; dirty = true; }
   });
   if (dirty) saveMoqOverrides(moqOverrides);
   return moqOverrides;
 }
 
 app.get('/api/moq-overrides', (req, res) => {
-  res.json({ overrides: pruneMoqOverrides(), ttlDays: MOQ_OVR_TTL_DAYS });
+  res.json({ overrides: pruneMoqOverrides(), staleDays: MOQ_OVR_STALE_DAYS });
 });
 
 app.post('/api/moq-overrides', (req, res) => {
@@ -880,7 +889,7 @@ app.post('/api/moq-overrides', (req, res) => {
     memo: String(b.memo || ''),
     updatedBy: (req.user && (req.user.name || req.user.displayName)) || b.updatedBy || '',
     updatedAt: new Date().toISOString(),
-    expires: Date.now() + MOQ_OVR_TTL_DAYS * 86400 * 1000
+    createdAt: (prev && prev.createdAt) || new Date().toISOString()
   };
   saveMoqOverrides(moqOverrides);
   console.log(`[MOQ] ${품명} ${prev ? prev.value + '→' : ''}${value}개 (${moqOverrides[품명].updatedBy || '이름없음'})`);
@@ -911,7 +920,7 @@ app.post('/api/moq-overrides/migrate', (req, res) => {
       memo: String((it && it.memo) || ''),
       updatedBy: (req.user && (req.user.name || req.user.displayName)) || '',
       updatedAt: new Date().toISOString(),
-      expires: (it && it.expires) || (Date.now() + MOQ_OVR_TTL_DAYS * 86400 * 1000),
+      createdAt: new Date().toISOString(),
       migrated: true
     };
     added++;
