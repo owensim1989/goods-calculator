@@ -863,7 +863,9 @@ async function createProject(){
     ['npName','npQty','npCost','npBasis','npBarcode','npClient'].forEach(i=>$(i).value='');
     if($('npClient')._ac)$('npClient')._ac.ref=null;
     NEWBRAND='own';pickBrand('own');
-    await load();openDetail(p.id);toast('프로젝트 생성됨');
+    await load();await openDetail(p.id);toast('프로젝트 생성됨');
+    // 외주면 발주처의 정산 프로젝트를 조용히 탐색 (유일 후보만 자동 연결 — 지출 귀속 준비)
+    if(brandOf(p)==='oem'&&p.client)setTimeout(()=>autoLinkProject(true),250);
   }catch(e){toast('실패: '+e.message)}
 }
 
@@ -896,6 +898,7 @@ function renderDetail(){
       <b style="font-size:17px">${esc(p.name)}</b>
       <span style="cursor:pointer" onclick="toggleBrand()" title="클릭해 자체/외주 전환">${brandBadge(p)}</span>
       ${brandOf(p)==='oem'?`<span class="tag t-gray" style="cursor:pointer" onclick="openClientPicker()" title="클릭해 발주처 변경">발주처 ${p.client?esc(p.client):'지정하기 ✏️'}${p.client_ref?' 💼':''}</span>`:''}
+      ${brandOf(p)==='oem'?projTag(p):''}
       <span class="tag ${p.type==='new'?'t-new':'t-re'}">${p.type==='new'?'신제품':'재발주'}</span>
       <span class="tag ${p.status==='active'?'t-ok':p.status==='hold'?'t-warn':'t-gray'}">${{active:'진행 중',hold:'보류',done:'완료',cancelled:'취소'}[p.status]}</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text-3)">${p.id} · 완료 ${completedCount(p)}/${p.stages.length}단계 · ${clientProgress(p)}%</span>
@@ -1659,12 +1662,30 @@ async function delPoItem(i){
 //  실행 주체 = 사업화팀(김정은·이진아). goods 는 MyDesk 결제요청 폼을 prefill 로 열고(제출은 담당자),
 //  제출되면 MyDesk 의 payment_request_new 웹푸시(관리자+사업화지원 역할)가 자동으로 나간다 — goods 쪽 별도 알림 불필요.
 //  대금 기록은 기존대로 "기록 전용" — 실제 입출금은 granter·Notion 체계 유지.
-function openMydeskPayReq(title,amountKrw,memo){
+//  project·projectId 를 함께 보내면 MyDesk 가 귀속 게이트①의 프로젝트 드롭다운까지 미리 채운다.
+//  vendor 는 발주 업체명 — 결제요청 '거래처' 칸.
+function openMydeskPayReq(title,amountKrw,memo,extra){
   const params=new URLSearchParams({prefill:'1',title,amount:String(amountKrw||0),memo});
+  for(const [k,v] of Object.entries(extra||{})) if(v) params.set(k,String(v));
   const a=document.createElement('a');
   a.href='https://mydesk.jeisha.kr/?tab=payment&new=1&'+params.toString();
   a.target='_blank';a.rel='noopener noreferrer';
   document.body.appendChild(a);a.click();a.remove();
+}
+// 대금요청에 실어 보낼 귀속 정보 — 외주는 연결된 정산 프로젝트, 자체브랜드는 미지정(사람이 고름)
+function payReqExtra(p){
+  const out={vendor:(p.po&&p.po.vendor)||''};
+  const r=projRef(p);
+  if(r){out.project=r.name;out.projectId=r.id;}
+  return out;
+}
+// 귀속 미연결 외주 건은 대금요청 전에 프로젝트부터 연결하도록 막는다 (MyDesk 게이트①에서 어차피 반려됨)
+async function ensureProjectLinked(){
+  if(brandOf(CUR)!=='oem')return true;               // 자체브랜드는 MyDesk 에서 직접 선택
+  if(projRef(CUR))return true;
+  toast('외주 건은 정산 프로젝트를 먼저 연결해야 합니다 — 발주처 프로젝트를 찾는 중…');
+  await autoLinkProject(false);
+  return !!projRef(CUR);
 }
 function payReqMemo(p,extraLines){
   const po=p.po||{};const its=poItems(po);
@@ -1677,6 +1698,10 @@ function payReqMemo(p,extraLines){
   const tot=poTotal(po);
   if(tot!=null){const k=fxKrw(tot,po.cur||'KRW');out.push(`• 발주 총액: ${Number(tot.toFixed(2)).toLocaleString()} ${po.cur||''}${k?` (≈${fmtKrw(k)})`:''}`);}
   out.push(...(extraLines||[]));
+  const pr=projRef(p);
+  if(pr)out.push(`• 정산 프로젝트: ${pr.name}${pr.client?` (${pr.client})`:''}`);
+  else if(brandOf(p)==='oem'&&p.client)out.push(`• 발주처: ${p.client} — ⚠️ 정산 프로젝트 미연결`);
+  else out.push('• 자체브랜드(미스터두낫띵) 건 — 귀속 프로젝트를 선택해 주세요');
   if(po.eta)out.push('• ETA: '+po.eta);
   if(po.memo)out.push('• 결제조건: '+po.memo);
   out.push('• 파이프라인 제품 ID: '+p.id);
@@ -1689,8 +1714,9 @@ async function payReqRow(i){
   const kindL=PAY_KINDS[pa.kind]||pa.kind;
   const krw=Math.round(fxKrw(Number(pa.amount)||0,pa.cur||'KRW')||0);
   if(!krw)return toast('₩환산 금액을 계산할 수 없습니다 — 금액·통화를 확인하세요');
+  if(!await ensureProjectLinked())return;
   openMydeskPayReq(`${p.name} 발주 ${kindL}`,krw,
-    payReqMemo(p,[`• 이번 요청: ${kindL} ${(Number(pa.amount)||0).toLocaleString()} ${pa.cur||'KRW'} (≈${fmtKrw(krw)})${pa.due?` · 예정일 ${pa.due}`:''}`]));
+    payReqMemo(p,[`• 이번 요청: ${kindL} ${(Number(pa.amount)||0).toLocaleString()} ${pa.cur||'KRW'} (≈${fmtKrw(krw)})${pa.due?` · 예정일 ${pa.due}`:''}`]),payReqExtra(CUR));
   const ps=[...CUR.payments];ps[i]={...ps[i],requested_at:todayLocal()};
   await refreshCur({payments:ps});
   await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`결제요청(MyDesk) 전달: ${kindL} ≈${fmtKrw(krw)} → 사업화팀`}});
@@ -1702,7 +1728,8 @@ async function payReqPo(){
   if(tot==null)return toast('발주 수량·단가(또는 품목)를 먼저 저장하세요');
   const krw=Math.round(fxKrw(tot,po.cur||'KRW')||0);
   if(!krw)return toast('₩환산 금액을 계산할 수 없습니다 — 통화를 확인하세요');
-  openMydeskPayReq(`${p.name} 발주 대금`,krw,payReqMemo(p,['• 이번 요청: 발주 총액 전액']));
+  if(!await ensureProjectLinked())return;
+  openMydeskPayReq(`${p.name} 발주 대금`,krw,payReqMemo(p,['• 이번 요청: 발주 총액 전액']),payReqExtra(CUR));
   await refreshCur({po:{...(CUR.po||{}),pay_requested_at:todayLocal()}});
   await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`결제요청(MyDesk) 전달: 발주 총액 ≈${fmtKrw(krw)} → 사업화팀`}});
   toast('MyDesk 결제요청 폼이 열렸습니다 — 내용 확인 후 제출하면 사업화팀(김정은·이진아)에게 자동 알림됩니다');
@@ -1920,9 +1947,92 @@ async function saveClient(){
   const v=inp.value.trim();
   if(!v)return toast('발주처를 입력하세요');
   const ref=(inp._ac&&inp._ac.ref)||null;
+  const changed=store_normLoose(v)!==store_normLoose(CUR.client||'');
   closeM('clientModal');
-  await refreshCur({brand:'oem',client:v,client_ref:ref});
+  // 발주처가 바뀌면 이전 발주처의 정산 프로젝트 연결은 무효 — 오귀속 방지로 함께 해제
+  const patch={brand:'oem',client:v,client_ref:ref};
+  if(changed&&projRef(CUR))patch.links={...(CUR.links||{}),mydesk_project:null};
+  await refreshCur(patch);
   toast('발주처 저장됨 — 다음 입력부터 목록에 나옵니다');
+  if(changed)setTimeout(()=>autoLinkProject(true),200);   // 새 발주처의 정산 프로젝트 자동 탐색
+}
+function store_normLoose(s){return String(s||'').toLowerCase().replace(/[\s()\[\]（）㈜(주)"'.·,\-_/]/g,'')}
+
+// ━━━ 🧾 정산 프로젝트(MyDesk) 연결 — 지출→프로젝트 귀속 (2026-08-17) ━━━
+//  왜 필요한가: MyDesk 결제요청은 게이트①로 "목록에서 고른 프로젝트"만 제출을 허용한다.
+//  외주(고객사 발주)는 발주처의 프로젝트가 곧 정산 대상이므로 여기서 미리 연결해 두고
+//  대금요청 시 project·projectId 를 prefill 로 넘긴다.
+function projRef(p){return (p&&p.links&&p.links.mydesk_project)||null}
+function projTag(p){
+  const r=projRef(p);
+  return r
+    ? `<span class="tag t-ok" style="cursor:pointer" onclick="openProjPicker()" title="정산 프로젝트 — 대금요청 시 이 프로젝트로 귀속됩니다 (클릭해 변경)">🧾 ${esc(r.name)}</span>`
+    : `<span class="tag t-warn" style="cursor:pointer" onclick="openProjPicker()" title="지출 귀속용 정산 프로젝트가 아직 연결되지 않았습니다">🧾 정산 프로젝트 연결하기 ✏️</span>`;
+}
+// 발주처로 프로젝트 자동 탐색.
+//   유일 후보 → 바로 연결. 후보가 여럿이거나 없으면 사람이 골라야 하므로
+//   silent(발주처 저장 직후 등)일 땐 경고 태그만 남기고, 명시 호출(대금요청·태그 클릭)일 때만 피커를 연다.
+async function autoLinkProject(silent){
+  if(!CUR||brandOf(CUR)!=='oem'||!CUR.client)return false;
+  let d;
+  try{ d=await api('/project-suggest?client='+encodeURIComponent(CUR.client)); }
+  catch(e){ if(!silent)toast('MyDesk 프로젝트 조회 실패: '+e.message); return false; }
+  const hits=(d.items||[]).filter(it=>it.matched_by_client);
+  if(hits.length===1){ await linkProject(hits[0]); return true; }
+  if(silent)return false;
+  toast(hits.length
+    ? `"${CUR.client}" 프로젝트가 ${hits.length}건입니다 — 어느 건에 귀속할지 선택하세요`
+    : `"${CUR.client}" 발주처의 MyDesk 프로젝트를 찾지 못했습니다 — 이름으로 검색해 보세요`);
+  openProjPicker();
+  return false;
+}
+async function linkProject(it){
+  await refreshCur({links:{...(CUR.links||{}),mydesk_project:{id:it.id,name:it.name,client:it.client||'',status:it.status||'',linked_at:todayLocal()}}});
+  await api('/'+CUR.id+'/log',{method:'POST',body:{detail:`정산 프로젝트 연결: ${it.name}${it.client?` (${it.client})`:''}`}});
+  toast(`정산 프로젝트 연결됨 — 대금요청이 "${it.name}"으로 귀속됩니다`);
+}
+async function openProjPicker(){
+  if(!CUR)return;
+  document.getElementById('projModal')?.remove();
+  const cur=projRef(CUR);
+  const html=`<div class="mbg on" id="projModal" style="z-index:150" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:560px"><button class="x" onclick="document.getElementById('projModal').remove()">✕</button>
+    <h2 style="font-size:16px">🧾 정산 프로젝트 연결</h2>
+    <div class="hint" style="margin:6px 0 10px">이 제품의 <b>지출(대금)</b>이 귀속될 MyDesk 프로젝트입니다. 연결해 두면 대금요청 폼에 프로젝트가 자동으로 채워집니다.
+      ${cur?`<br>현재 연결: <b style="color:var(--ok)">${esc(cur.name)}</b>`:''}</div>
+    <div class="frow"><input id="pjq" style="flex:1" placeholder="프로젝트명 검색 (초성·부분일치)" autocomplete="off">
+      ${cur?`<button class="btn sm danger" onclick="unlinkProject()">연결 해제</button>`:''}</div>
+    <div id="pjlist" style="margin-top:10px;max-height:320px;overflow:auto"><div class="hint">불러오는 중…</div></div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  const inp=$('pjq');
+  let t=null;
+  const run=async()=>{
+    const q=inp.value.trim();
+    const qs=(q?'q='+encodeURIComponent(q)+'&':'')+(CUR.client?'client='+encodeURIComponent(CUR.client):'');
+    let d;
+    try{ d=await api('/project-suggest?'+qs); }catch(e){ $('pjlist').innerHTML=`<div class="hint">조회 실패: ${esc(e.message)}</div>`; return; }
+    const its=d.items||[];
+    $('pjlist').innerHTML=its.length?its.map(it=>`<div class="ac-row" style="display:flex;gap:8px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer"
+      onclick='pickProject(${JSON.stringify(it).replace(/'/g,"&#39;")})'>
+      <b style="flex:1">${esc(it.name)}</b>
+      ${it.matched_by_client?'<span class="tag t-ok">발주처 일치</span>':''}
+      ${it.closed?'<span class="tag t-gray">종료</span>':`<span class="tag t-warn">${esc(it.status||'진행')}</span>`}
+      <span class="hint">${esc(it.client||'')}</span></div>`).join('')
+      :`<div class="hint">${d.mydesk_linked?(CUR.client&&!inp.value.trim()?`"${esc(CUR.client)}" 발주처의 프로젝트가 없습니다 — 이름으로 검색해 보세요`:'일치하는 프로젝트가 없습니다'):'MyDesk 연결 실패: '+esc(d.mydesk_error||'')}</div>`;
+  };
+  inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(run,220)});
+  setTimeout(()=>inp.focus(),60);
+  run();
+}
+async function pickProject(it){
+  document.getElementById('projModal')?.remove();
+  await linkProject(it);
+}
+async function unlinkProject(){
+  document.getElementById('projModal')?.remove();
+  await refreshCur({links:{...(CUR.links||{}),mydesk_project:null}});
+  toast('정산 프로젝트 연결이 해제됐습니다');
 }
 function insertSampleStage(){
   const stages=[...CUR.stages];
