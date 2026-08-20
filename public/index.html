@@ -9420,7 +9420,7 @@ function quoteFileAttach(id){
   inp.onchange = async () => {
     const file = inp.files && inp.files[0];
     if(!file) return;
-    if(file.size > 30*1024*1024){ showToast('⚠️ 파일이 너무 큽니다 (30MB 초과)'); return; }
+    if(file.size > 30*1024*1024){ showToast('⚠️ 파일이 너무 큽니다 ('+Math.round(file.size/1024/1024)+'MB · 30MB 이하만 가능)'); return; }
     const mimeType = _inboxGuessMime(file);
     if(!mimeType || !INBOX_UPLOAD_ACCEPT_MIMES[mimeType]){ showToast('⚠️ PDF·엑셀·이미지만 첨부할 수 있습니다'); return; }
     showToast('📎 첨부하는 중…');

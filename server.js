@@ -270,7 +270,19 @@ app.use(cors({
     else cb(null, false);
   }
 }));
-app.use(express.json({ limit: '20mb' }));
+// ⚠️ express.json 은 한 번 파싱하면 req._body 가 서서 뒤에 오는 parser 가 무시된다.
+//    전역 20mb 가 먼저 잘라버리면 업로드 라우트의 50mb 선언이 사문화되고,
+//    15MB 넘는 견적서는 라우트 코드에 닿기도 전에 HTML 413 으로 떨어진다.
+//    → 대용량 업로드 경로만 전역 parser 를 건너뛰고 라우트별 parser 를 쓰게 한다. (2026-08-20)
+const BIG_UPLOAD_PATHS = [
+  /^\/api\/inbox\/upload$/,
+  /^\/api\/parsed-quotes\/[^/]+\/attach-file$/
+];
+const _jsonDefault = express.json({ limit: '20mb' });
+app.use((req, res, next) => {
+  if (BIG_UPLOAD_PATHS.some(re => re.test(req.path))) return next();
+  _jsonDefault(req, res, next);
+});
 
 // ━━━ 보안 (2026-08-17) — 헤더 + 로그인 브루트포스 차단 ━━━
 const security = require('./lib/security');
@@ -7689,6 +7701,25 @@ async function ensureCatalogExtraFields(){
 }
 
 // ━━━ 서버 시작 ━━━
+// ━━━ body parser 오류 → JSON 응답 (2026-08-20) ━━━
+// 기본 핸들러는 HTML 을 뱉어 프론트의 r.json() 이 깨지고 "실패 (413)" 같은 무의미한 토스트만 남는다.
+// 반드시 모든 라우트 뒤에 등록해야 라우트별 parser 의 오류까지 잡힌다.
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  const tooLarge = err.type === 'entity.too.large' || err.status === 413 || err.statusCode === 413;
+  if (tooLarge) {
+    console.warn('[body] payload too large:', req.method, req.path, err.length || '');
+    return res.status(413).json({
+      error: '파일이 너무 큽니다',
+      message: '한 번에 올릴 수 있는 크기를 넘었습니다. 30MB 이하 파일로 나눠 올려주세요.'
+    });
+  }
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: '요청 형식 오류', message: 'JSON 파싱 실패' });
+  }
+  next(err);
+});
+
 app.listen(PORT, async () => {
 
 // 카탈로그 필드 멱등 보강 (best-effort, 비차단)
