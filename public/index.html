@@ -90,6 +90,12 @@ a.sidebar-item:hover{color:var(--text);}
 .q-fbtn:hover{background:var(--card-2,#f0f0f0);}
 .q-fbtn.pri{border-color:rgba(37,99,235,0.45);background:rgba(37,99,235,0.12);color:#2563eb;font-weight:600;}
 .q-nofile{margin:9px 0;padding:8px 10px;border:1px dashed var(--border);border-radius:8px;font-size:11.5px;color:var(--text-muted);}
+.q-attached{font-size:10.5px;color:#f59e0b;margin-top:2px;}
+.q-orig-btn{background:none;border:0;cursor:pointer;font-size:12px;padding:0 2px;opacity:.75;}
+.q-orig-btn:hover{opacity:1;}
+.q-health-warn{margin:0 0 12px;padding:11px 14px;border:1px solid rgba(245,158,11,.45);background:rgba(245,158,11,.07);border-radius:9px;font-size:12px;color:var(--text);}
+.q-health-list{font-size:11.5px;color:var(--text-muted);margin-top:6px;line-height:1.65;}
+.q-health-meta{font-size:11px;color:var(--text-muted);margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .q-prev-bg{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:10050;display:flex;align-items:center;justify-content:center;padding:24px;}
 .q-prev{background:var(--card);border:1px solid var(--border);border-radius:12px;width:100%;max-width:1240px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.45);}
 .q-prev-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;background:var(--card-2,#f8f9fa);border-bottom:1px solid var(--border);}
@@ -3052,8 +3058,12 @@ function searchProducts(){
     const qdCell=qd?`${qd}${isStale?'<span class="stale-badge" title="견적일로부터 1년 이상 경과 — 환율·원자재가 변동으로 단가 재확인 권장">⚠ 1년+</span>':''}`:`<span class="no-date">미기재</span>`;
     // 채택 (견적상태=발주확정) — 건별 토글
     const adopted=i.견적상태==='발주확정';
+    // 통합DB 행에서 바로 원본 열기 (2026-08-20) — AI 파싱 행 중 원본이 실제로 있는 건만
+    const origCell=(i._hasOriginal && i._parsedSourceId)
+      ? ` <button class="q-orig-btn" onclick="event.stopPropagation();quoteFilePreview('${i._parsedSourceId}')" title="이 견적의 원본 파일 보기">📎</button>`
+      : '';
     const adoptCell=adopted?`<span class="adopt-badge" onclick="event.stopPropagation();toggleAdopt('${i.id}',false)" title="채택 해제">✓채택</span>`:(String(i.id).startsWith('parsed:')?'<span style="color:var(--text-muted);font-size:11px">-</span>':`<button class="adopt-btn" onclick="event.stopPropagation();toggleAdopt('${i.id}',true)">채택</button>`);
-    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}${adopted?' adopt-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td class="adopt-cell">${adoptCell}</td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${suCell(i)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}${estMark}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
+    return`<tr class="${i.추천?'rec-row':''}${isStale?' stale-row':''}${adopted?' adopt-row':''}" style="cursor:pointer" onclick="toggleRowCheck(${idx},this)"><td><input type="checkbox" data-cidx="${idx}" onchange="onCompareCheck(${idx},this.checked)" onclick="event.stopPropagation()"></td><td class="adopt-cell">${adoptCell}</td><td>${cB(i.국가)}</td><td class="qd-cell">${qdCell}</td><td>${i.프로젝트명||'-'}${origCell}</td><td>${recStar}${i.거래처||'-'}${recMemo}</td><td>${suCell(i)}</td><td>${fmt(i.수량)}</td><td class="price">${fmtP(i.개당단가_KRW)}${fx1}</td><td class="price">${부대비용표시}${sTag}</td><td class="price">${fmtP(i.개당단가_부대비용포함)}${fx3}${estMark}</td><td class="price">${제작비HTML}</td><td>${(i.스펙태그||[]).join(', ')}</td><td>${d.t?`<span class="badge ${d.c}">${d.t}</span><br><span style="font-size:11px;color:var(--text-muted)">제작${i.제작일수||'?'}일</span>`:'-'}</td></tr>`;
   }).join('');
   document.getElementById('product-table-wrap').style.display='block';
 }
@@ -9137,9 +9147,9 @@ function _renderInboxList(){
       const cnLabel = _inboxCountryFilter === '__unassigned__' ? '미지정' : _inboxCountryFilter;
       empty = {ico:'🌐', ttl:'"' + cnLabel + '" 국가에 해당하는 항목이 없습니다', sub:'다른 국가 칩을 클릭하거나 🌐 전체로 돌아가세요.'};
     }
-    body.innerHTML = '<div class="inbox-empty"><div class="ico">'+empty.ico+'</div><div class="ttl">'+empty.ttl+'</div><div class="sub">'+empty.sub+'</div></div>';
+    body.innerHTML = _quoteHealthBanner() + '<div class="inbox-empty"><div class="ico">'+empty.ico+'</div><div class="ttl">'+empty.ttl+'</div><div class="sub">'+empty.sub+'</div></div>';
   } else {
-    body.innerHTML = filtered.map(it => renderParsedCard(it, status)).join('');
+    body.innerHTML = _quoteHealthBanner() + filtered.map(it => renderParsedCard(it, status)).join('');
   }
 }
 
@@ -9153,6 +9163,7 @@ async function loadParsedList(status){
     const r = await fetch('/api/parsed-quotes?status=' + encodeURIComponent(status));
     const j = await r.json();
     _inboxLastItems = (j.items || []);
+    loadQuoteHealthReport();   // 배너용 — 응답 기다리지 않음
     _renderInboxCountryChips(_inboxLastItems);
     _renderInboxDateChips(_inboxLastItems);
     _renderInboxList();
@@ -9290,10 +9301,16 @@ function _qFileUrl(id, inline){
 function _aiRenderFileRow(it){
   const f = it.driveFile || {};
   if(f.id){
-    const meta = [_qFileKind(f.mimeType), _qFmtSize(f.size), f.uploadedAt ? String(f.uploadedAt).slice(0,10)+' 업로드' : ''].filter(Boolean).join(' · ');
+    const when = f.attachedLater
+      ? (f.attachedAt ? String(f.attachedAt).slice(0,10)+' 첨부' : '나중에 첨부')
+      : (f.uploadedAt ? String(f.uploadedAt).slice(0,10)+' 업로드' : '');
+    const meta = [_qFileKind(f.mimeType), _qFmtSize(f.size), when].filter(Boolean).join(' · ');
+    // 사후 첨부본은 파싱 숫자의 출처가 아니다 — 대조할 때 헷갈리지 않게 명시
+    const attachedNote = f.attachedLater
+      ? '<div class="q-attached">📎 나중에 첨부된 파일 — 표의 숫자는 이 파일에서 파싱한 값이 아닙니다</div>' : '';
     return '<div class="q-filerow">'+
       '<div class="q-fico">'+(_Q_FILE_ICON[f.mimeType]||'📄')+'</div>'+
-      '<div class="q-fmeta"><b>'+escapeHtml(f.name||'원본 파일')+'</b><span>'+escapeHtml(meta)+'</span></div>'+
+      '<div class="q-fmeta"><b>'+escapeHtml(f.name||'원본 파일')+'</b><span>'+escapeHtml(meta)+'</span>'+attachedNote+'</div>'+
       '<div class="q-fbtns">'+
         '<button type="button" class="q-fbtn pri" onclick="quoteFileDownload(\''+it.id+'\')">⬇ 원본 받기</button>'+
         (_Q_INLINE_MIMES.indexOf(f.mimeType)>=0 ? '<button type="button" class="q-fbtn" onclick="quoteFilePreview(\''+it.id+'\')">👁 미리보기</button>' : '')+
@@ -9307,9 +9324,11 @@ function _aiRenderFileRow(it){
       '<div class="q-fbtns">'+
         '<button type="button" class="q-fbtn pri" onclick="quoteFileDownload(\''+it.id+'\')">⬇ 원문 .txt</button>'+
         '<button type="button" class="q-fbtn" onclick="quoteFilePreview(\''+it.id+'\')">👁 미리보기</button>'+
+        '<button type="button" class="q-fbtn" onclick="quoteFileAttach(\''+it.id+'\')" title="실제 견적서 파일을 나중에 붙입니다 (숫자는 그대로)">📎 원본 첨부</button>'+
       '</div></div>';
   }
-  return '<div class="q-nofile">✍️ <b>원본 파일 없음</b> — 화면에서 직접 입력한 견적이라 받을 원본이 없습니다.</div>';
+  return '<div class="q-nofile">✍️ <b>원본 파일 없음</b> — 화면에서 직접 입력한 견적이라 받을 원본이 없습니다. '+
+    '<button type="button" class="q-fbtn" style="margin-left:6px;" onclick="quoteFileAttach(\''+it.id+'\')" title="실제 견적서 파일을 나중에 붙입니다 (숫자는 그대로)">📎 원본 파일 첨부하기</button></div>';
 }
 
 // blob 으로 받아 저장 — 실패 시 서버 JSON 메시지를 토스트로 보여주기 위해 fetch 사용
@@ -9337,11 +9356,22 @@ async function quoteFileDownload(id){
 }
 
 // 원본 ↔ 파싱표 나란히 대조 (검수용)
-function quoteFilePreview(id){
-  const it = (_inboxLastItems||[]).find(x => x.id === id);
-  if(!it) return;
+// 통합DB(거래처 비교) 표에서도 열리므로, 인박스 목록에 없으면 레코드를 직접 가져온다.
+async function quoteFilePreview(id){
+  let it = (_inboxLastItems||[]).find(x => x.id === id);
+  if(!it){
+    try{
+      const r = await fetch('/api/parsed-quotes/'+encodeURIComponent(id), { credentials:'same-origin' });
+      if(!r.ok) throw new Error('견적 레코드를 불러오지 못했습니다 ('+r.status+')');
+      it = await r.json();
+    }catch(e){ showToast('⚠️ '+e.message); return; }
+  }
+  _quoteRenderPreview(it);
+}
+
+function _quoteRenderPreview(it){
   const f = it.driveFile || {};
-  const url = _qFileUrl(id, true);
+  const url = _qFileUrl(it.id, true);
   let orig;
   if(f.id && f.mimeType === 'application/pdf'){
     orig = '<iframe src="'+escapeAttr(url)+'#view=FitH" title="원본 미리보기"></iframe>';
@@ -9381,6 +9411,68 @@ function quoteFilePreview(id){
   document.body.appendChild(bg);
   document.addEventListener('keydown', _qPrevEsc);
 }
+// 원본 파일 사후 첨부 — 직접입력·메일 건에 실제 견적서를 나중에 붙인다.
+// ⚠️ 서버는 AI 재파싱을 하지 않는다 (검수된 숫자 보호). 파일만 붙는다.
+function quoteFileAttach(id){
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.pdf,.xlsx,.xls,.png,.jpg,.jpeg,.webp';
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0];
+    if(!file) return;
+    if(file.size > 30*1024*1024){ showToast('⚠️ 파일이 너무 큽니다 (30MB 초과)'); return; }
+    const mimeType = _inboxGuessMime(file);
+    if(!mimeType || !INBOX_UPLOAD_ACCEPT_MIMES[mimeType]){ showToast('⚠️ PDF·엑셀·이미지만 첨부할 수 있습니다'); return; }
+    showToast('📎 첨부하는 중…');
+    try{
+      const base64 = await _inboxReadAsBase64(file);
+      const r = await fetch('/api/parsed-quotes/'+encodeURIComponent(id)+'/attach-file', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ filename:file.name, mimeType, base64 })
+      });
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok){ showToast('⚠️ '+(j.error||('첨부 실패 ('+r.status+')'))); return; }
+      showToast('✅ 원본 첨부 완료 — 숫자는 그대로입니다');
+      loadParsedList(_inboxLastStatus);
+    }catch(e){ showToast('⚠️ '+e.message); }
+  };
+  inp.click();
+}
+
+// ── 원본 생존 헬스체크 배너 ─────────────────────────────────
+let _quoteHealth = null;
+async function loadQuoteHealthReport(){
+  try{
+    const r = await fetch('/api/parsed-quotes-health', { credentials:'same-origin' });
+    if(r.ok){ _quoteHealth = await r.json(); _renderInboxList(); }
+  }catch(e){ /* 배너는 부가정보 — 실패해도 목록은 그대로 */ }
+}
+function _quoteHealthBanner(){
+  const h = _quoteHealth;
+  if(!h || !h.brokenCount) return '';
+  const rows = (h.broken||[]).slice(0,8).map(b =>
+    '· '+escapeHtml(b.vendor||'거래처 미상')+' — '+escapeHtml(b.fileName||'(파일명 없음)')).join('<br>');
+  return '<div class="q-health-warn">'+
+    '⚠️ <b>원본 유실 '+h.brokenCount+'건</b> — 드라이브에서 파일이 이동·삭제돼 더 이상 받을 수 없습니다.'+
+    '<div class="q-health-list">'+rows+((h.broken||[]).length>8 ? '<br>… 외 '+((h.broken||[]).length-8)+'건' : '')+'</div>'+
+    '<div class="q-health-meta">점검 '+(h.checkedAt ? new Date(h.checkedAt).toLocaleString('ko-KR') : '-')+
+      ' · 확인 '+(h.total||0)+'건 중 정상 '+(h.ok||0)+'·자동복구 '+(h.recovered||0)+
+      ' <button type="button" class="q-fbtn" onclick="quoteHealthRun()">🔄 지금 재점검</button></div>'+
+  '</div>';
+}
+async function quoteHealthRun(){
+  showToast('🔄 원본 생존 점검 중…');
+  try{
+    const r = await fetch('/api/parsed-quotes-health?run=1', { credentials:'same-origin' });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || ('점검 실패 ('+r.status+')'));
+    _quoteHealth = j;
+    showToast(j.brokenCount ? ('⚠️ 유실 '+j.brokenCount+'건'+(j.recovered?' · 자동복구 '+j.recovered+'건':'')) : ('✅ 원본 '+j.total+'건 전부 정상'+(j.recovered?' (복구 '+j.recovered+'건)':'')));
+    _renderInboxList();
+  }catch(e){ showToast('⚠️ '+e.message); }
+}
+
 function _qPrevEsc(e){ if(e.key === 'Escape') quoteFileClosePreview(); }
 function quoteFileClosePreview(){
   const bg = document.getElementById('qPrevBg');

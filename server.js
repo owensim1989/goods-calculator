@@ -794,8 +794,22 @@ app.get('/api/products', (req, res) => {
   if (거래처) items = items.filter(i => i.거래처 === 거래처);
   if (데이터유형) items = items.filter(i => i.데이터유형 === 데이터유형);
 
+  // 원본 파일이 살아있는 견적 레코드 id 집합 (2026-08-20) — 통합DB 행의 📎 노출 판정용.
+  //   노션에 push 된 행은 _parsedSourceId 가 없고 데이터출처의 [src:pq_...] 마커만 남으므로 거기서 복구한다.
+  const _origIds = new Set();
+  try {
+    (parsedDb.items || []).forEach(x => {
+      if ((x.driveFile && x.driveFile.id) || x.rawText) _origIds.add(x.id);
+    });
+  } catch (e) { /* parsedDb 미로드 시 조용히 skip — 📎 만 안 보임 */ }
+
   // 통화 환산 + 부대비용 포함 단가 계산
   const enriched = items.map(it => {
+    let _srcId = it._parsedSourceId || null;
+    if (!_srcId && it.데이터출처) {
+      const _m = /\[src:([A-Za-z0-9_]+)\]/.exec(String(it.데이터출처));
+      if (_m) _srcId = _m[1];
+    }
     const surcharge = SURCHARGE[it.국가] || SURCHARGE['국내'];
     // 통화 필드 우선, 없으면 국가 기반 추정 (fallback)
     const currency = it.통화 || (it.국가 === '중국' || it.국가 === '기타해외' ? 'USD' : 'KRW');
@@ -838,6 +852,8 @@ app.get('/api/products', (req, res) => {
 
     return {
       ...it,
+      _parsedSourceId: _srcId,
+      _hasOriginal: !!(_srcId && _origIds.has(_srcId)),
       통화: currency,
       환율: fxRate,
       개당단가_KRW,
@@ -1732,6 +1748,140 @@ app.get('/api/parsed-quotes/:id/file', security.rateLimit('quote-file', 60, 5 * 
   } catch (e) {
     console.error('[quote-file]', e);
     if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ━━━ 원본 파일 사후 첨부 (2026-08-20 신설) ━━━
+// ✍️직접입력·📧메일 건은 원본이 없어 영구히 "원본 없음" 으로 굳는다. 나중에 실제 견적서를 붙인다.
+// ⚠️ AI 재파싱 없음 — 검수 끝난 숫자를 파일 내용으로 덮어쓰지 않는다 (파일만 붙임).
+// body: { filename, mimeType, base64 }
+app.post('/api/parsed-quotes/:id/attach-file', express.json({ limit: '50mb' }), async (req, res) => {
+  try {
+    const folderId = process.env.INBOX_DRIVE_FOLDER_ID || '';
+    if (!folderId) return res.status(503).json({ error: 'INBOX_DRIVE_FOLDER_ID 미설정' });
+
+    const body = req.body || {};
+    const filename = String(body.filename || '').trim();
+    const mimeType = String(body.mimeType || '').trim();
+    const b64 = String(body.base64 || '').replace(/^data:[^;]+;base64,/, '');
+    if (!filename) return res.status(400).json({ error: 'filename 누락' });
+    if (!mimeType) return res.status(400).json({ error: 'mimeType 누락' });
+    if (!b64) return res.status(400).json({ error: 'base64 비어있음' });
+    const buffer = Buffer.from(b64, 'base64');
+    if (!buffer.length) return res.status(400).json({ error: 'base64 디코드 실패 (빈 buffer)' });
+    if (buffer.length > 30 * 1024 * 1024) return res.status(400).json({ error: '파일이 너무 큼 (30MB 초과)' });
+
+    const out = await inboxWatcher.attachFileToRecord({
+      folderId,
+      parsedDbPath: PARSED_DB_PATH,
+      recordId: req.params.id,
+      filename, mimeType, buffer,
+      submitterName: (req.user && (req.user.name || req.user.displayName)) || null,
+      submitterEmail: (req.user && req.user.email) || null
+    });
+
+    parsedDb = inboxWatcher.loadParsedDb(PARSED_DB_PATH);
+    rebuildCacheWithParsed();
+    logQuoteFileAccess(req, out.record, { kind: 'attach' });
+    res.json({ ok: true, item: out.record });
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    console.error('[quote-file/attach]', msg);
+    // 레코드 없음·중복 첨부는 사용자 실수 → 400 대역, 나머지는 500
+    const userErr = /찾을 수 없습니다|이미 원본|지원 안 하는 형식/.test(msg);
+    res.status(userErr ? 400 : 500).json({ error: msg });
+  }
+});
+
+// ━━━ 원본 생존 헬스체크 (2026-08-20 신설) ━━━
+// 지금까지는 누가 Drive 에서 파일을 옮기거나 지우면 조용히 영구 유실됐다.
+// 주 1회 driveFile.id 생존을 확인하고, 파일명으로 되찾을 수 있으면 자동 복구한다.
+const QUOTE_HEALTH_PATH = path.join(PERSIST_DATA_DIR, 'quote-file-health.json');
+let _quoteHealthRunning = false;
+
+function loadQuoteHealth() {
+  try { return JSON.parse(fs.readFileSync(QUOTE_HEALTH_PATH, 'utf-8')); }
+  catch (e) { return null; }
+}
+
+async function runQuoteFileHealthcheck() {
+  if (_quoteHealthRunning) return { skipped: 'already_running' };
+  _quoteHealthRunning = true;
+  const started = Date.now();
+  try {
+    reloadParsedDb();
+    const items = (parsedDb.items || []).filter(it => it.driveFile && it.driveFile.id);
+    const broken = [];
+    const recoveries = [];   // 저장은 마지막에 한 번 — 점검 도중 들어온 검수 저장을 덮어쓰지 않기 위해
+    let ok = 0;
+
+    for (const it of items) {
+      const f = it.driveFile;
+      try {
+        await inboxWatcher.probeDriveFile(f.id);
+        ok++;
+      } catch (err) {
+        const code = Number((err && (err.code || (err.response && err.response.status))) || 0);
+        // 404/403 만 유실 신호. 그 외(자격증명·네트워크)는 점검 자체를 중단한다 —
+        // 전 건을 "유실" 로 기록해 거짓 경보를 만들면 안 되므로.
+        if (code !== 404 && code !== 403) {
+          throw new Error('Drive 점검 중단 (' + ((err && err.message) || err) + ')');
+        }
+        const found = await inboxWatcher.findDriveFileByName(f.name).catch(() => null);
+        if (found) {
+          recoveries.push({ recordId: it.id, id: found.id, webViewLink: found.webViewLink || null, size: found.size || null });
+        } else {
+          broken.push({
+            recordId: it.id,
+            vendor: (it.manualOverrides && it.manualOverrides.거래처) || it.vendor || null,
+            fileName: f.name || null,
+            reviewStatus: it.reviewStatus || null,
+            createdAt: it.createdAt || null
+          });
+        }
+      }
+    }
+    // 복구분 반영 — 점검이 도는 동안 검수·승인이 저장했을 수 있으므로 최신 db 를 다시 읽어 적용한다.
+    //   (오래된 스냅샷을 그대로 쓰면 그 사이 저장된 검수 결과가 통째로 사라진다)
+    let recovered = 0;
+    if (recoveries.length) {
+      reloadParsedDb();
+      for (const r of recoveries) {
+        const target = (parsedDb.items || []).find(x => x.id === r.recordId);
+        if (!target || !target.driveFile) continue;
+        target.driveFile.id = r.id;
+        if (r.webViewLink) target.driveFile.webViewLink = r.webViewLink;
+        if (r.size) target.driveFile.size = r.size;
+        target.driveFile.recoveredAt = new Date().toISOString();
+        recovered++;
+      }
+      if (recovered) inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+    }
+
+    const report = {
+      checkedAt: new Date().toISOString(),
+      elapsedMs: Date.now() - started,
+      total: items.length, ok, recovered,
+      brokenCount: broken.length, broken
+    };
+    try { fs.writeFileSync(QUOTE_HEALTH_PATH, JSON.stringify(report, null, 2)); } catch (e) {}
+    console.log('[quote-health] total=' + items.length + ' ok=' + ok + ' recovered=' + recovered + ' broken=' + broken.length);
+    return report;
+  } finally {
+    _quoteHealthRunning = false;
+  }
+}
+
+// 마지막 리포트 조회 (?run=1 이면 즉시 재검사)
+app.get('/api/parsed-quotes-health', async (req, res) => {
+  try {
+    if (req.query.run === '1') return res.json(await runQuoteFileHealthcheck());
+    const last = loadQuoteHealth();
+    res.json(last || { checkedAt: null, total: 0, ok: 0, recovered: 0, brokenCount: 0, broken: [], note: '아직 점검 이력이 없습니다' });
+  } catch (e) {
+    console.error('[quote-health]', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -7605,6 +7755,17 @@ try {
   // 30분마다 자동 동기화, 6시간마다 환율 갱신 (한국수출입은행은 영업일 1회 발표 — 6시간이면 평일 오전 갱신 보장)
   setInterval(syncFromNotion, 30 * 60 * 1000);
   setInterval(refreshFx, 6 * 60 * 60 * 1000);
+  // 견적 원본 생존 헬스체크 (2026-08-20) — 주 1회. 부팅 20분 후 1회 먼저 돌려 현황 확보.
+  //   Drive 원본이 사람 손에 옮겨지면 지금까진 조용히 유실됐다. QUOTE_FILE_HEALTHCHECK=0 으로 끔.
+  if (process.env.QUOTE_FILE_HEALTHCHECK !== '0' && process.env.INBOX_DRIVE_FOLDER_ID) {
+    const _healthTick = (label) => runQuoteFileHealthcheck()
+      .then(r => console.log(`[quote-health:${label}] total=${r.total} ok=${r.ok} recovered=${r.recovered} broken=${r.brokenCount}`))
+      .catch(e => console.warn(`[quote-health:${label}] 실패:`, e.message));
+    setTimeout(() => _healthTick('boot'), 20 * 60 * 1000);
+    setInterval(() => _healthTick('weekly'), 7 * 24 * 60 * 60 * 1000);
+    console.log('[quote-health] 견적 원본 생존 점검 스케줄러 활성 (주 1회)');
+  }
+
   // 24시간마다 카탈로그 전체 → inventory 백필 (Notion 직접 수정분 보정, CATALOG_INVENTORY_BACKFILL=0 으로 끔)
   // 이벤트 push 가 놓치는 건만 잡는 안전망이라 야간 1회면 충분. 부팅 직후엔 10분 지연 후 1회.
   if (process.env.CATALOG_INVENTORY_BACKFILL !== '0' && INVENTORY_API_URL && INVENTORY_API_KEY) {
