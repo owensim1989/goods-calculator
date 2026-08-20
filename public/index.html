@@ -79,6 +79,29 @@ a.sidebar-item:hover{color:var(--text);}
 .ai-card-head .meta{font-size:11px;color:var(--text-muted);margin-top:3px;}
 .ai-card-head .meta a{color:var(--primary);text-decoration:none;}
 .ai-card-head .meta a:hover{text-decoration:underline;}
+/* 견적 원본 파일 줄 + 미리보기 모달 (2026-08-20) */
+.q-filerow{display:flex;align-items:center;gap:9px;margin:9px 0;padding:8px 10px;background:var(--card-2,#f8f9fa);border:1px solid var(--border);border-radius:8px;flex-wrap:wrap;}
+.q-fico{font-size:18px;line-height:1;}
+.q-fmeta{flex:1;min-width:140px;}
+.q-fmeta b{display:block;font-size:12.5px;font-weight:600;word-break:break-all;}
+.q-fmeta span{font-size:11px;color:var(--text-muted);}
+.q-fbtns{display:flex;gap:5px;flex-wrap:wrap;}
+.q-fbtn{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;text-decoration:none;font-family:inherit;}
+.q-fbtn:hover{background:var(--card-2,#f0f0f0);}
+.q-fbtn.pri{border-color:rgba(37,99,235,0.45);background:rgba(37,99,235,0.12);color:#2563eb;font-weight:600;}
+.q-nofile{margin:9px 0;padding:8px 10px;border:1px dashed var(--border);border-radius:8px;font-size:11.5px;color:var(--text-muted);}
+.q-prev-bg{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:10050;display:flex;align-items:center;justify-content:center;padding:24px;}
+.q-prev{background:var(--card);border:1px solid var(--border);border-radius:12px;width:100%;max-width:1240px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.45);}
+.q-prev-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;background:var(--card-2,#f8f9fa);border-bottom:1px solid var(--border);}
+.q-prev-hd .t{font-size:13px;font-weight:600;word-break:break-all;}
+.q-prev-hd .s{font-size:11px;color:var(--text-muted);font-weight:400;}
+.q-prev-bd{flex:1;display:grid;grid-template-columns:1.05fr 1fr;min-height:0;}
+.q-prev-orig{background:#4a4f58;border-right:1px solid var(--border);min-height:0;display:flex;align-items:center;justify-content:center;overflow:auto;}
+.q-prev-orig iframe{width:100%;height:100%;border:0;}
+.q-prev-orig img{max-width:100%;max-height:100%;object-fit:contain;}
+.q-prev-side{padding:14px;overflow-y:auto;min-height:0;}
+.q-prev-side h4{margin:0 0 8px;font-size:12px;color:var(--text-muted);font-weight:600;}
+@media(max-width:860px){.q-prev-bd{grid-template-columns:1fr;grid-template-rows:1fr auto;}.q-prev-orig{border-right:none;border-bottom:1px solid var(--border);}}
 .ai-card-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
 .ai-card-grid label{display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;}
 .ai-card-grid input,.ai-card-grid select{width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--text);box-sizing:border-box;}
@@ -9237,6 +9260,134 @@ function _aiRenderProductTable(it, isPending){
   '</table></div>';
 }
 
+// ─── 견적 원본 파일: 다운로드 · 미리보기 (2026-08-20) ──────────
+// 원본은 Drive _processed/YYYY-MM/ 에 보관돼 있고, 서버가 /api/parsed-quotes/:id/file 로 스트림해준다.
+// 직접입력(manual) 건은 애초에 원본이 없으므로 버튼 대신 사유를 표시한다.
+const _Q_FILE_ICON = {
+  'application/pdf':'📕',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'📗',
+  'application/vnd.ms-excel':'📗',
+  'image/png':'🖼️','image/jpeg':'🖼️','image/jpg':'🖼️','image/webp':'🖼️'
+};
+const _Q_INLINE_MIMES = ['application/pdf','image/png','image/jpeg','image/jpg','image/webp'];
+function _qFileKind(mime){
+  if(mime==='application/pdf') return 'PDF';
+  if(mime && mime.indexOf('spreadsheet')>=0 || mime==='application/vnd.ms-excel') return '엑셀';
+  if(mime && mime.indexOf('image/')===0) return '이미지';
+  return mime || '파일';
+}
+function _qFmtSize(n){
+  n = Number(n)||0;
+  if(!n) return '';
+  if(n < 1024) return n+' B';
+  if(n < 1024*1024) return Math.round(n/1024)+' KB';
+  return (n/1024/1024).toFixed(1)+' MB';
+}
+function _qFileUrl(id, inline){
+  return '/api/parsed-quotes/'+encodeURIComponent(id)+'/file'+(inline?'?disposition=inline':'');
+}
+
+function _aiRenderFileRow(it){
+  const f = it.driveFile || {};
+  if(f.id){
+    const meta = [_qFileKind(f.mimeType), _qFmtSize(f.size), f.uploadedAt ? String(f.uploadedAt).slice(0,10)+' 업로드' : ''].filter(Boolean).join(' · ');
+    return '<div class="q-filerow">'+
+      '<div class="q-fico">'+(_Q_FILE_ICON[f.mimeType]||'📄')+'</div>'+
+      '<div class="q-fmeta"><b>'+escapeHtml(f.name||'원본 파일')+'</b><span>'+escapeHtml(meta)+'</span></div>'+
+      '<div class="q-fbtns">'+
+        '<button type="button" class="q-fbtn pri" onclick="quoteFileDownload(\''+it.id+'\')">⬇ 원본 받기</button>'+
+        (_Q_INLINE_MIMES.indexOf(f.mimeType)>=0 ? '<button type="button" class="q-fbtn" onclick="quoteFilePreview(\''+it.id+'\')">👁 미리보기</button>' : '')+
+        (f.webViewLink ? '<a class="q-fbtn" href="'+escapeAttr(f.webViewLink)+'" target="_blank" rel="noopener">Drive ↗</a>' : '')+
+      '</div></div>';
+  }
+  if(it.rawText){
+    return '<div class="q-filerow">'+
+      '<div class="q-fico">📧</div>'+
+      '<div class="q-fmeta"><b>메일·텍스트 원문</b><span>파일 없이 본문으로 등록된 건 · '+Number(it.rawText.length).toLocaleString()+'자</span></div>'+
+      '<div class="q-fbtns">'+
+        '<button type="button" class="q-fbtn pri" onclick="quoteFileDownload(\''+it.id+'\')">⬇ 원문 .txt</button>'+
+        '<button type="button" class="q-fbtn" onclick="quoteFilePreview(\''+it.id+'\')">👁 미리보기</button>'+
+      '</div></div>';
+  }
+  return '<div class="q-nofile">✍️ <b>원본 파일 없음</b> — 화면에서 직접 입력한 견적이라 받을 원본이 없습니다.</div>';
+}
+
+// blob 으로 받아 저장 — 실패 시 서버 JSON 메시지를 토스트로 보여주기 위해 fetch 사용
+// (location 이동 방식이면 404·410 응답이 페이지를 날려버린다)
+async function quoteFileDownload(id){
+  showToast('⬇ 원본 받는 중…');
+  try{
+    const r = await fetch(_qFileUrl(id,false), { credentials:'same-origin' });
+    if(!r.ok){
+      const j = await r.json().catch(()=>({}));
+      showToast('⚠️ '+(j.message || j.error || ('실패 ('+r.status+')')));
+      return;
+    }
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const name = m ? decodeURIComponent(m[1]) : '견적원본';
+    const blob = await r.blob();
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u), 5000);
+    showToast('✅ '+name);
+  }catch(e){ showToast('⚠️ '+e.message); }
+}
+
+// 원본 ↔ 파싱표 나란히 대조 (검수용)
+function quoteFilePreview(id){
+  const it = (_inboxLastItems||[]).find(x => x.id === id);
+  if(!it) return;
+  const f = it.driveFile || {};
+  const url = _qFileUrl(id, true);
+  let orig;
+  if(f.id && f.mimeType === 'application/pdf'){
+    orig = '<iframe src="'+escapeAttr(url)+'#view=FitH" title="원본 미리보기"></iframe>';
+  } else if(f.id){
+    orig = '<img src="'+escapeAttr(url)+'" alt="원본 미리보기">';
+  } else {
+    orig = '<div style="background:#fff;color:#222;width:100%;height:100%;overflow:auto;padding:16px;">'+
+           '<pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.6;margin:0;">'+
+           escapeHtml(it.rawText||'')+'</pre></div>';
+  }
+  const title = f.id ? (f.name||'원본 파일') : '메일·텍스트 원문';
+  const sub = f.id ? [_qFileKind(f.mimeType), _qFmtSize(f.size)].filter(Boolean).join(' · ') : (Number((it.rawText||'').length).toLocaleString()+'자');
+
+  const bg = document.createElement('div');
+  bg.className = 'q-prev-bg';
+  bg.id = 'qPrevBg';
+  bg.onclick = (ev)=>{ if(ev.target === bg) quoteFileClosePreview(); };
+  bg.innerHTML =
+    '<div class="q-prev">'+
+      '<div class="q-prev-hd">'+
+        '<div class="t">'+escapeHtml(title)+' <span class="s">'+escapeHtml(sub)+'</span></div>'+
+        '<div class="q-fbtns">'+
+          '<button type="button" class="q-fbtn pri" onclick="quoteFileDownload(\''+it.id+'\')">⬇ 받기</button>'+
+          (f.webViewLink ? '<a class="q-fbtn" href="'+escapeAttr(f.webViewLink)+'" target="_blank" rel="noopener">Drive ↗</a>' : '')+
+          '<button type="button" class="q-fbtn" onclick="quoteFileClosePreview()">✕ 닫기</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="q-prev-bd">'+
+        '<div class="q-prev-orig">'+orig+'</div>'+
+        '<div class="q-prev-side">'+
+          '<h4>🏭 '+escapeHtml((it.manualOverrides&&it.manualOverrides.거래처)||it.vendor||'거래처 미지정')+' — AI 파싱 결과</h4>'+
+          _aiRenderProductTable(it, false)+
+          '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6;">왼쪽 원본과 대조해 숫자가 다르면 닫고 카드에서 직접 수정하세요.<br>미검수 카드의 표가 편집 가능한 원본입니다.</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(bg);
+  document.addEventListener('keydown', _qPrevEsc);
+}
+function _qPrevEsc(e){ if(e.key === 'Escape') quoteFileClosePreview(); }
+function quoteFileClosePreview(){
+  const bg = document.getElementById('qPrevBg');
+  if(bg) bg.remove();
+  document.removeEventListener('keydown', _qPrevEsc);
+}
+
 function renderParsedCard(it, status){
   const isPending = status === 'pending';
   const overrides = it.manualOverrides || {};
@@ -9294,14 +9445,14 @@ function renderParsedCard(it, status){
       '<div>'+
         '<div class="name">'+vendorHeadline+'</div>'+
         '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📄 '+escapeHtml(displayName)+'</div>'+
-        '<div class="meta">제출: '+escapeHtml(submittedBy)+' · '+escapeHtml(created)+
-        (file.webViewLink?' · <a href="'+file.webViewLink+'" target="_blank">Drive에서 열기 ↗</a>':'')+'</div>'+
+        '<div class="meta">제출: '+escapeHtml(submittedBy)+' · '+escapeHtml(created)+'</div>'+
         archiveBadge+
         reviewedInfo+
       '</div>'+
       '<div style="font-size:11px;color:var(--text-muted);">통화 '+(it.currency||'?')+' · '+products.length+'제품'+(packagingCnt?'·포장 '+packagingCnt:'')+(oneTimeCnt?'·일회성 '+oneTimeCnt:'')+(it.receivingEntity?' · 🏢 수취: '+escapeHtml(it.receivingEntity):'')+'</div>'+
     '</div>'+
     dupWarning+
+    _aiRenderFileRow(it)+
     (isPending ? '<div class="ai-card-grid">'+
       '<div><label>거래처</label><input id="ov-vendor-'+it.id+'" value="'+escapeAttr(overrides.거래처||it.vendor||'')+'"></div>'+
       '<div><label>국가</label><select id="ov-country-'+it.id+'"><option value="">— 선택 —</option>'+countryOptions+'</select></div>'+

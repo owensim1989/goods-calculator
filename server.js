@@ -1626,6 +1626,115 @@ app.get('/api/parsed-quotes/:id', (req, res) => {
   res.json(it);
 });
 
+
+// ━━━ 견적 원본 파일 다운로드·미리보기 (2026-08-20 신설) ━━━
+// 업로드 원본은 Drive _processed/YYYY-MM/ 에 그대로 보관돼 있는데 화면에 받을 통로가 없었다.
+// ?disposition=inline → PDF·이미지를 모달에 띄워 원본↔파싱표 대조 (검수용), 기본은 attachment.
+// 🔐 fileId 는 반드시 레코드에서 꺼낸 driveFile.id 만 사용한다.
+//    사용자가 넘긴 fileId 를 그대로 Drive 에 태우면 드라이브 전체를 읽는 프록시가 된다.
+const QUOTE_FILE_LOG = path.join(PERSIST_DATA_DIR, 'quote-file-access.jsonl');
+const INLINE_OK_MIMES = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+
+// 원가·거래처 단가 원본이라 누가 언제 받았는지 남긴다 (로그 실패가 다운로드를 막지 않게 try 로 감쌈)
+function logQuoteFileAccess(req, it, extra) {
+  const f = (it && it.driveFile) || {};
+  const line = JSON.stringify({
+    at: new Date().toISOString(),
+    who: (req.user && (req.user.email || req.user.name)) || 'unknown',
+    recordId: (it && it.id) || null,
+    vendor: (it && ((it.manualOverrides && it.manualOverrides.거래처) || it.vendor)) || null,
+    driveFileId: f.id || null,
+    fileName: f.name || null,
+    ip: req.ip || null,
+    ...extra
+  });
+  console.log('[quote-file]', line);
+  try { fs.appendFileSync(QUOTE_FILE_LOG, line + '\n'); } catch (e) { /* 로그는 best-effort */ }
+}
+
+function setQuoteFileHeaders(res, { mime, filename, inline }) {
+  res.setHeader('Content-Type', mime);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Disposition', (inline ? 'inline' : 'attachment') +
+    "; filename*=UTF-8''" + encodeURIComponent(filename));
+  res.setHeader('Cache-Control', 'private, no-store');
+}
+
+app.get('/api/parsed-quotes/:id/file', security.rateLimit('quote-file', 60, 5 * 60e3), async (req, res) => {
+  try {
+    reloadParsedDb();
+    const it = (parsedDb.items || []).find(x => x.id === req.params.id);
+    if (!it) return res.status(404).json({ error: 'not_found' });
+
+    const wantInline = req.query.disposition === 'inline';
+    const file = it.driveFile || {};   // parsedDb 안 객체 참조 — 아래 id 복구 시 그대로 반영됨
+
+    // ① Drive 원본이 없는 건 — 메일/텍스트는 원문을 .txt 로 만들어주고, 직접입력은 받을 원본 자체가 없음
+    if (!file.id) {
+      if (it.rawText) {
+        const vendor = (it.manualOverrides && it.manualOverrides.거래처) || it.vendor || '거래처';
+        const nm = '견적원문_' + vendor + '_' + String(it.createdAt || '').slice(0, 10) + '.txt';
+        setQuoteFileHeaders(res, { mime: 'text/plain; charset=utf-8', filename: nm, inline: wantInline });
+        logQuoteFileAccess(req, it, { kind: 'rawtext' });
+        return res.send(it.rawText);
+      }
+      return res.status(404).json({
+        error: 'no_original',
+        reason: it.source === 'manual' ? 'manual' : 'no_file',
+        message: '화면에서 직접 입력한 견적이라 받을 원본 파일이 없습니다.'
+      });
+    }
+
+    // ② Drive 스트림. 실패하면 파일명으로 1회 재탐색 → 복구되면 새 id 를 영구 반영
+    let stream;
+    try {
+      stream = await inboxWatcher.openDriveFileStream(file.id);
+    } catch (err) {
+      const msg = (err && err.message) || String(err);
+      // 404/403 만 "파일이 없어졌다" 신호. 자격증명·네트워크 오류를 삭제로 오인 보고하면 안 된다.
+      const code = Number((err && (err.code || (err.response && err.response.status))) || 0);
+      const gone = (code === 404 || code === 403);
+      const found = gone ? await inboxWatcher.findDriveFileByName(file.name).catch(() => null) : null;
+      if (!found) {
+        logQuoteFileAccess(req, it, { kind: gone ? 'missing' : 'drive_error', error: msg });
+        if (gone) return res.status(410).json({
+          error: 'file_missing',
+          message: '드라이브에서 원본을 찾을 수 없습니다 (이동·삭제됨).',
+          webViewLink: file.webViewLink || null
+        });
+        return res.status(502).json({
+          error: 'drive_error',
+          message: '드라이브 연결에 실패했습니다: ' + msg,
+          webViewLink: file.webViewLink || null
+        });
+      }
+      file.id = found.id;
+      if (found.webViewLink) file.webViewLink = found.webViewLink;
+      if (found.size) file.size = found.size;
+      if (found.mimeType) file.mimeType = found.mimeType;
+      inboxWatcher.saveParsedDb(PARSED_DB_PATH, parsedDb);
+      console.log('[quote-file] id 복구:', file.name, '→', found.id);
+      stream = await inboxWatcher.openDriveFileStream(file.id);
+    }
+
+    const mime = file.mimeType || 'application/octet-stream';
+    // inline 은 브라우저가 안전하게 렌더하는 형식만 (엑셀 등은 강제 다운로드)
+    const inline = wantInline && INLINE_OK_MIMES.has(mime);
+    setQuoteFileHeaders(res, { mime, filename: file.name || 'quote', inline });
+    logQuoteFileAccess(req, it, { kind: inline ? 'preview' : 'download' });
+
+    stream.on('error', e => {
+      console.error('[quote-file] stream 오류:', e.message);
+      if (!res.headersSent) res.status(502).json({ error: 'stream_failed', message: e.message });
+      else res.destroy();
+    });
+    stream.pipe(res);
+  } catch (e) {
+    console.error('[quote-file]', e);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
 // 검수완료 (approve)
 // body: { reviewedBy: '심영민', overrides: { 품목, 거래처, 국가, 프로젝트명, 품명: ['...'] } }
 app.patch('/api/parsed-quotes/:id/approve', (req, res) => {
