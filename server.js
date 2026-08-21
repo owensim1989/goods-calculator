@@ -7672,7 +7672,17 @@ try {
 }
 
 // SPA 폴백
+// ⚠️ 2026-08-21 보안: 여기까지 온 요청에 무조건 index.html(746KB, 앱 UI 소스 전량)을 내주면
+//    PUBLIC_PATHS 를 통과한 경로(정적 자산 확장자·favicon 등)가 곧바로 무인증 유출 통로가 된다.
+//    ① 실제 파일이 아닌 정적 자산 요청(.jpg/.css/...)은 SPA 폴백 대상이 아니므로 404
+//    ② 그 외 폴백은 로그인 세션 필수 (auth.requireAuthMiddleware 와 이중 방어)
 app.get('*', (req, res) => {
+  const p = req.path || '';
+  // 자산 확장자인데 여기까지 왔다 = public/ 에 그 파일이 없다 → SPA 진입점 아님
+  if (/\.(css|js|png|jpg|jpeg|gif|svg|ico|webp|woff2?|map|txt|xml|json|pdf|xlsx?|zip)$/i.test(p)) {
+    return res.status(404).type('text/plain; charset=utf-8').send('Not Found');
+  }
+  if (!auth.getUser(req)) return res.redirect(302, '/login.html');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
