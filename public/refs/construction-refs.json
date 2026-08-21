@@ -1,0 +1,323 @@
+{
+  "updatedAt": "2026-08-21",
+  "note": "과거 시공·전시부스 견적 아카이브. 원본 출처: 공유드라이브 [거래처 견적 및 연락망]/4. 시공 및 외주/[해외]. 참조용이며 현행 단가가 아님.",
+  "countries": [
+    {
+      "code": "TW",
+      "flag": "🇹🇼",
+      "name": "대만",
+      "currency": "TWD",
+      "currencyLabel": "NT$",
+      "defaultKrwRate": 40,
+      "rateNote": "2020년 당시 사내 환산율 40원/NT$ 기준(원본 엑셀 환산 컬럼과 동일). 현재 시세로 보려면 위 환산율을 바꾸세요.",
+      "summary": "2020년 대만 팝업(화산1914 창의원구·타이베이 세계무역센터 1관) 준비 당시 수집한 시공·부스 견적 5건. 종합대행(悍草) vs 시공 단독(文本·佳廉) 가격대 비교에 쓸 수 있습니다.",
+      "quotes": [
+        {
+          "id": "tw-handsup-01",
+          "title": "화산 팝업 종합대행 — 풀스코프",
+          "vendor": "悍草創意有限公司 (HANDS UP)",
+          "vendorRole": "팝업 종합대행 (시공+운영+통관+PR)",
+          "contact": "Leo 趙志宇",
+          "tel": "02-2966-0010",
+          "address": "新北市板橋區文化路一段147號11樓之1",
+          "date": "2020-10",
+          "validUntil": "2020-10-20",
+          "project": "대만 팝업스토어 종합대행 (華山)",
+          "currency": "TWD",
+          "totalNet": 611560,
+          "totalLabel": "NT$611,560 + 매출수수료 30% 별도",
+          "badge": "종합대행",
+          "file": "refs/construction/tw/2020-handsup-quote-01.xls",
+          "fileLabel": "HANDS UP_01.xls",
+          "sections": [
+            {
+              "title": "硬體搭建 Hardware service (시공)",
+              "subtotal": 254310,
+              "subtotalNote": "영업세 5% NT$12,110 포함",
+              "items": [
+                { "no": "1", "name": "壁面木作與輸出 — 벽면 목공 + 출력", "qty": "1식", "amount": 75000 },
+                { "no": "2", "name": "室內牆面壓克力logo — 실내 벽면 아크릴 로고", "qty": "1식", "amount": 15000 },
+                { "no": "3", "name": "玻璃透貼輸出 — 유리 시트지 출력", "qty": "1식", "amount": 10000 },
+                { "no": "4", "name": "燈光照明系統 — 조명 시스템 설계", "qty": "1식", "amount": 8000 },
+                { "no": "5", "name": "展櫃製作 — 진열장 제작", "qty": "5개", "amount": 45000, "remark": "type1×1 (W150×D47×H108) / type2×1 (W400×D50×H72) / type3×3 (W240×D25)" },
+                { "no": "6", "name": "道具運送 — FRP 조형물 운송", "qty": "1식", "amount": 4000, "remark": "타이베이·신베이 한정, FRP 반송 포함" },
+                { "no": "7", "name": "電視架設與租賃 — 43인치 TV 설치·임대", "qty": "1식", "amount": 8000 },
+                { "no": "8", "name": "海報表框 — A3 포스터 액자", "qty": "6개", "amount": 6000 },
+                { "no": "9", "name": "衣車 — 화이트 행거랙", "qty": "2개", "amount": 1200 },
+                { "no": "10", "name": "商品項目告示 — 상품 프라이스택 일체", "qty": "1식", "amount": 10000 },
+                { "no": "11", "name": "進撤場 — 입·철수 시공", "qty": "1식", "amount": 30000 },
+                { "no": "12", "name": "設計執行費 — 대행 수수료(Agency Fee)", "qty": "1식", "amount": 30000 }
+              ]
+            },
+            {
+              "title": "快閃店運營 Store operating (운영)",
+              "subtotal": 270000,
+              "subtotalNote": "+ 매출수수료 30% 별도",
+              "items": [
+                { "no": "1", "name": "POS與發票系統 — POS·전자영수증 시스템", "qty": "1식", "amount": 30000, "remark": "장비 임대 + 상품 등록 포함" },
+                { "no": "2", "name": "銷售人員 — 판매 인력 (10:30~21:30)", "qty": "80인일", "amount": 240000, "remark": "평일 1명(44일) / 주말 2명(18일)" },
+                { "no": "3", "name": "銷售抽成 — 매출 수수료", "qty": "30%", "amount": null, "remark": "화산 영업세 5% + 소득세 20% 포함" }
+              ]
+            },
+            {
+              "title": "商品報關 Customs clearance (통관)",
+              "subtotal": 71500,
+              "subtotalNote": "전 항목 TBC(추후확정) 표기",
+              "items": [
+                { "no": "1", "name": "商品標籤製作＆貼標 — 라벨 제작·부착", "qty": "1식", "amount": 30000, "remark": "TBC" },
+                { "no": "2", "name": "海運進口報關&驗關 — 해상 수입통관·검사", "qty": "1식", "amount": 10000, "remark": "TBC" },
+                { "no": "5", "name": "吊櫃費·문서비 (THC)", "qty": "1식", "amount": 13500, "remark": "TBC" },
+                { "no": "6", "name": "拆櫃費 — 컨테이너 적출(Devanning)", "qty": "1식", "amount": 9500, "remark": "TBC" },
+                { "no": "7", "name": "商檢費 — 상품 검사비", "qty": "1식", "amount": 2500, "remark": "TBC" },
+                { "no": "8", "name": "自倉庫運輸至華山 — 창고→화산 운송", "qty": "1식", "amount": 6000, "remark": "TBC" },
+                { "no": "9", "name": "關稅 — 관세", "qty": "1식", "amount": null, "remark": "실비 정산, TBC" },
+                { "no": "10", "name": "營業稅 — 영업세", "qty": "1식", "amount": null, "remark": "실비 정산, TBC" }
+              ]
+            },
+            {
+              "title": "公關 PR (홍보)",
+              "subtotal": 15750,
+              "subtotalNote": "영업세 5% NT$750 포함",
+              "items": [
+                { "no": "1", "name": "公關稿撰寫&發稿 — 보도자료 작성·배포", "qty": "1식", "amount": 15000 }
+              ]
+            }
+          ],
+          "terms": [
+            "견적 유효기한 2020-10-20",
+            "지급조건: 납품 후 현금 또는 계좌이체 완납",
+            "견적서 서명 회신 시 정식 발주 계약으로 성립",
+            "제작 중 발주 취소 시 발생 비용 전액 부담"
+          ]
+        },
+        {
+          "id": "tw-handsup-02",
+          "title": "화산 팝업 종합대행 — 축소안",
+          "vendor": "悍草創意有限公司 (HANDS UP)",
+          "vendorRole": "팝업 종합대행 (항목 축소 재견적)",
+          "contact": "Leo 趙志宇",
+          "tel": "02-2966-0010",
+          "address": "新北市板橋區文化路一段147號11樓之1",
+          "date": "2020-10",
+          "validUntil": "2020-10-20",
+          "project": "대만 팝업스토어 종합대행 (華山) — 자체수행 항목 제외",
+          "currency": "TWD",
+          "totalNet": 477850,
+          "totalLabel": "NT$477,850 + 매출수수료 30% 별도",
+          "badge": "축소안",
+          "compareNote": "01안 대비 NT$133,710 절감. 아크릴 로고·조명·액자·행거랙·프라이스택·POS·라벨링·THC·적출·검사·내륙운송을 제외(자체 수행 전제)한 안.",
+          "file": "refs/construction/tw/2020-handsup-quote-02.xls",
+          "fileLabel": "HANDS UP_02.xls",
+          "sections": [
+            {
+              "title": "硬體搭建 Hardware service (시공)",
+              "subtotal": 212100,
+              "subtotalNote": "영업세 5% NT$10,100 포함",
+              "items": [
+                { "no": "1", "name": "壁面木作與輸出 — 벽면 목공 + 출력", "qty": "1식", "amount": 75000 },
+                { "no": "2", "name": "室內牆面壓克力logo — 실내 벽면 아크릴 로고", "qty": "1식", "amount": 0, "remark": "제외" },
+                { "no": "3", "name": "玻璃透貼輸出 — 유리 시트지 출력", "qty": "1식", "amount": 10000 },
+                { "no": "4", "name": "燈光照明系統 — 조명 시스템 설계", "qty": "1식", "amount": 0, "remark": "제외" },
+                { "no": "5", "name": "展櫃製作 — 진열장 제작", "qty": "5개", "amount": 45000, "remark": "type1×1 (W150×D47×H108) / type2×1 (W400×D50×H72) / type3×3 (W240×D25)" },
+                { "no": "6", "name": "道具運送 — FRP 조형물 운송", "qty": "1식", "amount": 4000, "remark": "FRP 반송 포함" },
+                { "no": "7", "name": "電視架設與租賃 — 43인치 TV 설치·임대", "qty": "1식", "amount": 8000 },
+                { "no": "8", "name": "海報表框 — A3 포스터 액자", "qty": "6개", "amount": 0, "remark": "제외" },
+                { "no": "9", "name": "衣車 — 화이트 행거랙", "qty": "2개", "amount": 0, "remark": "제외" },
+                { "no": "10", "name": "商品項目告示 — 상품 프라이스택 일체", "qty": "1식", "amount": 0, "remark": "제외" },
+                { "no": "11", "name": "進撤場 — 입·철수 시공", "qty": "1식", "amount": 30000 },
+                { "no": "12", "name": "設計執行費 — 대행 수수료(Agency Fee)", "qty": "1식", "amount": 30000 }
+              ]
+            },
+            {
+              "title": "快閃店運營 Store operating (운영)",
+              "subtotal": 240000,
+              "subtotalNote": "+ 매출수수료 30% 별도",
+              "items": [
+                { "no": "1", "name": "POS與發票系統 — POS·전자영수증 시스템", "qty": "1식", "amount": 0, "remark": "제외" },
+                { "no": "2", "name": "銷售人員 — 판매 인력 (10:30~21:30)", "qty": "80인일", "amount": 240000, "remark": "평일 1명(44일) / 주말 2명(18일)" },
+                { "no": "3", "name": "銷售抽成 — 매출 수수료", "qty": "30%", "amount": null, "remark": "화산 영업세 5% + 소득세 20% 포함" }
+              ]
+            },
+            {
+              "title": "商品報關 Customs clearance (통관)",
+              "subtotal": 10000,
+              "subtotalNote": "통관 부대비 대부분 제외",
+              "items": [
+                { "no": "2", "name": "海運進口報關&驗關 — 해상 수입통관·검사", "qty": "1식", "amount": 10000, "remark": "TBC" },
+                { "no": "9", "name": "關稅·營業稅", "qty": "1식", "amount": null, "remark": "실비 정산, TBC" }
+              ]
+            },
+            {
+              "title": "公關 PR (홍보)",
+              "subtotal": 15750,
+              "subtotalNote": "영업세 5% NT$750 포함",
+              "items": [
+                { "no": "1", "name": "公關稿撰寫&發稿 — 보도자료 작성·배포", "qty": "1식", "amount": 15000 }
+              ]
+            }
+          ],
+          "terms": [
+            "견적 유효기한 2020-10-20",
+            "지급조건: 납품 후 현금 또는 계좌이체 완납"
+          ]
+        },
+        {
+          "id": "tw-textstudio",
+          "title": "화산 행사장 시공 (韓國廠商 華山活動場地布置)",
+          "vendor": "文本創意 TEXT STUDIO",
+          "vendorRole": "부스·집기 목공 시공 단독",
+          "contact": "林建育 Jeff Lin (執行創意)",
+          "tel": "02-2736-0062 / 0936-127-347",
+          "address": "台北市信義區嘉興街175巷2弄2號",
+          "date": "2020-10-13",
+          "project": "韓國廠商 華山活動場地布置",
+          "orderedBy": "答客國際有限公司 (李澤) — 대만 현지 대행사 경유 견적",
+          "currency": "TWD",
+          "totalNet": 261250,
+          "tax": 13063,
+          "totalGross": 274313,
+          "totalLabel": "미세액 NT$261,250 / 세액 NT$13,063 / 합계 NT$274,313",
+          "badge": "시공 단독",
+          "file": "refs/construction/tw/2020-textstudio-huashan.pdf",
+          "fileLabel": "報價單 (PDF)",
+          "sections": [
+            {
+              "title": "집기·시공 항목",
+              "subtotal": 261250,
+              "items": [
+                { "no": "1", "name": "收銀台 — 계산대(하부 수납)", "spec": "W150×H108×D47", "qty": "1", "unitPrice": 25000, "amount": 25000, "remark": "목공 가공성형 / 백색 강판" },
+                { "no": "2", "name": "陳列櫃 — 진열장(하부 수납)", "spec": "W100×H72×D50", "qty": "4", "unitPrice": 12500, "amount": 50000, "remark": "목공 가공성형 / 백색 강판" },
+                { "no": "3", "name": "層板 — 선반", "spec": "W200×H5×D25", "qty": "3", "unitPrice": 4000, "amount": 12000, "remark": "목공 가공성형 / 백색 강판" },
+                { "no": "4", "name": "玻璃貼 — 유리 시트지", "spec": "W535×H270", "qty": "1", "unitPrice": 40250, "amount": 40250, "remark": "컬러 양면 출력" },
+                { "no": "5", "name": "白色牆面製作 — 백색 벽면 제작", "spec": "W885×H285×D225", "qty": "1", "unitPrice": 80000, "amount": 80000, "remark": "목공 구조 / 백색 도장" },
+                { "no": "6", "name": "[임대] Panasonic 49인치 + 스탠드", "spec": "11/3~1/4 약 2개월", "qty": "1", "unitPrice": 25000, "amount": 25000 },
+                { "no": "7", "name": "[임대] TV 거치대", "spec": "11/3~1/4 약 2개월", "qty": "1", "unitPrice": 9000, "amount": 9000 },
+                { "no": "8", "name": "進場·撤場 운반비 (폐기물 처리 포함)", "spec": "", "qty": "2", "unitPrice": 10000, "amount": 20000 }
+              ]
+            }
+          ],
+          "terms": [
+            "견적 확정 시 서명·날인 후 회신 (사본·팩스본도 계약 효력)",
+            "견적서는 발행 후 7일 이내 유효, 기한 내 미확인 시 자동 실효",
+            "각 항목 디자인은 시안 2종 제공, 3교까지 포함 (초과분 별도 과금)"
+          ]
+        },
+        {
+          "id": "tw-jialian",
+          "title": "목공벽·전시집기 (答客 受訂單 027-K202010012)",
+          "vendor": "佳廉國際展覽行銷有限公司 (Easy-Truss)",
+          "vendorRole": "전시 목공·출력 시공 단독",
+          "contact": "馮偉琦 (kk@easy-truss.com)",
+          "tel": "02-8667-3300 #103 / 0919-247-790",
+          "address": "新北市新店區中正路四維巷2弄6號6樓",
+          "date": "2020-10-12",
+          "project": "목공벽 + 전시집기 (전시기간 2개월)",
+          "orderedBy": "答客國際有限公司 (Taek) — 대만 현지 대행사 경유 견적",
+          "currency": "TWD",
+          "totalNet": 209925,
+          "tax": 10496,
+          "totalGross": 220421,
+          "totalLabel": "미세액 NT$209,925 / 영업세 NT$10,496 / 총액 NT$220,421",
+          "badge": "시공 단독",
+          "file": "refs/construction/tw/2020-jialian-woodwall.xls",
+          "fileLabel": "受訂單 (XLS)",
+          "sections": [
+            {
+              "title": "목공·출력·집기",
+              "subtotal": 209925,
+              "items": [
+                { "no": "1", "name": "木工牆 — 목공벽", "spec": "W900×H300×D250", "qty": "1", "unitPrice": 78000, "amount": 78000 },
+                { "no": "2", "name": "PVC 배접 출력 + 무광 라미네이팅", "spec": "W900×H300", "qty": "1", "unitPrice": 16500, "amount": 16500 },
+                { "no": "3", "name": "PVC 배접 출력 + 무광 라미네이팅", "spec": "W250×H300", "qty": "2", "unitPrice": 4620, "amount": 9240 },
+                { "no": "4", "name": "玻璃貼 — 유리 시트지 + 무광", "spec": "H250", "qty": "1", "unitPrice": 9185, "amount": 9185 },
+                { "no": "5", "name": "43인치 TV", "spec": "", "qty": "1", "unitPrice": 5000, "amount": 5000 },
+                { "no": "6", "name": "服務台 — 서비스 데스크", "spec": "W150×H108×D47", "qty": "1", "unitPrice": 18000, "amount": 18000 },
+                { "no": "7", "name": "展示台+開門 — 전시대(도어형)", "spec": "W100×H72×D50", "qty": "4", "unitPrice": 12000, "amount": 48000 },
+                { "no": "8", "name": "三層櫃 — 3단 진열장", "spec": "W240×H170×D25", "qty": "1", "unitPrice": 26000, "amount": 26000 }
+              ]
+            }
+          ],
+          "terms": [
+            "발주 시 선금 30%(현금·수표), 납품 후 현금 또는 7일 만기 수표",
+            "발주 취소 시 총액의 50% 위약금",
+            "임대 연장근무 1인/1일 NT$2,500 (18시 이후·주말)",
+            "임대 지역은 타이베이시·신베이시 기준, 타 지역은 운송비 별도",
+            "상기 견적에 포스터 디자인비 미포함 · 미세액 기준"
+          ]
+        },
+        {
+          "id": "tw-vivadesign",
+          "title": "2020 대만 문구박람회 포스터 시공",
+          "vendor": "欣豐設計有限公司 (Viva Design)",
+          "vendorRole": "박람회 부스 출력·시공",
+          "contact": "Frank Lai (Marketing Executive)",
+          "tel": "02-2226-0999 / Fax 02-2223-7700",
+          "address": "新北市中和區板南路659號16樓 (統編 54722047)",
+          "date": "2020-06-29",
+          "project": "2020 Stationery Fair — 타이베이 세계무역센터 1관(世貿一館), 2020-07-03~07-06",
+          "currency": "TWD",
+          "totalNet": 27000,
+          "totalLabel": "NT$27,000 (미세액) · USD 920",
+          "badge": "박람회 부스",
+          "file": "refs/construction/tw/2020-vivadesign-stationery-fair.jpg",
+          "fileLabel": "CONTRACT (이미지)",
+          "sections": [
+            {
+              "title": "출력·시공",
+              "subtotal": 27000,
+              "items": [
+                { "no": "1", "name": "Poster / Post (pearl plate) — 포스터 + 펄플레이트 지주", "spec": "900×H250cm", "qty": "1식", "amount": 27000, "remark": "시공·철거·폐기물 처리 포함 (USD 920)" }
+              ]
+            }
+          ],
+          "terms": [
+            "전 항목 렌탈 기준 (ALL ITEMS ARE ON RENTAL BASIS)",
+            "해외 포스터 편집디자인 미포함 · 완제품 정입고 기준",
+            "전기·수도·대회비·인터넷 사용료 별도",
+            "계약금 USD 920 (2020-06-29 지급)",
+            "현장 취소 시 계약금액의 80% 지불"
+          ]
+        }
+      ],
+      "extras": [
+        {
+          "id": "tw-vendor-compare",
+          "title": "대만 대행업체 비교 (2020-10)",
+          "desc": "종합대행 2사 + 한국인 파견안의 셋업·인건비·수수료 구조 비교. 매출 1억/5천만 시나리오별 총부담 시산.",
+          "file": "refs/construction/tw/2020-vendor-compare.xlsx",
+          "fileLabel": "대만업체비교.xlsx",
+          "table": {
+            "head": ["구분", "a사(悍草)", "한국인 파견", "u&s"],
+            "rows": [
+              ["데코/셋업", "9,000,000원", "—", "불가"],
+              ["인건비", "9,600,000원", "—", "9,500,000원"],
+              ["소계", "18,600,000원", "—", "9,500,000원"],
+              ["매출 수수료", "30%", "10%", "40%"],
+              ["매출 1억 시 총부담", "48,600,000원", "10,000,000원", "49,500,000원"],
+              ["매출 5천만 시 총부담", "33,600,000원", "5,000,000원", "29,500,000원"]
+            ]
+          },
+          "note": "원본 시트 기준 값. '한국인 파견'은 셋업·인건비를 자체 부담(수치 공란)하고 수수료만 10%로 잡은 안이라 직접 비교 시 주의."
+        },
+        {
+          "id": "tw-popup-spot",
+          "title": "대만 팝업 스팟 비교 (2021)",
+          "desc": "타이베이·가오슝 주요 팝업 공간의 최소월세·수수료·운영비 비교.",
+          "file": "refs/construction/tw/2021-popup-spot-compare.xlsx",
+          "fileLabel": "2021 대만팝업스팟 비교.xlsx",
+          "table": {
+            "head": ["구분", "eslite 시먼 B1", "eslite 시먼 1층 독립매장", "eslite 신이 4층", "신트렌드(타이베이)"],
+            "rows": [
+              ["공간대여 (최소월세)", "NT$50,000", "NT$110,000", "NT$70,000", "NT$75,000"],
+              ["공간대여 (수수료)", "16%", "18%", "18%", "15%"],
+              ["POS 등 운영비", "NT$30,000", "NT$44,000", "NT$24,000", "NT$11,640"],
+              ["합계", "NT$80,000", "NT$154,000", "NT$94,000", "NT$86,640"],
+              ["합계 (한화 ×40)", "3,200,000원", "6,160,000원", "3,760,000원", "3,465,600원"]
+            ]
+          },
+          "note": "eslite 3개 열은 월 기준, 신트렌드만 6/18~6/30 기간 기준. 원본에는 가오슝·송산문화공원·화산크리에이티브 열이 비어 있음(협의 전). 다수 공간이 FRP 조형물 지원을 요구 조건으로 제시."
+        }
+      ]
+    }
+  ]
+}

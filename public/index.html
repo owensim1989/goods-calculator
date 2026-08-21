@@ -981,6 +981,7 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
       <button class="sidebar-item active" data-page="product" onclick="switchPage(this)">제품 단가</button>
       <button class="sidebar-item" data-page="budget" onclick="switchPage(this)">예산 조합</button>
       <button class="sidebar-item" data-page="vendor" onclick="switchPage(this)">거래처 비교</button>
+      <button class="sidebar-item" data-page="construction" onclick="switchPage(this)">🏗️ 시공 레퍼런스</button>
     </div>
     <div class="sidebar-group" data-perm-restricted="1">
       <div class="sidebar-group-title">미스터두낫띵</div>
@@ -2114,6 +2115,236 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cust-cell .meta{font-size:10px;color:var(--text-muted);margin-top:4px;}
 </style>
 
+
+<!-- 탭: 시공 레퍼런스 (2026-08-21) — 과거 해외 시공·부스 견적 아카이브 (참조 전용, 현행 단가 아님) -->
+<div class="tab-page" id="page-construction">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:16px;flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0 0 4px 0;font-size:20px;font-weight:600;">🏗️ 시공 레퍼런스</h2>
+      <div style="color:var(--text-muted);font-size:13px;line-height:1.55;max-width:720px;">
+        해외 팝업·박람회 <b>시공/부스 견적서 아카이브</b>입니다. 새 현장 견적을 받을 때 항목 누락 점검과 가격대 감(感) 잡는 용도로 쓰세요.<br>
+        <span style="color:var(--danger,#ef4444);">⚠️ 과거 데이터입니다 — 현행 단가가 아니며 그대로 발주 기준으로 쓰지 마세요.</span>
+      </div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:12px;line-height:1.6;min-width:180px;">
+      <div style="color:var(--text-muted);">등록 견적</div>
+      <div style="font-size:22px;font-weight:700;color:var(--primary);" id="cref-stat-total">—</div>
+      <div style="color:var(--text-muted);">최종 갱신: <span id="cref-stat-updated" style="color:var(--text);font-weight:600;">—</span></div>
+    </div>
+  </div>
+
+  <!-- 국가 탭 -->
+  <div class="cref-country-tabs" id="cref-country-tabs"></div>
+
+  <div id="cref-body"><div style="color:var(--text-muted);font-size:13px;padding:24px 0;">불러오는 중…</div></div>
+</div>
+
+<style>
+.cref-country-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:16px;padding-bottom:0;}
+.cref-country-tab{background:none;border:none;border-bottom:2px solid transparent;padding:9px 16px;font-size:14px;font-family:inherit;color:var(--text-muted);cursor:pointer;transition:.15s;margin-bottom:-1px;}
+.cref-country-tab:hover{color:var(--primary);}
+.cref-country-tab.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:700;}
+.cref-country-tab .cnt{font-size:11px;opacity:.7;margin-left:4px;}
+.cref-intro{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px;color:var(--text);}
+.cref-fx{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin-bottom:16px;}
+.cref-fx input{width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px;font-family:inherit;text-align:right;}
+.cref-sum-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:20px;}
+.cref-sum-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.15s;}
+.cref-sum-card:hover{border-color:var(--primary);transform:translateY(-1px);}
+.cref-sum-card .v{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cref-sum-card .amt{font-size:19px;font-weight:700;color:var(--primary);margin-top:4px;}
+.cref-sum-card .krw{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.cref-card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden;}
+.cref-head{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer;user-select:none;}
+.cref-head:hover{background:var(--bg);}
+.cref-head .arrow{font-size:12px;color:var(--text-muted);margin-top:4px;transition:transform .15s;}
+.cref-card.open .cref-head .arrow{transform:rotate(90deg);}
+.cref-head .ti{flex:1;min-width:0;}
+.cref-head .t{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cref-head .m{font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.5;}
+.cref-head .amt{text-align:right;white-space:nowrap;}
+.cref-head .amt .a{font-size:16px;font-weight:700;color:var(--primary);}
+.cref-head .amt .k{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.cref-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--primary-light,rgba(59,130,246,.12));color:var(--primary);}
+.cref-body{display:none;padding:0 16px 16px;border-top:1px solid var(--border);}
+.cref-card.open .cref-body{display:block;}
+.cref-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 18px;font-size:12px;padding:12px 0;color:var(--text-muted);}
+.cref-meta b{color:var(--text);font-weight:600;}
+.cref-sec{margin-top:12px;}
+.cref-sec h4{margin:0 0 6px;font-size:13px;font-weight:600;}
+.cref-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.cref-tbl th{text-align:left;padding:7px 6px;color:var(--text-muted);font-weight:500;font-size:11px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.cref-tbl td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:top;line-height:1.5;}
+.cref-tbl td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.cref-tbl tr.excluded td{opacity:.45;text-decoration:line-through;}
+.cref-tbl tr.sub td{font-weight:700;border-bottom:none;background:var(--bg);}
+.cref-terms{margin:12px 0 0;padding:10px 12px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--text-muted);line-height:1.7;}
+.cref-terms ul{margin:4px 0 0;padding-left:18px;}
+.cref-file{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);text-decoration:none;margin-top:12px;}
+.cref-file:hover{border-color:var(--primary);color:var(--primary);}
+.cref-extra{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;}
+.cref-extra h4{margin:0 0 4px;font-size:14px;font-weight:600;}
+.cref-extra .d{font-size:12px;color:var(--text-muted);line-height:1.55;margin-bottom:10px;}
+@media(max-width:768px){.cref-head{flex-wrap:wrap;}.cref-head .amt{text-align:left;}}
+</style>
+
+<script>
+// ━━━ 🏗️ 시공 레퍼런스 (2026-08-21) ━━━
+// 과거 해외 시공·부스 견적서 아카이브. 데이터는 /refs/construction-refs.json (로그인 필수 경로).
+// 국가 탭 → 견적 카드(항목표·조건·원본파일) + 부속 비교자료. 국가 추가는 JSON 에 항목만 넣으면 됨.
+let CREF_DATA = null, CREF_COUNTRY = 0, CREF_RATE = 40;
+function crefEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function crefNum(n){return (n==null||isNaN(n))?'—':Number(n).toLocaleString('ko-KR');}
+function crefKrw(n){
+  if(n==null||isNaN(n)||!CREF_RATE) return '';
+  return '≈ ' + Math.round(Number(n)*CREF_RATE).toLocaleString('ko-KR') + '원';
+}
+async function crefInit(){
+  if(CREF_DATA) return;
+  try{
+    const r = await fetch('/refs/construction-refs.json',{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    CREF_DATA = await r.json();
+  }catch(e){
+    document.getElementById('cref-body').innerHTML =
+      '<div style="color:var(--danger,#ef4444);font-size:13px;padding:20px 0;">레퍼런스 데이터를 불러오지 못했습니다 ('+crefEsc(e.message)+')</div>';
+    return;
+  }
+  const cs = CREF_DATA.countries || [];
+  document.getElementById('cref-stat-total').textContent =
+    cs.reduce((a,c)=>a+((c.quotes||[]).length),0) + '건';
+  document.getElementById('cref-stat-updated').textContent = CREF_DATA.updatedAt || '—';
+  document.getElementById('cref-country-tabs').innerHTML = cs.map((c,i)=>
+    '<button class="cref-country-tab'+(i===0?' active':'')+'" onclick="crefSelectCountry('+i+')">'+
+    crefEsc(c.flag||'')+' '+crefEsc(c.name||c.code)+
+    '<span class="cnt">'+((c.quotes||[]).length)+'</span></button>').join('');
+  crefSelectCountry(0);
+}
+function crefSelectCountry(i){
+  CREF_COUNTRY = i;
+  document.querySelectorAll('#cref-country-tabs .cref-country-tab').forEach((b,bi)=>b.classList.toggle('active',bi===i));
+  const c = (CREF_DATA.countries||[])[i];
+  CREF_RATE = c && c.defaultKrwRate ? c.defaultKrwRate : 0;
+  crefRender();
+}
+function crefOnRate(v){
+  const n = parseFloat(String(v).replace(/,/g,''));
+  CREF_RATE = isNaN(n)?0:n;
+  crefRender(true);
+}
+function crefRender(keepOpen){
+  const c = (CREF_DATA.countries||[])[CREF_COUNTRY];
+  if(!c){document.getElementById('cref-body').innerHTML='';return;}
+  const open = keepOpen ? [...document.querySelectorAll('#cref-body .cref-card.open')].map(e=>e.dataset.id) : [];
+  const cur = c.currencyLabel || (c.currency+' ');
+  let h = '';
+  if(c.summary) h += '<div class="cref-intro">'+crefEsc(c.summary)+'</div>';
+  h += '<div class="cref-fx">💱 <b style="color:var(--text);">'+crefEsc(cur)+'1</b> = '+
+       '<input type="text" id="cref-rate" value="'+crefEsc(CREF_RATE)+'" oninput="crefOnRate(this.value)"> 원'+
+       (c.rateNote?'<span style="opacity:.85;">— '+crefEsc(c.rateNote)+'</span>':'')+'</div>';
+
+  // 총액 비교 카드
+  h += '<div class="cref-sum-grid">' + (c.quotes||[]).map(q=>{
+    const amt = (q.totalGross!=null?q.totalGross:q.totalNet);
+    return '<div class="cref-sum-card" onclick="crefJump(\''+crefEsc(q.id)+'\')">'+
+      '<div class="v">'+crefEsc(q.vendor)+'</div>'+
+      '<div class="amt">'+crefEsc(cur)+crefNum(amt)+'</div>'+
+      '<div class="krw">'+crefEsc(crefKrw(amt))+'</div></div>';
+  }).join('') + '</div>';
+
+  // 견적 카드
+  h += (c.quotes||[]).map(q=>crefCard(q,cur)).join('');
+
+  // 부속 자료
+  if((c.extras||[]).length){
+    h += '<h3 style="margin:22px 0 10px;font-size:15px;font-weight:600;">📎 부속 자료</h3>';
+    h += c.extras.map(x=>{
+      let t='';
+      if(x.table){
+        t = '<div class="table-wrap" style="overflow-x:auto;"><table class="cref-tbl"><thead><tr>'+
+            (x.table.head||[]).map(hd=>'<th>'+crefEsc(hd)+'</th>').join('')+'</tr></thead><tbody>'+
+            (x.table.rows||[]).map(r=>'<tr>'+r.map((cell,ci)=>'<td'+(ci?' class="n"':'')+'>'+crefEsc(cell)+'</td>').join('')+'</tr>').join('')+
+            '</tbody></table></div>';
+      }
+      return '<div class="cref-extra"><h4>'+crefEsc(x.title)+'</h4>'+
+        (x.desc?'<div class="d">'+crefEsc(x.desc)+'</div>':'')+t+
+        (x.note?'<div class="cref-terms">📌 '+crefEsc(x.note)+'</div>':'')+
+        (x.file?'<a class="cref-file" href="/'+crefEsc(x.file)+'" target="_blank" rel="noopener">📄 원본 열기 — '+crefEsc(x.fileLabel||'파일')+'</a>':'')+
+        '</div>';
+    }).join('');
+  }
+  if(CREF_DATA.note) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:18px;line-height:1.6;">'+crefEsc(CREF_DATA.note)+'</div>';
+
+  document.getElementById('cref-body').innerHTML = h;
+  open.forEach(id=>{const el=document.querySelector('#cref-body .cref-card[data-id="'+id+'"]');if(el)el.classList.add('open');});
+}
+function crefCard(q,cur){
+  const amt = (q.totalGross!=null?q.totalGross:q.totalNet);
+  const meta = [
+    ['거래처', q.vendor],
+    ['구분', q.vendorRole],
+    ['견적일', q.date],
+    ['담당자', q.contact],
+    ['연락처', q.tel],
+    ['주소', q.address],
+    ['프로젝트', q.project],
+    ['수신처', q.orderedBy],
+    ['유효기한', q.validUntil]
+  ].filter(x=>x[1]);
+  let secs = (q.sections||[]).map(s=>{
+    const hasUnit = (s.items||[]).some(it=>it.unitPrice!=null);
+    const hasSpec = (s.items||[]).some(it=>it.spec);
+    return '<div class="cref-sec"><h4>'+crefEsc(s.title)+'</h4>'+
+      '<div class="table-wrap" style="overflow-x:auto;"><table class="cref-tbl"><thead><tr>'+
+      '<th style="width:34px;">#</th><th>항목</th>'+(hasSpec?'<th>규격(cm)</th>':'')+
+      '<th style="width:64px;">수량</th>'+(hasUnit?'<th style="width:88px;text-align:right;">단가</th>':'')+
+      '<th style="width:96px;text-align:right;">금액 ('+crefEsc(cur.trim())+')</th>'+
+      '<th style="width:96px;text-align:right;">환산(원)</th><th>비고</th></tr></thead><tbody>'+
+      (s.items||[]).map(it=>{
+        const zero = (it.amount===0);
+        return '<tr'+(zero?' class="excluded"':'')+'>'+
+          '<td>'+crefEsc(it.no)+'</td>'+
+          '<td>'+crefEsc(it.name)+'</td>'+
+          (hasSpec?'<td>'+crefEsc(it.spec||'')+'</td>':'')+
+          '<td>'+crefEsc(it.qty||'')+'</td>'+
+          (hasUnit?'<td class="n">'+(it.unitPrice!=null?crefNum(it.unitPrice):'—')+'</td>':'')+
+          '<td class="n">'+(it.amount!=null?crefNum(it.amount):'—')+'</td>'+
+          '<td class="n" style="color:var(--text-muted);">'+(it.amount?crefEsc(crefKrw(it.amount)).replace('≈ ',''):'—')+'</td>'+
+          '<td style="color:var(--text-muted);">'+crefEsc(it.remark||'')+'</td></tr>';
+      }).join('')+
+      (s.subtotal!=null?'<tr class="sub"><td colspan="'+(2+(hasSpec?1:0)+1+(hasUnit?1:0))+'">소계'+
+        (s.subtotalNote?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">('+crefEsc(s.subtotalNote)+')</span>':'')+
+        '</td><td class="n">'+crefNum(s.subtotal)+'</td><td class="n" style="color:var(--text-muted);">'+
+        crefEsc(crefKrw(s.subtotal)).replace('≈ ','')+'</td><td></td></tr>':'')+
+      '</tbody></table></div></div>';
+  }).join('');
+  return '<div class="cref-card" data-id="'+crefEsc(q.id)+'" id="cref-'+crefEsc(q.id)+'">'+
+    '<div class="cref-head" onclick="this.parentNode.classList.toggle(\'open\')">'+
+      '<span class="arrow">▶</span>'+
+      '<div class="ti"><div class="t">'+crefEsc(q.title)+
+        (q.badge?'<span class="cref-badge">'+crefEsc(q.badge)+'</span>':'')+'</div>'+
+        '<div class="m">'+crefEsc(q.vendor)+' · '+crefEsc(q.date)+(q.project?' · '+crefEsc(q.project):'')+'</div></div>'+
+      '<div class="amt"><div class="a">'+crefEsc(cur)+crefNum(amt)+'</div>'+
+        '<div class="k">'+crefEsc(crefKrw(amt))+'</div></div>'+
+    '</div>'+
+    '<div class="cref-body">'+
+      '<div class="cref-meta">'+meta.map(m=>'<div>'+crefEsc(m[0])+': <b>'+crefEsc(m[1])+'</b></div>').join('')+'</div>'+
+      (q.compareNote?'<div class="cref-intro" style="margin:0 0 4px;">🔍 '+crefEsc(q.compareNote)+'</div>':'')+
+      secs+
+      (q.totalLabel?'<div style="margin-top:12px;font-size:13px;font-weight:600;">합계 — '+crefEsc(q.totalLabel)+
+        '<span style="font-weight:400;color:var(--text-muted);font-size:12px;"> ('+crefEsc(crefKrw(amt))+')</span></div>':'')+
+      ((q.terms||[]).length?'<div class="cref-terms">📌 계약·지급 조건<ul>'+q.terms.map(t=>'<li>'+crefEsc(t)+'</li>').join('')+'</ul></div>':'')+
+      (q.file?'<a class="cref-file" href="/'+crefEsc(q.file)+'" target="_blank" rel="noopener">📄 원본 열기 — '+crefEsc(q.fileLabel||'파일')+'</a>':'')+
+    '</div></div>';
+}
+function crefJump(id){
+  const el = document.getElementById('cref-'+id);
+  if(!el) return;
+  el.classList.add('open');
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+</script>
+
   </main>
 </div>
 
@@ -2843,6 +3074,10 @@ function switchPage(item){
       switchParsedTab('pending');
     }
     if(typeof loadStdProdNames==='function') loadStdProdNames();
+  }
+  // 시공 레퍼런스 진입 시 데이터 로드 (2026-08-21)
+  if(item.dataset.page==='construction'){
+    if(typeof crefInit==='function') crefInit();
   }
   // customs 진입 시 데이터 로드
   if(item.dataset.page==='customs'){
