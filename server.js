@@ -5187,6 +5187,29 @@ function saveCustomsObservations(db) {
   }
 }
 
+// ━━━ 🏗️ 시공 레퍼런스 — 발주 집행 여부 (2026-08-21) ━━━
+// business 거래처 '✅발주함' 배지가 제품 파이프라인만 보던 문제 해결용.
+// 견적별 집행 여부를 여기서 토글하면 /api/pipeline/hooks/business-links 로 함께 나간다.
+// 전역 requireAuthMiddleware 뒤라 로그인 필수.
+const constructionStore = require('./lib/construction-store');
+
+app.get('/api/construction-orders', (req, res) => {
+  res.json({ orders: constructionStore.orderState() });
+});
+
+app.post('/api/construction-orders', express.json({ limit: '64kb' }), (req, res) => {
+  const b = req.body || {};
+  const quoteId = String(b.quoteId || '');
+  if (!quoteId) return res.status(400).json({ error: 'quoteId 필요' });
+  const saved = constructionStore.setOrder(quoteId, {
+    ordered: !!b.ordered,
+    evidence: b.evidence,
+    by: (req.user && req.user.name) || ''
+  });
+  if (!saved) return res.status(404).json({ error: 'unknown quoteId' });
+  res.json({ ok: true, quoteId, state: saved });
+});
+
 app.get('/api/customs-observations', (req, res) => {
   const db = loadCustomsObservations();
   let list = (db.observations || []).slice();
