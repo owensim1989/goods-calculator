@@ -2122,13 +2122,14 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
     <div>
       <h2 style="margin:0 0 4px 0;font-size:20px;font-weight:600;">🏗️ 시공 레퍼런스</h2>
       <div style="color:var(--text-muted);font-size:13px;line-height:1.55;max-width:720px;">
-        해외 팝업·박람회 <b>시공/부스 견적서 아카이브</b>입니다. 새 현장 견적을 받을 때 항목 누락 점검과 가격대 감(感) 잡는 용도로 쓰세요.<br>
+        해외 팝업·박람회 <b>시공/부스 견적서 아카이브 + 시공 거래처 등록부</b>입니다. 새 현장 견적을 받을 때 항목 누락 점검·가격대 비교·거래처 연락처 확인에 쓰세요.<br>
         <span style="color:var(--danger,#ef4444);">⚠️ 과거 데이터입니다 — 현행 단가가 아니며 그대로 발주 기준으로 쓰지 마세요.</span>
       </div>
     </div>
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:12px;line-height:1.6;min-width:180px;">
       <div style="color:var(--text-muted);">등록 견적</div>
       <div style="font-size:22px;font-weight:700;color:var(--primary);" id="cref-stat-total">—</div>
+      <div style="color:var(--text-muted);">등록 거래처: <span id="cref-stat-vendors" style="color:var(--text);font-weight:600;">—</span></div>
       <div style="color:var(--text-muted);">최종 갱신: <span id="cref-stat-updated" style="color:var(--text);font-weight:600;">—</span></div>
     </div>
   </div>
@@ -2185,20 +2186,51 @@ input[type="checkbox"]{accent-color:var(--primary);background:var(--input-bg);bo
 .cref-extra{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;}
 .cref-extra h4{margin:0 0 4px;font-size:14px;font-weight:600;}
 .cref-extra .d{font-size:12px;color:var(--text-muted);line-height:1.55;margin-bottom:10px;}
+.cref-h3{margin:26px 0 10px;font-size:15px;font-weight:600;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+.cref-h3-sub{font-size:11px;font-weight:400;color:var(--text-muted);}
+.cref-vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;}
+.cref-vcard{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.cref-vhead{padding:12px 14px;cursor:pointer;user-select:none;}
+.cref-vhead:hover{background:var(--bg);}
+.cref-vhead .n{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.cref-vhead .e{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.cref-vhead .s{font-size:12px;margin-top:6px;line-height:1.5;color:var(--text);}
+.cref-vhead .q{font-size:11px;color:var(--text-muted);margin-top:6px;}
+.cref-vstatus{font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text-muted);}
+.cref-vstatus.on{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.4);color:#22c55e;}
+.cref-vbody{display:none;padding:0 14px 14px;border-top:1px solid var(--border);}
+.cref-vcard.open .cref-vbody{display:block;}
+.cref-vrow{display:grid;grid-template-columns:76px 1fr;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px dashed var(--border);line-height:1.5;}
+.cref-vrow span{color:var(--text-muted);}
+.cref-vrow b{font-weight:600;word-break:break-word;}
+.cref-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.cref-chip{font-size:11px;padding:4px 10px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:var(--text-muted);cursor:pointer;font-family:inherit;}
+.cref-chip:hover{border-color:var(--primary);color:var(--primary);}
+.cref-group{margin-bottom:18px;}
+.cref-group-t{font-size:13px;font-weight:600;color:var(--primary);padding:6px 0 10px;border-top:1px solid var(--border);margin-top:6px;}
+.cref-fx input{width:80px;}
 @media(max-width:768px){.cref-head{flex-wrap:wrap;}.cref-head .amt{text-align:left;}}
 </style>
 
 <script>
 // ━━━ 🏗️ 시공 레퍼런스 (2026-08-21) ━━━
-// 과거 해외 시공·부스 견적서 아카이브. 데이터는 /refs/construction-refs.json (로그인 필수 경로).
-// 국가 탭 → 견적 카드(항목표·조건·원본파일) + 부속 비교자료. 국가 추가는 JSON 에 항목만 넣으면 됨.
-let CREF_DATA = null, CREF_COUNTRY = 0, CREF_RATE = 40;
+// 해외 시공·부스 견적서 아카이브 + 시공 거래처 등록부.
+// 데이터는 /refs/construction-refs.json (로그인 필수 경로), 원본 파일은 /refs/construction/<국가>/.
+// 국가·거래처·견적 추가는 JSON 만 고치면 되고 이 파일은 손댈 필요 없음.
+let CREF_DATA = null, CREF_COUNTRY = 0, CREF_RATES = {};
 function crefEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function crefNum(n){return (n==null||isNaN(n))?'—':Number(n).toLocaleString('ko-KR');}
-function crefKrw(n){
-  if(n==null||isNaN(n)||!CREF_RATE) return '';
-  return '≈ ' + Math.round(Number(n)*CREF_RATE).toLocaleString('ko-KR') + '원';
+function crefNum(n,dec){
+  if(n==null||isNaN(n)) return '—';
+  return Number(n).toLocaleString('ko-KR',{minimumFractionDigits:dec||0,maximumFractionDigits:dec||0});
 }
+function crefRate(cur){const r=CREF_RATES[cur||'TWD'];return (r&&!isNaN(r))?r:0;}
+function crefKrw(n,cur){
+  const r=crefRate(cur);
+  if(n==null||isNaN(n)||!r) return '';
+  return Math.round(Number(n)*r).toLocaleString('ko-KR')+'원';
+}
+function crefCurLabel(cur){return cur==='USD'?'USD ':'NT$';}
+function crefAmt(n,cur){return crefCurLabel(cur)+crefNum(n,cur==='USD'?2:0);}
 async function crefInit(){
   if(CREF_DATA) return;
   try{
@@ -2213,6 +2245,8 @@ async function crefInit(){
   const cs = CREF_DATA.countries || [];
   document.getElementById('cref-stat-total').textContent =
     cs.reduce((a,c)=>a+((c.quotes||[]).length),0) + '건';
+  document.getElementById('cref-stat-vendors').textContent =
+    cs.reduce((a,c)=>a+((c.vendors||[]).length),0) + '곳';
   document.getElementById('cref-stat-updated').textContent = CREF_DATA.updatedAt || '—';
   document.getElementById('cref-country-tabs').innerHTML = cs.map((c,i)=>
     '<button class="cref-country-tab'+(i===0?' active':'')+'" onclick="crefSelectCountry('+i+')">'+
@@ -2224,40 +2258,64 @@ function crefSelectCountry(i){
   CREF_COUNTRY = i;
   document.querySelectorAll('#cref-country-tabs .cref-country-tab').forEach((b,bi)=>b.classList.toggle('active',bi===i));
   const c = (CREF_DATA.countries||[])[i];
-  CREF_RATE = c && c.defaultKrwRate ? c.defaultKrwRate : 0;
+  CREF_RATES = Object.assign({}, (c && c.rates) || {});
   crefRender();
 }
-function crefOnRate(v){
+function crefOnRate(cur,v){
   const n = parseFloat(String(v).replace(/,/g,''));
-  CREF_RATE = isNaN(n)?0:n;
+  CREF_RATES[cur] = isNaN(n)?0:n;
   crefRender(true);
 }
+function crefCountry(){return (CREF_DATA.countries||[])[CREF_COUNTRY];}
+
 function crefRender(keepOpen){
-  const c = (CREF_DATA.countries||[])[CREF_COUNTRY];
+  const c = crefCountry();
   if(!c){document.getElementById('cref-body').innerHTML='';return;}
   const open = keepOpen ? [...document.querySelectorAll('#cref-body .cref-card.open')].map(e=>e.dataset.id) : [];
-  const cur = c.currencyLabel || (c.currency+' ');
+  const quotes = c.quotes||[];
   let h = '';
   if(c.summary) h += '<div class="cref-intro">'+crefEsc(c.summary)+'</div>';
-  h += '<div class="cref-fx">💱 <b style="color:var(--text);">'+crefEsc(cur)+'1</b> = '+
-       '<input type="text" id="cref-rate" value="'+crefEsc(CREF_RATE)+'" oninput="crefOnRate(this.value)"> 원'+
+
+  // 환산율 바 — 이 국가에서 쓰이는 통화만
+  const curs = [...new Set(quotes.map(q=>q.cur||c.currency||'TWD'))];
+  h += '<div class="cref-fx">💱 환산율 '+curs.map(cu=>
+        '<b style="color:var(--text);">'+crefEsc(crefCurLabel(cu).trim())+' 1</b> = '+
+        '<input type="text" value="'+crefEsc(CREF_RATES[cu]||'')+'" oninput="crefOnRate(\''+cu+'\',this.value)"> 원').join('　')+
        (c.rateNote?'<span style="opacity:.85;">— '+crefEsc(c.rateNote)+'</span>':'')+'</div>';
 
-  // 총액 비교 카드
-  h += '<div class="cref-sum-grid">' + (c.quotes||[]).map(q=>{
-    const amt = (q.totalGross!=null?q.totalGross:q.totalNet);
-    return '<div class="cref-sum-card" onclick="crefJump(\''+crefEsc(q.id)+'\')">'+
-      '<div class="v">'+crefEsc(q.vendor)+'</div>'+
-      '<div class="amt">'+crefEsc(cur)+crefNum(amt)+'</div>'+
-      '<div class="krw">'+crefEsc(crefKrw(amt))+'</div></div>';
-  }).join('') + '</div>';
+  // ── 시공 거래처 등록부 ──
+  if((c.vendors||[]).length){
+    h += '<h3 class="cref-h3">🏢 시공 거래처 <span class="cref-h3-sub">'+c.vendors.length+'곳 · 카드를 누르면 상세</span></h3>';
+    h += '<div class="cref-vgrid">'+c.vendors.map(v=>crefVendorCard(v,quotes,c)).join('')+'</div>';
+  }
 
-  // 견적 카드
-  h += (c.quotes||[]).map(q=>crefCard(q,cur)).join('');
+  // ── 견적 아카이브 (그룹별) ──
+  h += '<h3 class="cref-h3">📄 견적 아카이브 <span class="cref-h3-sub">'+quotes.length+'건 · 최신순</span></h3>';
+  const groups = [];
+  quotes.forEach(q=>{
+    const g = q.group || '기타';
+    let e = groups.find(x=>x.name===g);
+    if(!e){e={name:g,items:[]};groups.push(e);}
+    e.items.push(q);
+  });
+  h += groups.map(g=>{
+    let s = '<div class="cref-group"><div class="cref-group-t">'+crefEsc(g.name)+'</div>';
+    s += '<div class="cref-sum-grid">'+g.items.map(q=>{
+      const cu = q.cur||c.currency||'TWD';
+      const amt = (q.totalGross!=null?q.totalGross:q.totalNet);
+      const k = crefKrw(amt,cu);
+      return '<div class="cref-sum-card" onclick="crefJump(\''+crefEsc(q.id)+'\')">'+
+        '<div class="v">'+crefEsc(q.vendor)+'</div>'+
+        '<div class="amt">'+crefEsc(crefAmt(amt,cu))+'</div>'+
+        '<div class="krw">'+(k?'≈ '+crefEsc(k):'')+'</div></div>';
+    }).join('')+'</div>';
+    s += g.items.map(q=>crefCard(q,c)).join('');
+    return s+'</div>';
+  }).join('');
 
-  // 부속 자료
+  // ── 부속 자료 ──
   if((c.extras||[]).length){
-    h += '<h3 style="margin:22px 0 10px;font-size:15px;font-weight:600;">📎 부속 자료</h3>';
+    h += '<h3 class="cref-h3">📎 부속 자료</h3>';
     h += c.extras.map(x=>{
       let t='';
       if(x.table){
@@ -2276,30 +2334,54 @@ function crefRender(keepOpen){
   if(CREF_DATA.note) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:18px;line-height:1.6;">'+crefEsc(CREF_DATA.note)+'</div>';
 
   document.getElementById('cref-body').innerHTML = h;
-  open.forEach(id=>{const el=document.querySelector('#cref-body .cref-card[data-id="'+id+'"]');if(el)el.classList.add('open');});
+  open.forEach(id=>{const el=document.querySelector('#cref-body .cref-card[data-id="'+id+'"], #cref-body .cref-vcard[data-id="'+id+'"]');if(el)el.classList.add('open');});
 }
-function crefCard(q,cur){
+
+function crefVendorCard(v,quotes,c){
+  const mine = quotes.filter(q=>q.vendorId===v.id);
+  const dates = mine.map(q=>q.date||'').filter(Boolean).sort();
+  const rows = [
+    ['담당자', v.contact], ['전화', v.tel], ['이메일', v.email],
+    ['統一編號', v.taxId], ['주소', v.address], ['주소 비고', v.addressNote],
+    ['지급 조건', v.terms]
+  ].filter(x=>x[1]);
+  const statusCls = /거래중|과거 거래/.test(v.status||'') ? 'on' : '';
+  return '<div class="cref-vcard" data-id="'+crefEsc(v.id)+'">'+
+    '<div class="cref-vhead" onclick="this.parentNode.classList.toggle(\'open\')">'+
+      '<div class="n">'+crefEsc(v.name)+
+        (v.status?'<span class="cref-vstatus '+statusCls+'">'+crefEsc(v.status)+'</span>':'')+'</div>'+
+      (v.nameEn?'<div class="e">'+crefEsc(v.nameEn)+'</div>':'')+
+      '<div class="s">'+crefEsc(v.scope||'')+'</div>'+
+      '<div class="q">견적 '+mine.length+'건'+(dates.length?' · 최근 '+crefEsc(dates[dates.length-1]):'')+
+        (v.since?' · 최초 '+crefEsc(v.since):'')+'</div>'+
+    '</div>'+
+    '<div class="cref-vbody">'+
+      rows.map(r=>'<div class="cref-vrow"><span>'+crefEsc(r[0])+'</span><b>'+crefEsc(r[1])+'</b></div>').join('')+
+      (v.note?'<div class="cref-terms" style="margin-top:8px;">📌 '+crefEsc(v.note)+'</div>':'')+
+      (mine.length?'<div class="cref-chips">'+mine.map(q=>
+        '<button class="cref-chip" onclick="crefJump(\''+crefEsc(q.id)+'\')">'+crefEsc(q.date||'')+' '+crefEsc(q.title)+'</button>').join('')+'</div>':'')+
+    '</div></div>';
+}
+
+function crefCard(q,c){
+  const cu = q.cur||c.currency||'TWD';
   const amt = (q.totalGross!=null?q.totalGross:q.totalNet);
+  const dec = cu==='USD'?2:0;
   const meta = [
-    ['거래처', q.vendor],
-    ['구분', q.vendorRole],
-    ['견적일', q.date],
-    ['담당자', q.contact],
-    ['연락처', q.tel],
-    ['주소', q.address],
-    ['프로젝트', q.project],
-    ['수신처', q.orderedBy],
-    ['유효기한', q.validUntil]
+    ['거래처', q.vendor], ['구분', q.vendorRole], ['견적일', q.date], ['견적번호', q.quoteNo],
+    ['담당자', q.contact], ['연락처', q.tel], ['이메일', q.email], ['주소', q.address],
+    ['프로젝트', q.project], ['일정', q.schedule], ['수신처', q.orderedBy], ['유효기한', q.validUntil]
   ].filter(x=>x[1]);
   let secs = (q.sections||[]).map(s=>{
     const hasUnit = (s.items||[]).some(it=>it.unitPrice!=null);
     const hasSpec = (s.items||[]).some(it=>it.spec);
+    const lead = 2+(hasSpec?1:0)+1+(hasUnit?1:0);
     return '<div class="cref-sec"><h4>'+crefEsc(s.title)+'</h4>'+
       '<div class="table-wrap" style="overflow-x:auto;"><table class="cref-tbl"><thead><tr>'+
-      '<th style="width:34px;">#</th><th>항목</th>'+(hasSpec?'<th>규격(cm)</th>':'')+
-      '<th style="width:64px;">수량</th>'+(hasUnit?'<th style="width:88px;text-align:right;">단가</th>':'')+
-      '<th style="width:96px;text-align:right;">금액 ('+crefEsc(cur.trim())+')</th>'+
-      '<th style="width:96px;text-align:right;">환산(원)</th><th>비고</th></tr></thead><tbody>'+
+      '<th style="width:42px;">#</th><th>항목</th>'+(hasSpec?'<th>규격(cm)</th>':'')+
+      '<th style="width:64px;">수량</th>'+(hasUnit?'<th style="width:80px;text-align:right;">단가</th>':'')+
+      '<th style="width:104px;text-align:right;">금액 ('+crefEsc(crefCurLabel(cu).trim())+')</th>'+
+      '<th style="width:104px;text-align:right;">환산(원)</th><th>비고</th></tr></thead><tbody>'+
       (s.items||[]).map(it=>{
         const zero = (it.amount===0);
         return '<tr'+(zero?' class="excluded"':'')+'>'+
@@ -2307,34 +2389,38 @@ function crefCard(q,cur){
           '<td>'+crefEsc(it.name)+'</td>'+
           (hasSpec?'<td>'+crefEsc(it.spec||'')+'</td>':'')+
           '<td>'+crefEsc(it.qty||'')+'</td>'+
-          (hasUnit?'<td class="n">'+(it.unitPrice!=null?crefNum(it.unitPrice):'—')+'</td>':'')+
-          '<td class="n">'+(it.amount!=null?crefNum(it.amount):'—')+'</td>'+
-          '<td class="n" style="color:var(--text-muted);">'+(it.amount?crefEsc(crefKrw(it.amount)).replace('≈ ',''):'—')+'</td>'+
+          (hasUnit?'<td class="n">'+(it.unitPrice!=null?crefNum(it.unitPrice,dec):'—')+'</td>':'')+
+          '<td class="n">'+(it.amount!=null?crefNum(it.amount,dec):'—')+'</td>'+
+          '<td class="n" style="color:var(--text-muted);">'+(it.amount?crefEsc(crefKrw(it.amount,cu)):'—')+'</td>'+
           '<td style="color:var(--text-muted);">'+crefEsc(it.remark||'')+'</td></tr>';
       }).join('')+
-      (s.subtotal!=null?'<tr class="sub"><td colspan="'+(2+(hasSpec?1:0)+1+(hasUnit?1:0))+'">소계'+
+      (s.subtotal!=null?'<tr class="sub"><td colspan="'+lead+'">소계'+
         (s.subtotalNote?' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">('+crefEsc(s.subtotalNote)+')</span>':'')+
-        '</td><td class="n">'+crefNum(s.subtotal)+'</td><td class="n" style="color:var(--text-muted);">'+
-        crefEsc(crefKrw(s.subtotal)).replace('≈ ','')+'</td><td></td></tr>':'')+
+        '</td><td class="n">'+crefNum(s.subtotal,dec)+'</td><td class="n" style="color:var(--text-muted);">'+
+        crefEsc(crefKrw(s.subtotal,cu))+'</td><td></td></tr>':'')+
       '</tbody></table></div></div>';
   }).join('');
+  const k = crefKrw(amt,cu);
   return '<div class="cref-card" data-id="'+crefEsc(q.id)+'" id="cref-'+crefEsc(q.id)+'">'+
     '<div class="cref-head" onclick="this.parentNode.classList.toggle(\'open\')">'+
       '<span class="arrow">▶</span>'+
       '<div class="ti"><div class="t">'+crefEsc(q.title)+
         (q.badge?'<span class="cref-badge">'+crefEsc(q.badge)+'</span>':'')+'</div>'+
         '<div class="m">'+crefEsc(q.vendor)+' · '+crefEsc(q.date)+(q.project?' · '+crefEsc(q.project):'')+'</div></div>'+
-      '<div class="amt"><div class="a">'+crefEsc(cur)+crefNum(amt)+'</div>'+
-        '<div class="k">'+crefEsc(crefKrw(amt))+'</div></div>'+
+      '<div class="amt"><div class="a">'+crefEsc(crefAmt(amt,cu))+'</div>'+
+        '<div class="k">'+(k?'≈ '+crefEsc(k):'')+'</div></div>'+
     '</div>'+
     '<div class="cref-body">'+
       '<div class="cref-meta">'+meta.map(m=>'<div>'+crefEsc(m[0])+': <b>'+crefEsc(m[1])+'</b></div>').join('')+'</div>'+
       (q.compareNote?'<div class="cref-intro" style="margin:0 0 4px;">🔍 '+crefEsc(q.compareNote)+'</div>':'')+
       secs+
       (q.totalLabel?'<div style="margin-top:12px;font-size:13px;font-weight:600;">합계 — '+crefEsc(q.totalLabel)+
-        '<span style="font-weight:400;color:var(--text-muted);font-size:12px;"> ('+crefEsc(crefKrw(amt))+')</span></div>':'')+
+        (k?'<span style="font-weight:400;color:var(--text-muted);font-size:12px;"> (≈ '+crefEsc(k)+')</span>':'')+'</div>':'')+
       ((q.terms||[]).length?'<div class="cref-terms">📌 계약·지급 조건<ul>'+q.terms.map(t=>'<li>'+crefEsc(t)+'</li>').join('')+'</ul></div>':'')+
-      (q.file?'<a class="cref-file" href="/'+crefEsc(q.file)+'" target="_blank" rel="noopener">📄 원본 열기 — '+crefEsc(q.fileLabel||'파일')+'</a>':'')+
+      '<div>'+
+        (q.file?'<a class="cref-file" href="/'+crefEsc(q.file)+'" target="_blank" rel="noopener">📄 원본 열기 — '+crefEsc(q.fileLabel||'파일')+'</a>':'')+
+        (q.file2?' <a class="cref-file" href="/'+crefEsc(q.file2)+'" target="_blank" rel="noopener">📄 '+crefEsc(q.file2Label||'파일 2')+'</a>':'')+
+      '</div>'+
     '</div></div>';
 }
 function crefJump(id){
